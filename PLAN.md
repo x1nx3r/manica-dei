@@ -68,6 +68,16 @@ dependency, no sequencing against its roadmap.
    *session* audit stays manus-dei's job (its registry harvests `/event`),
    and fleet-level budgets are its Phase 4 — this repo only guarantees the
    documented API those features read.
+8. **Identity context + system-prompt stance** (manus-dei ADR-015). deusd
+   injects four fields at summon — name, github account, human-readable
+   role, and time. Render them as a synthetic System Context source
+   (`packages/core/src/system-context/`, alongside `core/environment` and
+   `core/date`) fed by env (e.g. `MANUS_USER_NAME`, `MANUS_USER_GITHUB`,
+   `MANUS_USER_ROLE`), and tune the system prompt
+   (`packages/opencode/src/session/prompt/*.txt`) so the agent's persistent
+   stance is: greet the named user, read the repo's standards first, and ask
+   what to work on before diving in. The opening prompt is the trigger;
+   this is the stance.
 
 ## Avenues (explicitly deferred — not scheduled work)
 
