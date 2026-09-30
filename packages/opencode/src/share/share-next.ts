@@ -22,7 +22,9 @@ import { EventV2 } from "@opencode-ai/core/event"
 
 // Session share uploads transcripts to a hosted opencode service. The product
 // runs local sessions only, so sharing is off unless explicitly re-enabled.
-const disabled = process.env["OPENCODE_ENABLE_SHARE"] !== "true" && process.env["OPENCODE_ENABLE_SHARE"] !== "1"
+// Read lazily so tests can opt in via env after import.
+const disabled = () =>
+  process.env["OPENCODE_ENABLE_SHARE"] !== "true" && process.env["OPENCODE_ENABLE_SHARE"] !== "1"
 
 export type Api = {
   create: string
@@ -125,7 +127,7 @@ const layer = Layer.effect(
 
     function sync(sessionID: SessionID, data: Data[]) {
       return Effect.gen(function* () {
-        if (disabled) return
+        if (disabled()) return
         const share = yield* getCached(sessionID)
         if (!share) return
 
@@ -163,7 +165,7 @@ const layer = Layer.effect(
           ),
         )
 
-        if (disabled) return cache
+        if (disabled()) return cache
 
         const watch = <D extends EventV2.Definition>(
           def: D,
@@ -247,7 +249,7 @@ const layer = Layer.effect(
     })
 
     const flush = Effect.fn("ShareNext.flush")(function* (sessionID: SessionID) {
-      if (disabled) return
+      if (disabled()) return
       const s = yield* InstanceState.get(state)
       const queued = s.queue.get(sessionID)
       if (!queued) return
@@ -301,7 +303,7 @@ const layer = Layer.effect(
     })
 
     const init = Effect.fn("ShareNext.init")(function* () {
-      if (disabled) return
+      if (disabled()) return
       yield* InstanceState.get(state)
     })
 
@@ -310,7 +312,7 @@ const layer = Layer.effect(
     })
 
     const create = Effect.fn("ShareNext.create")(function* (sessionID: SessionID) {
-      if (disabled) return { id: "", url: "", secret: "" }
+      if (disabled()) return { id: "", url: "", secret: "" }
       yield* Effect.logInfo("creating share", { sessionID: sessionID })
       const req = yield* request()
       const result = yield* HttpClientRequest.post(`${req.baseUrl}${req.api.create}`).pipe(
@@ -338,7 +340,7 @@ const layer = Layer.effect(
     })
 
     const remove = Effect.fn("ShareNext.remove")(function* (sessionID: SessionID) {
-      if (disabled) return
+      if (disabled()) return
       yield* Effect.logInfo("removing share", { sessionID: sessionID })
       const s = yield* InstanceState.get(state)
       const share = yield* getCached(sessionID)

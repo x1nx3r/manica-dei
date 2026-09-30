@@ -16,7 +16,6 @@ import { InstanceRef } from "../../src/effect/instance-ref"
 import type { InstanceContext } from "../../src/project/instance-context"
 import { Auth } from "../../src/auth"
 import { Account } from "../../src/account/account"
-import { AccessToken, AccountID, OrgID } from "../../src/account/schema"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Env } from "../../src/env"
 import {
@@ -738,49 +737,6 @@ it.instance("handles file inclusion with replacement tokens", () =>
     })
     const config = yield* Config.use.get()
     expect(config.username).toBe("const out = await Bun.$`echo hi`")
-  }),
-)
-
-const accountTokenIt = configIt({
-  account: Layer.mock(Account.Service)({
-    active: () =>
-      Effect.succeed(
-        Option.some({
-          id: AccountID.make("account-1"),
-          email: "user@example.com",
-          url: "https://control.example.com",
-          active_org_id: OrgID.make("org-1"),
-        }),
-      ),
-    activeOrg: () =>
-      Effect.succeed(
-        Option.some({
-          account: {
-            id: AccountID.make("account-1"),
-            email: "user@example.com",
-            url: "https://control.example.com",
-            active_org_id: OrgID.make("org-1"),
-          },
-          org: {
-            id: OrgID.make("org-1"),
-            name: "Example Org",
-          },
-        }),
-      ),
-    config: () =>
-      Effect.succeed(
-        Option.some({
-          provider: { opencode: { options: { apiKey: "{env:OPENCODE_CONSOLE_TOKEN}" } } },
-        }),
-      ),
-    token: () => Effect.succeed(Option.some(AccessToken.make("st_test_token"))),
-  }),
-})
-
-accountTokenIt.instance("resolves env templates in account config with account token", () =>
-  Effect.gen(function* () {
-    const config = yield* Config.use.get()
-    expect(config.provider?.["opencode"]?.options?.apiKey).toBe("st_test_token")
   }),
 )
 

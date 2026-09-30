@@ -293,7 +293,9 @@ describe("HttpApi Server.listen", () => {
       return true
     }) as typeof process.stderr.write
     try {
-      const response = await Server.Default().app.request("/status")
+      // A declared API route keeps this test about response logging; UI
+      // fallback paths fail loudly (503) without an embedded bundle.
+      const response = await Server.Default().app.request("/doc")
       expect(response.status).toBe(200)
     } finally {
       process.stderr.write = original
