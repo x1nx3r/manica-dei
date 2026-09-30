@@ -8,7 +8,6 @@ import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
 import type { ReferenceInfo } from "@opencode-ai/sdk/v2/client"
 import { createEffect, createMemo, on, Show } from "solid-js"
 import { ModelSelectorPopoverV2 } from "@/components/dialog-select-model"
-import { DialogSelectModelUnpaidV2 } from "@/components/dialog-select-model-unpaid-v2"
 import type { PromptInputProps } from "@/components/prompt-input/contracts"
 import { normalizePromptHistoryEntry, promptLength, type PromptHistoryComment } from "@/components/prompt-input/history"
 import { createPersistedPromptInputHistory } from "@/components/prompt-input/history-store"
@@ -61,16 +60,12 @@ export function PromptInputV2Composer(props: PromptInputV2ComposerProps) {
         modelControl={
           <PromptInputV2ModelControl
             loading={props.controller.model.loading}
-            paid={props.controller.model.paid}
             title={language.t("command.model.choose")}
             keybind={command.keybindParts("model.choose")}
             model={props.controller.model.selection}
             providerID={props.controller.model.selection.current()?.provider?.id}
             modelName={props.controller.model.selection.current()?.name ?? language.t("dialog.model.select.title")}
             onClose={props.controller.restoreFocus}
-            onUnpaidClick={() =>
-              dialog.show(() => <DialogSelectModelUnpaidV2 model={props.controller.model.selection} />)
-            }
           />
         }
       />
@@ -470,14 +465,12 @@ export function usePromptInputV2Controller(props: PromptInputV2ControllerProps):
 
 function PromptInputV2ModelControl(props: {
   loading: boolean
-  paid: boolean
   title: string
   keybind: string[]
   model: PromptInputV2ComposerController["model"]["selection"]
   providerID?: string
   modelName: string
   onClose: () => void
-  onUnpaidClick: () => void
 }) {
   const shouldAnimate = createMemo<boolean>((previous) => previous ?? props.loading)
   const content = () => (
@@ -509,42 +502,24 @@ function PromptInputV2ModelControl(props: {
           </>
         }
       >
-        <Show
-          when={props.paid}
-          fallback={
+        <ModelSelectorPopoverV2
+          model={props.model}
+          trigger={(triggerProps) => (
             <ButtonV2
-              data-action="prompt-model"
-              data-control-type="dialog"
+              {...triggerProps}
               variant="ghost-muted"
               size="normal"
+              style={{ height: "28px" }}
               class="min-w-0 max-w-[220px] justify-start ![font-weight:440] group"
               classList={{ "animate-in fade-in": shouldAnimate() }}
-              style={{ height: "28px" }}
-              onClick={props.onUnpaidClick}
+              data-action="prompt-model"
+              data-control-type="popover"
             >
               {content()}
             </ButtonV2>
-          }
-        >
-          <ModelSelectorPopoverV2
-            model={props.model}
-            trigger={(triggerProps) => (
-              <ButtonV2
-                {...triggerProps}
-                variant="ghost-muted"
-                size="normal"
-                style={{ height: "28px" }}
-                class="min-w-0 max-w-[220px] justify-start ![font-weight:440] group"
-                classList={{ "animate-in fade-in": shouldAnimate() }}
-                data-action="prompt-model"
-                data-control-type="popover"
-              >
-                {content()}
-              </ButtonV2>
-            )}
-            onClose={props.onClose}
-          />
-        </Show>
+          )}
+          onClose={props.onClose}
+        />
       </TooltipV2>
     </Show>
   )
