@@ -38,6 +38,7 @@
     "@lydell/node-pty": "catalog:",
     "@opencode-ai/app": "workspace:*",
     "@opencode-ai/ui": "workspace:*",
+    "@opentelemetry/api": "1.9.0",
     "@solid-primitives/i18n": "2.2.1",
     "@solid-primitives/storage": "catalog:",
     "@solidjs/meta": "catalog:",
@@ -53,6 +54,7 @@
     "sury": "11.0.0-alpha.4",
     "typescript": "~5.6.2",
     "vite": "catalog:",
+    "zod": "catalog:",
     "zod-openapi": "5.4.6"
   },
   "optionalDependencies": {

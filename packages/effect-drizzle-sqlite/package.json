@@ -17,9 +17,11 @@
   },
   "devDependencies": {
     "@effect/sql-sqlite-bun": "catalog:",
+    "@opentelemetry/api": "1.9.0",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "@typescript/native-preview": "catalog:",
+    "zod": "catalog:"
   },
   "dependencies": {
     "drizzle-orm": "catalog:",
