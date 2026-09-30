@@ -47,16 +47,24 @@ only in this repo, never upstream.
 **Exit:** one tag whose binary + dist boot a session under manus identity
 with zero calls to anomalyco infrastructure.
 
-## F1 — integration surface (sequenced with manus-dei Phase 2)
+## F1 — session-native features (this repo's server + UI)
 
-6. **Preview tab.** New tab type rendering an iframe at
-   `/api/sessions/{id}/preview/{port}/…` — same-origin; deusd provides the
-   proxy (read `../docs/adr/006-opencode-native-surface.md`). Default port
-   comes from the template manifest. Deliberately no port detection, no
-   forward management.
-7. **manus pages.** Trail/audit, spend, snapshot — same-origin calls to
-   deusd's API (`/api/sessions…`). manus chrome around a stock opencode
-   core; opencode internals stay untouched where possible.
+Under the takeover these are simply product features — no manus-dei
+dependency, no sequencing against its roadmap.
+
+6. **Preview.** The **server** gains a same-origin proxy route scoped to
+   container-localhost ports that the session manifest declares (guard it:
+   localhost only, allowlist from the manifest — a proxy inside the
+   container must not become an SSRF ladder). The UI gets a preview tab
+   iframing its own server. Because the server serves the UI, API, PTY,
+   and preview on one origin, nothing extra gets published and manus-dei
+   needs no proxy at all.
+7. **Trail and spend.** Both are native server data — message history and
+   per-session cost/tokens are already in the session objects. Surface
+   them in the UI (the timeline exists; add a usage/cost view). Cross-
+   *session* audit stays manus-dei's job (its registry harvests `/event`),
+   and fleet-level budgets are its Phase 4 — this repo only guarantees the
+   documented API those features read.
 
 ## Avenues (explicitly deferred — not scheduled work)
 
