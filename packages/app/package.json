@@ -34,7 +34,6 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "20.12.0",
     "@playwright/test": "catalog:",
-    "@sentry/vite-plugin": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@tsconfig/bun": "1.0.9",
     "@types/bun": "catalog:",
@@ -61,7 +60,6 @@
     "@opencode-ai/session-ui": "workspace:*",
     "@opencode-ai/ui": "workspace:*",
     "@pierre/trees": "1.0.0-beta.4",
-    "@sentry/solid": "catalog:",
     "@shikijs/transformers": "3.9.2",
     "@solid-primitives/active-element": "2.1.3",
     "@solid-primitives/audio": "1.4.2",
