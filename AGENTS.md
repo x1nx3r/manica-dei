@@ -1,8 +1,8 @@
-# AGENTS.md — me-when-agents
+# AGENTS.md — manica-dei
 
 Guidelines for AI coding agents working in **this** repository (the fork).
 
-me-when-agents is a **product built on opencode** — an MIT takeover of
+manica-dei is a **product built on opencode** — an MIT takeover of
 `anomalyco/opencode`, not a tracking fork (ADR-0001,
 `../docs/adr/007-product-fork.md` on the manus-dei side). It is the agent
 runtime and the browser surface for **manus-dei** sessions: deusd summons a

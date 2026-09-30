@@ -5,7 +5,8 @@ Companion record: manus-dei `docs/adr/007-product-fork.md` (read-only)
 
 ## Context
 
-me-when-agents began as a clone of `anomalyco/opencode` (MIT) — originally
+me-when-agents (the repository, since renamed **manica-dei**) began as a
+clone of `anomalyco/opencode` (MIT) — originally
 framed as "our fork" with an upstream merge cadence. The product vision
 makes the UI deeply coupled to manus-dei (preview tabs, session trail,
 spend, snapshot, identity, possibly file editing): exactly the kind of

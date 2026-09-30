@@ -1,4 +1,4 @@
-# PLAN — me-when-agents (the manus session product)
+# PLAN — manica-dei (the manus session product)
 
 Lineage: taken over from `anomalyco/opencode` (MIT) at `2fa3363c9` plus a
 lockfile renewal; product line is `main`. Decision record:
