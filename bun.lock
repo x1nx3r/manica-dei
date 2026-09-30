@@ -28,7 +28,7 @@
     },
     "packages/app": {
       "name": "@opencode-ai/app",
-      "version": "1.18.33",
+      "version": "0.1.0",
       "dependencies": {
         "@corvu/drawer": "catalog:",
         "@dnd-kit/abstract": "0.5.0",
@@ -286,7 +286,7 @@
     },
     "packages/core": {
       "name": "@opencode-ai/core",
-      "version": "1.18.33",
+      "version": "0.1.0",
       "bin": {
         "opencode": "./bin/opencode",
       },
@@ -557,7 +557,7 @@
     },
     "packages/opencode": {
       "name": "opencode",
-      "version": "1.18.33",
+      "version": "0.1.0",
       "bin": {
         "opencode": "./bin/opencode",
       },
