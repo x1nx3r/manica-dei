@@ -5,10 +5,59 @@ import {
   createServerProjects,
   migrateCanonicalLocalServerState,
   nextServerAfterRemoval,
+  reconcileStartupCredentials,
   resolveServerList,
   ServerConnection,
 } from "./server"
 import { ServerScope } from "@/utils/server-scope"
+
+describe("reconcileStartupCredentials", () => {
+  test("persists startup auth_token credentials for a server that is not stored yet", () => {
+    const next = reconcileStartupCredentials({
+      stored: [],
+      props: [
+        {
+          type: "http",
+          authToken: true,
+          http: { url: "https://server.example.test", username: "opencode", password: "secret" },
+        },
+      ],
+    })
+
+    expect(next).toEqual([{ url: "https://server.example.test", username: "opencode", password: "secret" }])
+  })
+
+  test("keeps persisted credentials when startup has no auth_token", () => {
+    const next = reconcileStartupCredentials({
+      stored: [{ url: "https://server.example.test", username: "opencode", password: "saved" }],
+      props: [{ type: "http", http: { url: "https://server.example.test" } }],
+    })
+
+    expect(next).toBeUndefined()
+  })
+
+  test("upgrades a url-only stored entry with startup credentials", () => {
+    const next = reconcileStartupCredentials({
+      stored: ["https://server.example.test"],
+      props: [
+        { type: "http", http: { url: "https://server.example.test", username: "opencode", password: "secret" } },
+      ],
+    })
+
+    expect(next).toEqual([{ url: "https://server.example.test", username: "opencode", password: "secret" }])
+  })
+
+  test("preserves richer stored entries when credentials already match", () => {
+    const next = reconcileStartupCredentials({
+      stored: [{ type: "http", http: { url: "https://server.example.test", username: "opencode", password: "saved" } }],
+      props: [
+        { type: "http", http: { url: "https://server.example.test", username: "opencode", password: "saved" } },
+      ],
+    })
+
+    expect(next).toBeUndefined()
+  })
+})
 
 describe("resolveServerList", () => {
   test("lets startup auth_token credentials override a persisted same-url server", () => {

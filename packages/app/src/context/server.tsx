@@ -145,6 +145,38 @@ export function createServerProjects<T extends ServerProjectState>(input: {
   }
 }
 
+// Credentials handed to the app at startup via ?auth_token= live only in the
+// startup props; the token is stripped from the URL before render. Persist
+// them per-server so the connection survives a reload without the token.
+export function reconcileStartupCredentials(input: {
+  props?: Array<ServerConnection.Any>
+  stored: StoredServer[]
+}): StoredServer[] | undefined {
+  const urlOf = (x: StoredServer) => (typeof x === "string" ? x : "type" in x ? x.http.url : x.url)
+  let next: StoredServer[] | undefined
+  for (const conn of input.props ?? []) {
+    if (conn.type !== "http" || !conn.http.password) continue
+    const credentials = { username: conn.http.username, password: conn.http.password }
+    const source = next ?? input.stored
+    const index = source.findIndex((x) => urlOf(x) === conn.http.url)
+    if (index === -1) {
+      next = [...source, { url: conn.http.url, ...credentials }]
+      continue
+    }
+    const current = source[index]
+    const currentCreds = typeof current === "string" ? undefined : "type" in current ? current.http : current
+    if (currentCreds?.username === credentials.username && currentCreds?.password === credentials.password) continue
+    const updated: StoredServer =
+      typeof current === "string"
+        ? { url: conn.http.url, ...credentials }
+        : "type" in current
+          ? { ...current, http: { ...current.http, ...credentials } }
+          : { ...current, ...credentials }
+    next = source.toSpliced(index, 1, updated)
+  }
+  return next
+}
+
 export function resolveServerList(input: {
   props?: Array<ServerConnection.Any>
   stored: StoredServer[]
@@ -274,6 +306,9 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     )
 
     const url = (x: StoredServer) => (typeof x === "string" ? x : "type" in x ? x.http.url : x.url)
+
+    const startupCredentials = reconcileStartupCredentials({ stored: store.list, props: props.servers })
+    if (startupCredentials) setStore("list", startupCredentials)
 
     const allServers = createMemo((): Array<ServerConnection.Any> => {
       return resolveServerList({ stored: store.list, props: props.servers })
