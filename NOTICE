@@ -1,0 +1,9 @@
+Manica Dei
+Copyright 2026 the Manica Dei authors
+Copyright 2026 Anomaly (anomalyco/opencode contributors)
+
+This product is built on opencode (https://github.com/anomalyco/opencode),
+taken over under the MIT license at commit 2fa3363c9 and developed onward
+as the session surface for manus-dei. The MIT license text and the
+upstream copyright notice in LICENSE remain the only license obligations
+of that takeover.

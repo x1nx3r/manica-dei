@@ -19,6 +19,10 @@ import { provideTmpdirInstance } from "../fixture/fixture"
 import { resetDatabase } from "../fixture/db"
 import { pollWithTimeout, testEffect } from "../lib/effect"
 
+// Session share is off unless explicitly re-enabled; these tests exercise the
+// share machinery directly, so opt in. The flag is read lazily at call time.
+process.env.OPENCODE_ENABLE_SHARE = "true"
+
 const env = LayerNode.compile(LayerNode.group([CrossSpawnSpawner.node]))
 const it = testEffect(env)
 

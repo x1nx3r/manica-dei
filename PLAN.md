@@ -16,6 +16,9 @@ only in this repo, never upstream.
 
 ## F0 — own the artifact (now)
 
+Status: landed on `f0-own-artifact` (2026-09-30). Boundary decisions and
+residue recorded in `docs/adr/0002-f0-de-service.md`.
+
 1. **De-service.** Remove every runtime call to anomalyco infrastructure:
    - Sentry: the `@sentry/vite-plugin` block in `packages/app/vite.config.ts`
      and the `@sentry/solid` usage in `packages/app/src/entry.tsx`.

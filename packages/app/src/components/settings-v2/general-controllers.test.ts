@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createShellOptions, createSoundPreviewController } from "./general-controller-behavior"
 
@@ -23,31 +23,26 @@ describe("settings v2 controllers", () => {
   })
 
   test("debounces previews and stops owned audio on disposal", async () => {
-    vi.useFakeTimers()
-    try {
-      const played: string[] = []
-      const stopped: string[] = []
-      const owned = createRoot((dispose) => ({
-        dispose,
-        preview: createSoundPreviewController(async (id) => {
-          played.push(id ?? "")
-          return () => stopped.push(id ?? "")
-        }),
-      }))
+    const played: string[] = []
+    const stopped: string[] = []
+    const owned = createRoot((dispose) => ({
+      dispose,
+      preview: createSoundPreviewController(async (id) => {
+        played.push(id ?? "")
+        return () => stopped.push(id ?? "")
+      }),
+    }))
 
-      owned.preview.play("first")
-      vi.advanceTimersByTime(99)
-      expect(played).toEqual([])
+    owned.preview.play("first")
+    owned.preview.play("second")
+    // Still inside the 100ms debounce window: the first play must never fire.
+    await Bun.sleep(50)
+    expect(played).toEqual([])
 
-      owned.preview.play("second")
-      vi.advanceTimersByTime(100)
-      await Promise.resolve()
-      expect(played).toEqual(["second"])
+    await Bun.sleep(200)
+    expect(played).toEqual(["second"])
 
-      owned.dispose()
-      expect(stopped).toEqual(["second"])
-    } finally {
-      vi.useRealTimers()
-    }
+    owned.dispose()
+    expect(stopped).toEqual(["second"])
   })
 })
