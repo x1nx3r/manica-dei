@@ -15,7 +15,9 @@
     "types": ["vite/client", "bun"],
     "isolatedModules": true,
     "paths": {
-      "~/*": ["./src/*"]
+      "~/*": ["./src/*"],
+      "vite": ["../../../node_modules/vite"],
+      "vite/*": ["../../../node_modules/vite/*"]
     }
   },
   "include": ["*.ts", "src", "../core/src/resource.d.ts"]
