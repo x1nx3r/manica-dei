@@ -29,7 +29,7 @@ here, never upstream.
   to keep the API contract aligned. Never modify, commit, or create files
   there.
 - The seam between the products is opencode's documented HTTP/SSE/WS API —
-  summarized in `docs/PLAN.md` here ("Surface contract"). **Assume the UI
+  summarized in `../docs/PLAN.md` §12 ("Surface contract"). **Assume the UI
   is served same-origin with/through deusd.** Never hardcode absolute URLs
   or cross-origin assumptions; the opencode server port never leaves the
   container's loopback.
@@ -39,21 +39,21 @@ here, never upstream.
 - **No new telemetry or external services**, and removing inherited ones is
   required work, not optional (Sentry, the `app.opencode.ai` UI-proxy
   fallback, upgrade checks, stats/share, console/identity wiring — see
-  `docs/PLAN.md` F0). The product must not call anomalyco infrastructure.
+  `PLAN.md` F0). The product must not call anomalyco infrastructure.
 - **MIT license**: keep `LICENSE` and the upstream copyright notice; our
   additions carry the same license.
 - **Engineering rules for code work** live in
   `docs/UPSTREAM-AGENTS.md` (the relocated upstream guide) and the
   per-package `AGENTS.md` files. They still apply — follow them.
 - **No package trimming yet.** Which packages stay/go is a deferred avenue
-  (`docs/PLAN.md` → Avenues): until integration stabilizes, the ability to
+  (`PLAN.md` → Avenues): until integration stabilizes, the ability to
   cherry-pick from upstream is worth more than leanness.
 - **Tests**: keep the per-package suites green; manus additions get tests in
   the same style, next to the code they cover.
 
 ## Roadmap
 
-`docs/PLAN.md` in this repo — F0 (own the artifact) → F1 (integration
+`PLAN.md` at the repo root — F0 (own the artifact) → F1 (integration
 surface) → Avenues. "Later" tiers are sequenced with manus-dei phases; read
 both PLANs before scheduling work, and record non-obvious decisions as ADRs
 in `docs/adr/`.
