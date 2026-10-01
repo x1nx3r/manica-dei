@@ -3,10 +3,20 @@ name: Release
 # Fork releases own the session artifacts: the linux-x64 server binary with
 # the web UI embedded, plus the raw web dist bundle. The manus-dei template
 # pins these releases (ADR-0001 / ADR-007).
+#
+# Tag pushes (v*) release automatically. workflow_dispatch re-runs a release
+# from main without re-tagging (tag-push runs use the workflow file frozen
+# at the tag, so fixes to this file need the dispatch path).
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp and publish (e.g. 0.2.0)"
+        required: true
+        default: "0.2.0"
 
 permissions:
   contents: write
@@ -15,6 +25,9 @@ jobs:
   release:
     name: build + smoke + publish
     runs-on: ubuntu-latest
+    env:
+      # Tag pushes carry the version in the ref; manual dispatches in the input.
+      VERSION: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -25,11 +38,10 @@ jobs:
       - name: Build linux-x64 server binary (web UI embedded)
         env:
           OPENCODE_CHANNEL: latest
-          OPENCODE_VERSION: ${{ github.ref_name }}
         run: |
-          # Strip the tag's v prefix so the binary reports the bare
+          # Strip a tag's v prefix so the binary reports the bare
           # manifest version (0.2.0, not v0.2.0).
-          export OPENCODE_VERSION="${OPENCODE_VERSION#v}"
+          export OPENCODE_VERSION="${VERSION#v}"
           bun run script/build.ts --single
         working-directory: packages/opencode
 
@@ -40,7 +52,13 @@ jobs:
 
       - name: Smoke — boot the binary and check /api/health
         run: |
-          ./packages/opencode/dist/opencode-linux-x64/bin/opencode serve --hostname 127.0.0.1 --port 4096 &
+          # The server's stdout/stderr MUST be redirected: the runner waits
+          # for all inherited pipes before completing a step, so a
+          # backgrounded server with live pipes hangs the step forever even
+          # after the script exits.
+          ./packages/opencode/dist/opencode-linux-x64/bin/opencode serve --hostname 127.0.0.1 --port 4096 > /tmp/opencode-smoke.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null' EXIT
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:4096/api/health | grep -q '"healthy"'; then
               echo "health ok"
@@ -49,13 +67,15 @@ jobs:
             sleep 1
           done
           echo "server did not become healthy"
+          cat /tmp/opencode-smoke.log
           exit 1
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "$GITHUB_REF_NAME" \
+          TAG="v${VERSION#v}"
+          gh release create "$TAG" \
+            --title "$TAG" \
             --generate-notes \
             manica-dei-linux-x64.tar.gz manica-dei-web-ui.zip
