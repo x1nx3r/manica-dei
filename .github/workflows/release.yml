@@ -26,7 +26,11 @@ jobs:
         env:
           OPENCODE_CHANNEL: latest
           OPENCODE_VERSION: ${{ github.ref_name }}
-        run: bun run script/build.ts --single
+        run: |
+          # Strip the tag's v prefix so the binary reports the bare
+          # manifest version (0.2.0, not v0.2.0).
+          export OPENCODE_VERSION="${OPENCODE_VERSION#v}"
+          bun run script/build.ts --single
         working-directory: packages/opencode
 
       - name: Package artifacts
