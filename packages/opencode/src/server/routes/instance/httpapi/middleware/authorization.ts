@@ -1,5 +1,6 @@
 import { ServerAuth } from "@/server/auth"
-import { Effect, Encoding, Layer, Redacted } from "effect"
+import { parseCookies, sessionCookieHeader, signSession, verifySession, SESSION_COOKIE } from "@/server/shared/session-cookie"
+import { Effect, Encoding, Layer, Option, Redacted } from "effect"
 import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"
 import { hasPtyConnectTicketURL } from "@/server/shared/pty-ticket"
@@ -30,8 +31,16 @@ export class PtyConnectAuthorization extends HttpApiMiddleware.Service<PtyConnec
   },
 ) {}
 
-function emptyCredential() {
+// Credentials reach the middleware three ways: the ?auth_token= query
+// (browser flow — issues a session cookie), Basic (API clients), and the
+// session cookie itself (subresources, WebSocket, EventSource).
+export type Credential =
+  | (ServerAuth.DecodedCredentials & { readonly _tag: "token" | "basic" })
+  | { readonly _tag: "cookie"; readonly value: string }
+
+function emptyCredential(): Credential {
   return {
+    _tag: "basic",
     username: "",
     password: Redacted.make(""),
   }
@@ -39,28 +48,45 @@ function emptyCredential() {
 
 function validateCredential<A, E, R>(
   effect: Effect.Effect<A, E, R>,
-  credential: ServerAuth.DecodedCredentials,
+  credential: Credential,
   config: ServerAuth.Info,
 ) {
   return Effect.gen(function* () {
     if (!ServerAuth.required(config)) return yield* effect
+    if (credential._tag === "cookie") {
+      if (!(Option.isSome(config.password) && verifySession(credential.value, config.password.value))) {
+        yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+          Effect.succeed(HttpServerResponse.setHeader(response, "www-authenticate", WWW_AUTHENTICATE)),
+        )
+        return yield* new HttpApiError.Unauthorized({})
+      }
+      return yield* effect
+    }
     if (!ServerAuth.authorized(credential, config)) {
       yield* HttpEffect.appendPreResponseHandler((_request, response) =>
         Effect.succeed(HttpServerResponse.setHeader(response, "www-authenticate", WWW_AUTHENTICATE)),
       )
       return yield* new HttpApiError.Unauthorized({})
     }
+    if (credential._tag === "token" && Option.isSome(config.password)) {
+      const password = config.password.value
+      yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+        Effect.succeed(
+          HttpServerResponse.setHeader(response, "set-cookie", sessionCookieHeader(signSession(password))),
+        ),
+      )
+    }
     return yield* effect
   })
 }
 
-function decodeCredential(input: string) {
+function decodeCredential(input: string): Effect.Effect<ServerAuth.DecodedCredentials> {
   return Effect.fromResult(Encoding.decodeBase64String(input)).pipe(
     Effect.match({
-      onFailure: emptyCredential,
+      onFailure: () => ({ username: "", password: Redacted.make("") }),
       onSuccess: (header) => {
         const separator = header.indexOf(":")
-        if (separator === -1) return emptyCredential()
+        if (separator === -1) return { username: "", password: Redacted.make("") }
         return {
           username: header.slice(0, separator),
           password: Redacted.make(header.slice(separator + 1)),
@@ -76,18 +102,30 @@ function credentialFromRequest(request: HttpServerRequest.HttpServerRequest) {
 
 function credentialFromURL(url: URL, request: HttpServerRequest.HttpServerRequest) {
   const token = url.searchParams.get(AUTH_TOKEN_QUERY)
-  if (token) return decodeCredential(token)
+  if (token) return decodeCredential(token).pipe(Effect.map((credential) => ({ ...credential, _tag: "token" as const })))
   const match = /^Basic\s+(.+)$/i.exec(request.headers.authorization ?? "")
-  if (match) return decodeCredential(match[1])
+  if (match) return decodeCredential(match[1]).pipe(Effect.map((credential) => ({ ...credential, _tag: "basic" as const })))
+  const cookie = parseCookies(request.headers.cookie).get(SESSION_COOKIE)
+  if (cookie) return Effect.succeed({ _tag: "cookie" as const, value: cookie })
   return Effect.succeed(emptyCredential())
 }
 
 function validateRawCredential<A, E, R>(
   effect: Effect.Effect<A, E, R>,
-  credential: ServerAuth.DecodedCredentials,
+  credential: Credential,
   config: ServerAuth.Info,
 ) {
   if (!ServerAuth.required(config)) return effect
+  if (credential._tag === "cookie") {
+    if (!(Option.isSome(config.password) && verifySession(credential.value, config.password.value)))
+      return Effect.succeed(
+        HttpServerResponse.empty({
+          status: UNAUTHORIZED,
+          headers: { "www-authenticate": WWW_AUTHENTICATE },
+        }),
+      )
+    return effect
+  }
   if (!ServerAuth.authorized(credential, config))
     return Effect.succeed(
       HttpServerResponse.empty({
@@ -95,6 +133,17 @@ function validateRawCredential<A, E, R>(
         headers: { "www-authenticate": WWW_AUTHENTICATE },
       }),
     )
+  if (credential._tag === "token" && Option.isSome(config.password)) {
+    const password = config.password.value
+    return Effect.gen(function*() {
+      yield* HttpEffect.appendPreResponseHandler((_request, response) =>
+        Effect.succeed(
+          HttpServerResponse.setHeader(response, "set-cookie", sessionCookieHeader(signSession(password))),
+        ),
+      )
+      return yield* effect
+    })
+  }
   return effect
 }
 

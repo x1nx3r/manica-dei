@@ -161,6 +161,58 @@ describe("HttpApi authorization middleware", () => {
     }),
   )
 
+  itSecret.live("issues a session cookie on query auth", () =>
+    Effect.gen(function* () {
+      const response = yield* HttpClient.get(`/probe?auth_token=${encodeURIComponent(token("opencode", "secret"))}`)
+
+      expect(response.status).toBe(200)
+      const cookie = response.headers["set-cookie"] ?? ""
+      expect(cookie).toContain("opencode_session=")
+      expect(cookie).toContain("HttpOnly")
+      expect(cookie).toContain("Path=/")
+      expect(cookie).toContain("SameSite=Lax")
+    }),
+  )
+
+  itSecret.live("accepts the session cookie without other credentials", () =>
+    Effect.gen(function* () {
+      const authed = yield* HttpClient.get(`/probe?auth_token=${encodeURIComponent(token("opencode", "secret"))}`)
+      const cookie = (authed.headers["set-cookie"] ?? "").split(";")[0].trim()
+
+      const response = yield* getProbe({ cookie })
+
+      expect(response.status).toBe(200)
+    }),
+  )
+
+  itSecret.live("rejects a forged session cookie", () =>
+    Effect.gen(function* () {
+      const response = yield* getProbe({ cookie: "opencode_session=9999999999.forgedsignature" })
+
+      expect(response.status).toBe(401)
+    }),
+  )
+
+  itSecret.live("prefers basic auth over the session cookie", () =>
+    Effect.gen(function* () {
+      const response = yield* getProbe({
+        cookie: "opencode_session=9999999999.forged",
+        authorization: basic("opencode", "secret"),
+      })
+
+      expect(response.status).toBe(200)
+    }),
+  )
+
+  itSecret.live("does not issue a cookie for basic auth", () =>
+    Effect.gen(function* () {
+      const response = yield* getProbe({ authorization: basic("opencode", "secret") })
+
+      expect(response.status).toBe(200)
+      expect(response.headers["set-cookie"] ?? "").toBe("")
+    }),
+  )
+
   itV2Secret.live("returns bodyful v2 unauthorized errors", () =>
     Effect.gen(function* () {
       const response = yield* HttpClient.get("/api/probe")

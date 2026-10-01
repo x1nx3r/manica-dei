@@ -267,6 +267,22 @@ describe("HttpApi UI fallback", () => {
     }),
   )
 
+  it.live("accepts the session cookie for the web UI", () =>
+    Effect.gen(function* () {
+      const app = uiApp({ password: "secret", username: "opencode", disableEmbeddedWebUi: true })
+
+      const authed = yield* app.request(`/?auth_token=${btoa("opencode:secret")}`)
+      const cookie = (authed.headers.get("set-cookie") ?? "").split(";")[0].trim()
+      expect(cookie).toContain("opencode_session=")
+
+      const withCookie = yield* app.request("/", { headers: { cookie } })
+      expect(withCookie.status).not.toBe(401)
+
+      const anon = yield* app.request("/")
+      expect(anon.status).toBe(401)
+    }),
+  )
+
   it.live("accepts basic auth for the web UI", () =>
     Effect.gen(function* () {
       const response = yield* uiApp({
