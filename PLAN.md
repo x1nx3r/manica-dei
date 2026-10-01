@@ -86,6 +86,12 @@ dependency, no sequencing against its roadmap.
   lean product integrated with manus-dei, and trimming happens once F1
   stabilizes — until then, cherry-pickability from upstream is worth more
   than leanness.
+  - **Wave 0 executed 2026-10-01:** the 11 free packages (`console`,
+    `enterprise`, `identity`, `stats`, `slack`, `function`, `web`, `docs`,
+    `storybook`, `cli`, `containers` — nothing in the product graph
+    depended on them) deleted; ~85M smaller tree, 30 → 20 turbo tasks.
+    `desktop` and `tui` deliberately kept (desktop is a distribution
+    surface; `tui` is a server dependency — wave 1 surgery, post-F1).
 - **Hide the multi-server picker** behind a build flag; keep the code.
 - **File editing.** CodeMirror plus a save endpoint behind the server's
   auth. Possible now that we own the server; a product decision, not an
