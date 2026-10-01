@@ -60,7 +60,9 @@ jobs:
           SERVER_PID=$!
           trap 'kill $SERVER_PID 2>/dev/null' EXIT
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:4096/api/health | grep -q '"healthy"'; then
+            # --max-time is load-bearing: without it a server that accepts
+            # the connection but never responds hangs this step forever.
+            if curl -fsS --max-time 10 http://127.0.0.1:4096/api/health | grep -q '"healthy"'; then
               echo "health ok"
               exit 0
             fi
