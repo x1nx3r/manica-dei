@@ -1,5 +1,5 @@
 import { ServerAuth } from "@/server/auth"
-import { parseCookies, sessionCookieHeader, signSession, verifySession, SESSION_COOKIE } from "@/server/shared/session-cookie"
+import { parseCookies, sessionCookieHeader, signSession, verifySession, SESSION_COOKIE } from "@opencode-ai/server/shared/session-cookie"
 import { Effect, Encoding, Layer, Option, Redacted } from "effect"
 import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"

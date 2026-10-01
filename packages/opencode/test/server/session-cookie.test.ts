@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseCookies, SESSION_COOKIE, SESSION_TTL_SECONDS, sessionCookieHeader, signSession, verifySession } from "../../src/server/shared/session-cookie"
+import { parseCookies, SESSION_COOKIE, SESSION_TTL_SECONDS, sessionCookieHeader, signSession, verifySession } from "@opencode-ai/server/shared/session-cookie"
 
 describe("session cookie", () => {
   test("signs and verifies a cookie bound to the password", () => {
