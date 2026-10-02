@@ -96,34 +96,39 @@ The server launches one headful Chromium inside the container on first use
 and owns its lifecycle: launch, resize, restart, teardown, and disposal with
 the instance.
 
-**Headful, on a virtual display, not headless.** Chromium has no native
-H.264 screencast, so a real encoded stream requires capturing a real
-window. The container therefore gains `Xvfb` and `ffmpeg`. That is a
-deliberate cost and the reason it is stated here rather than discovered
-during implementation.
+**Headful, on a virtual display that is also the server.** The display is
+`Xvnc`, which serves RFB directly from its framebuffer. The container gains
+`tigervnc-standalone-server`. It does **not** gain `Xvfb` or `ffmpeg`.
+
+**The human's surface is a framebuffer stream, not a video.** This is the
+measured decision and it replaced an earlier H.264 design. See Spike
+results.
 
 Launch uses `--remote-debugging-pipe` rather than a port. A pipe has no port
-race, no loopback listener, and no token file to protect.
+race, no loopback listener, and no token file to protect. Measured: Chromium
+binds its debugging port to container loopback even with
+`--remote-debugging-address=0.0.0.0`, so a published port cannot reach it.
 
-### The human's surface is a video, and their input is dispatched
+### The human's surface is a framebuffer, and their input goes through X11
 
-The human sees the shared browser as a decoded video stream, in a panel
-beside the terminal. They are not looking at a document, and the honest
-consequences are these:
+The human sees the shared browser as a framebuffer the server streams, in a
+panel beside the terminal. The client negotiates **ZRLE**, plus `CopyRect`
+as a fallback. It is not a document, and the honest consequences are these:
 
-- Scrolling and hovering carry input latency. The stream is not the DOM.
 - The human's own DevTools cannot inspect the page, because there is no
   document on their side.
-- Text selection, if we build it, is ours to render over the video.
+- Text selection, if we build it, is ours to render over the pixels.
+- Nothing else is lost. This is a real renderer on the far side, not a
+  recording.
 
-In exchange, the human is looking at the **agent's** page, which is the
-whole point.
+**The human's input travels as RFB input and is injected by `Xvnc` through
+X11.** It never passes through CDP. That is the important part, and it was
+the original reason for considering this path: input arrives at Chromium as
+real OS-level events, so IME, dead keys, and key repeat come from the input
+stack rather than from anything we synthesize. The composition risk that an
+earlier draft carried is therefore removed rather than mitigated.
 
-Input is dispatched as CDP input events. **Text entry uses
-`Input.insertText`, not `Input.dispatchKeyEvent` alone.** The reference
-implementations synthesize characters from `String.fromCharCode`, which is
-ASCII-only and breaks on IME input and dead keys. Composition support is a
-requirement of this ADR, not a follow-up.
+The agent's input goes the other way, through CDP.
 
 ### Both parties drive the same instance
 
@@ -133,9 +138,34 @@ The agent's tools are a curated named surface over CDP — `browser_open`,
 the model's reach.
 
 The human drives it through the panel. Whoever acts last wins, and the other
-party sees the result in the stream. **There is no state synchronization,
-and none is planned.** That is the reason this feature is affordable: a
-shared screen does not synchronize, and neither do we.
+party sees the result. **There is no state synchronization, and none is
+planned.** That is the reason this feature is affordable: a shared screen
+does not synchronize, and neither do we.
+
+### The two eyes are asymmetric, and hover is the gap
+
+Agent to human is a push: the agent acts and the human sees it.
+
+Human to agent is a pull. The agent reads page state over CDP — the DOM,
+form values, `scrollY` — so a click, a typed character, and a scroll are all
+visible to it. **A hover is not.** There is no CDP event for an
+OS-level pointer move, so a human hovering a button tells the agent
+nothing.
+
+If hover matters, we inject a small forwarder into the page that reports
+`mousemove`, `click`, `keydown`, and `focus`. cptr already injects a runtime
+script of this kind. The decision is recorded but not made.
+
+That forwarder, and the agent through CDP, can see **everything on the
+page, including credentials the human types into a login form.** That cost
+was withdrawn once when the design briefly became two browsers, and with one
+instance it returns. It is unavoidable here, and it is a decision to make
+consciously.
+
+The distinction worth protecting: **observability is solved, intent is
+not.** Seeing that a human hovered "Delete workspace" is not knowing they
+meant to. The handoff below is what closes that gap, and it is a
+conversation, not a stream.
 
 ### The handoff is the instance
 
@@ -147,10 +177,16 @@ watching. Nothing is copied, mapped, or kept in step.
 Every navigation is reported onto the session, so the trail shows where the
 browser has been and who moved it.
 
+### The screen size is fixed at session start
+
+`Xvnc` sets its framebuffer size at startup and the client scales to fit.
+That is how RFB has always worked, and it removes the resize problem that
+the earlier capture-based design carried as its sharpest edge.
+
 ### The panel states the current URL at all times
 
 One new risk comes with this design and it needs naming: the human's browser
-now displays **whatever the agent's browser displays**, as video inside our
+now displays **whatever the agent's browser displays**, as pixels inside our
 own UI. An agent that navigates to a convincing login page renders it in the
 middle of our interface, where it looks like ours.
 
@@ -166,22 +202,25 @@ reducing any real capability.
 
 ## Sequencing: prove the transport before building on it
 
-The risky part is the encoder path, and it is the part we knew least about.
-So it went first, as an isolated experiment with no product surface attached.
-It is now run. Its results follow, and then the remaining work.
+The transport went first, as an isolated experiment with no product surface
+attached. **Two transports were measured**, because the first one measured
+well enough to raise a second question:
 
-1. **The transport spike.** Headful Chromium on `Xvfb`, `ffmpeg` encoding to
-   H.264, and a minimal client using the WebCodecs `VideoDecoder`.
-   **Done**, except for one inferred term noted below.
-2. **The product.** Lifecycle, both drivers, input mapping, the trail, and
-   the panel, on top of the validated transport. Not started.
-3. **The mode choice.** Deferred, and described in Consequences.
+1. **Video.** Headful Chromium on `Xvfb`, `ffmpeg` to H.264, WebCodecs
+   `VideoDecoder`. Measured and viable, then **superseded**.
+2. **Framebuffer.** `Xvnc` serving RFB, Chromium on X11, ZRLE. Measured, and
+   better. **Adopted.**
+3. **The product.** Lifecycle, both drivers, the trail, the panel, and a
+   client for RFB. Not started.
+4. **The mode choice.** Deferred, and described in Consequences.
 
 ## Spike results
 
-Run in a `debian:bookworm-slim` container, which supplies Chromium 154,
-`Xvfb`, and ffmpeg 5.1.9 from stock packages with no extra repository. CPU
-was 4 cores of an AMD Ryzen 5 4500U. Capture was 1280x720.
+Run in `debian:bookworm-slim`, which supplies Chromium 154, `Xvfb`,
+`ffmpeg`, and TigerVNC 1.12 from stock packages with no extra repository.
+CPU was 4 cores of an AMD Ryzen 5 4500U. Capture was 1280x720.
+
+### The video transport, measured and then superseded
 
 | Stage                                    | Result                                     | Status       |
 | ---------------------------------------- | ------------------------------------------ | ------------ |
@@ -195,97 +234,166 @@ was 4 cores of an AMD Ryzen 5 4500U. Capture was 1280x720.
 | Wheel to a changed frame                 | 33.3 ms median, 40.0 ms p95                | measured     |
 | Encode latency per frame                 | about one frame                            | **inferred** |
 
-End to end the budget is therefore **roughly 50 to 70 ms**, with one term
-inferred rather than measured.
+End to end that budget is **roughly 50 to 70 ms**, with one term inferred
+rather than measured.
+
+Two findings from it survive into the adopted design:
+
+- **The port decision is justified by evidence.** Chromium binds its
+  debugging port to loopback _inside_ the container even with
+  `--remote-debugging-address=0.0.0.0`, so a published port cannot reach
+  it. `--remote-debugging-pipe` is the only workable form when the server
+  owns the process.
+- **The Annex-B conversion was real client work.** `libx264 -f h264` emits
+  start-code-prefixed Annex-B and `VideoDecoder` needs AVCC plus an `avcC`
+  description. It is about sixty lines and nothing in the documentation
+  says so. **The adopted transport does not need it**, which is one of the
+  reasons it won.
+
+The rest of that work is discarded. Its quality presets, its `zerolatency`
+encoder settings, and its client decode path are not built.
+
+### The framebuffer transport, adopted
+
+| Measure                  | Raw                      | ZRLE                         | Status           |
+| ------------------------ | ------------------------ | ---------------------------- | ---------------- |
+| Key to visible pixels    | 15.0 ms median, 18.5 p95 | **14.4 ms median, 16.9 p95** | measured, 4 runs |
+| Keypress volume          | 34.6 KB                  | **2.0 KB**                   | measured         |
+| Scroll volume            | 1.64 MB                  | **25.4 KB**                  | measured         |
+| Scroll to visible pixels | 48.3 ms median           | **not measured**             | gap              |
+
+Volume comparisons are ZRLE against Raw, not against video. Against video
+the volume win is larger still, because H.264 sustains roughly 900 kbps
+whether or not anything changes, while ZRLE sends nothing for an unchanged
+region.
 
 ### What the numbers decide
 
-**Latency is dominated by frame alignment, not by our code.** The
-31 ms median is almost exactly two frame intervals at 60 fps. The path is
-dispatch, then paint on the next vsync, then emission of that painted
-frame. CDP overhead is 0.3 ms and does not matter.
+**Keys are about twice as fast, and the mechanism explains it.** 14 ms
+against 31 ms, consistent across four runs. The video path spent most of
+its budget on frame alignment: the 31 ms median was almost exactly two
+frame intervals at 60 fps. **RFB has no vsync.** X delivers the event to
+Chromium at once, Chromium repaints, and `Xvnc` pushes the damage. There is
+no capture interval and no encoder buffer, which is why the difference is
+predictable rather than lucky.
 
-**Frame rate is therefore the latency dial, not bandwidth.** Halving the
-capture rate should roughly halve the input-to-frame term. The quality
-presets must carry a 30 fps option for that reason, and cptr's presets of
-15, 24, and 30 fps read as latency choices rather than bitrate choices.
+Typing is the latency-critical path. That is the "I see it, it sees me"
+interaction, and it is the strongest single result here.
 
-**The Annex-B conversion is mandatory client work.** `libx264 -f h264`
-emits start-code-prefixed Annex-B, and `VideoDecoder` needs length-
-prefixed AVCC chunks plus an `avcC` description built from the SPS and PPS
-NALs. A working converter against real ffmpeg output is about sixty lines.
-Without it nothing decodes, and nothing in the documentation says so.
+**The encoder leaves the container entirely.** `Xvnc` is the display server
+_and_ the server, so there is no `ffmpeg`, no `Xvfb`, and no encoder
+process. Two processes instead of three, and one dependency fewer.
 
-**Input fidelity has a working primitive.** `Input.insertText` round
-trips, so the composition requirement in this ADR is met rather than
-assumed.
+**Input fidelity is solved rather than mitigated.** The human's input
+reaches Chromium as real X11 events, so IME and dead keys come from the
+input stack. An earlier draft of this ADR carried composition as a risk and
+reached for `Input.insertText` as the workaround. That risk is gone,
+because we no longer synthesize human keystrokes at all.
 
-**The port decision is now justified by evidence, not preference.**
-Chromium binds its debugging port to loopback _inside_ the container even
-with `--remote-debugging-address=0.0.0.0`, so a published port cannot
-reach it. `--remote-debugging-pipe` is the only workable form when the
-server owns the process, which is what this ADR already chose.
+**`Xvnc` does not use `CopyRect`.** It emitted zero of them and sent
+full-screen rectangles instead. That is why Raw scroll cost 1.64 MB, and
+it is a property of this server rather than of RFB. Do not assume the cheap
+path exists.
 
-### What the spike does not tell us
+### The one gap
 
-State these as limits, not as results:
+**Scroll latency under ZRLE is not measured.** With Raw encoding it was
+48.3 ms against video's 33.3 ms, so this is the single case where video
+might still win. The harness stopped producing observable scroll events,
+and the diagnostic showed the probe was at fault: it read `window.scrollY`
+inside the wheel handler, which runs before the default scroll action, so it
+always read zero.
 
-- **Latency was measured with CDP screencast, not with `x11grab`.** Headful
-  compositing may add about one frame, so the committed path may be ~16 ms
-  slower on capture. Skipping the JPEG pre-loss partly offsets it, but the
-  offset is unmeasured.
-- **Latency was measured headless.** Capture and encode were verified
-  headful. The combination was not.
+The reasoning says ZRLE should win, since it moves 25 KB where video
+sustains 900 kbps and latency tracks volume at a given bandwidth. **That
+is an inference and it is not recorded as a result.** The fix is a two-line
+change to a throwaway probe and it does not need another spike. Close it in
+the product, where the real client exists.
+
+The case for the framebuffer path does not rest on this number: it rests on
+keys being twice as fast, on bandwidth being 17 to 65 times smaller, and on
+a dependency leaving the container.
+
+### What the spikes did not tell us
+
+- **Video latency was measured with CDP screencast, not `x11grab`**, and
+  headless rather than headful. Its numbers are indicative, not exact.
+- **The video control was never re-run** alongside the framebuffer test.
+  The key comparison is trusted because the mechanism is explicable, not
+  because the baseline was measured in the same session.
+- **No RFB client has been written.** Everything measured used a raw
+  protocol driver, not a browser.
+- **Framebuffer latency was measured headful** on `Xvnc` with
+  `--ozone-platform=x11`. The video numbers were headless. The comparison
+  is across two configurations.
 - **Everything was loopback.** The container adds a real hop.
-- **Encode latency is inferred** from steady-state throughput running at
-  1.0x real time. That shows the encoder keeps up. It does not show the
-  time to first byte for one frame.
 
 ### A measurement error worth recording
 
-The first wheel measurement reported 120 ms and was wrong. The test page
-had nothing to scroll, so 15 of 25 attempts never changed a pixel and timed
-out against noise. With a scrollable page, 25 of 25 completed and the
-answer was 33 ms.
+The framebuffer test took six runs, and **four of them produced numbers
+that looked entirely plausible and were wrong**:
 
-Record it because the lesson generalises: **a latency measurement must
-report its completion count.** Without that number the result was five
-times worse than reality and still looked plausible.
+- Negotiating `Raw` only, which shipped uncompressed pixels and made
+  scrolling look 3 times worse than RFB really is.
+- Counting `CopyRect` and the cursor bitmap as content pixels, which put
+  "first visible pixel" at 0.1 ms. A `CopyRect` is a move instruction and
+  carries no pixels at all.
+- Letting the on-screen counter scroll out of view, so keypresses changed
+  nothing observable and the sample count fell to one.
+- Reading `scrollY` before the scroll applied, in the diagnostic above.
+
+Also earlier, a wheel measurement read 120 ms because 15 of 25 attempts
+timed out against a page that could not scroll, and an idle figure read
+540 kbps because the harness hammered the server with a 60 Hz request loop.
+
+Record the pattern rather than the incidents: **a latency number alone,
+from a harness written quickly, is close to worthless.** Every wrong number
+above was caught by printing the completion count and the byte volume next
+to the latency. Any future spike reports all three or it reports nothing.
 
 ## Consequences
 
-- **Chromium, `Xvfb`, and `ffmpeg` become container dependencies.** The
-  manus template image changes, which is a change on the manus-dei side.
-- **The human's browser experience is video.** This is a real downgrade
-  against any iframe design, and it is the price of the goal.
-- **The agent gains a browser and the human gains visibility into it.** Both
-  halves of the goal, which nothing we had before delivered.
-- **Composition and IME are required**, not deferred, and the
-  `Input.insertText` path is the reason they are tractable.
+- **Chromium and `tigervnc-standalone-server` become container
+  dependencies.** `ffmpeg` and `Xvfb` do not. The manus template image
+  changes, which is a change on the manus-dei side.
+- **The human sees pixels, not a document.** A real downgrade against any
+  iframe design, and it is the price of the goal. What is lost is DevTools
+  on the previewed page and native text selection. Nothing else.
+- **The agent gains a browser and the human gains visibility into it.**
+  Both halves of the goal, which nothing we had before delivered.
+- **Composition and IME are solved by the transport**, because the human's
+  keystrokes are real X11 events. This is no longer a risk we carry.
+- **The agent can see what the human types**, including credentials typed
+  into a login form. Accepted, and stated in Decision.
+- **Hover is invisible to the agent** unless we inject a forwarder. Recorded
+  as an open decision, not a plan.
+- **The remaining risk is the RFB client.** RFB is a published
+  specification, so we can write one and avoid noVNC's MPL-2.0 terms, but it
+  is a display protocol: framebuffer maintenance, scaling, input mapping,
+  and reconnect. That is the largest single piece of work left, and it is
+  only worth doing because the measurements justify the transport.
 - **An earlier idea is deferred, not rejected.** cptr lets a session choose
   between an iframe proxy and a Chrome-backed stream per tab. That is the
   right shape, and the iframe mode needs the proxy route plus the URL
   rewriter described in Context. It is deliberately **not** built in this
   phase, because the instruction was to put all effort behind the shared
-  instance first and to judge the encoder path before committing to a second
-  surface. The proxy route and its tests are preserved on the
+  instance first. The proxy route and its tests are preserved on the
   `scratch/preview-proxy` branch for that follow-up.
-- **The transport is measured and it holds.** End to end roughly 50 to
-  70 ms, which is the range a remote desktop over a good link delivers,
-  and acceptable for typing. The remaining risk is not the codec. It is
-  resize handling, which is untested.
-- **Tests.** Input mapping is a pure function from a DOM event to CDP
-  parameters, so it is unit-tested exhaustively, including composition
-  events. Lifecycle and restart are tested against a real Chromium in a
-  guarded integration run. The Annex-B conversion is a pure function and
-  is unit-tested against a fixture captured from `ffmpeg`.
+- **Tests.** CDP input mapping is a pure function from a DOM event to CDP
+  parameters, so it is unit-tested exhaustively. The RFB client's frame
+  parsing is a pure function over byte buffers and is unit-tested against
+  captured fixtures. Lifecycle and restart are tested against a real
+  Chromium and a real `Xvnc` in a guarded integration run.
 
 ## Out of scope
 
 No iframe proxy and no URL rewriting in this phase. No mode choice between
 surfaces. No tab-per-page or multiple browser windows. No recording. No
-navigation allowlist. No new server dependency that wraps a browser driver:
-CDP is JSON over a pipe, and nothing in this runtime has a driver today. No
+navigation allowlist. No video encoding, and therefore no `ffmpeg` and no
+WebCodecs. No new server dependency that wraps a browser driver: CDP is
+JSON over a pipe, and nothing in this runtime has a driver today. No
 telemetry.
+
+cptr is a **reference only**. It is ELv2 and is never a source we ship.
 
 cptr is a **reference only**. It is ELv2 and is never a source we ship.

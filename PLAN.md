@@ -64,36 +64,46 @@ dependency, no sequencing against its roadmap.
      That is the constraint the whole design follows from, and it is why a
      local renderer, an embedded client-side engine, or a two-browser design
      cannot serve this goal.
-   - The server owns the lifecycle: launch, resize, restart, teardown. It
-     launches headful on `Xvfb` and encodes with `ffmpeg`, because Chromium
-     has no native H.264 screencast. Those become container dependencies
-     (the manus template image changes, their side).
+   - The server owns the lifecycle: launch, restart, teardown. It launches
+     headful on `Xvnc`, which serves RFB from its own framebuffer and is
+     therefore both the display server and the server. The container gains
+     `tigervnc-standalone-server` and **not** `ffmpeg` or `Xvfb` — two
+     processes instead of three (the manus template image changes, their
+     side).
    - Both parties drive the same instance, so **there is no state
      synchronization and none is planned**. Whoever acts last wins and the
      other sees it, the way a shared screen behaves. This is what makes the
      feature affordable.
    - The agent's side is a curated tool surface over CDP — never raw CDP
-     methods. The human's side is decoded video plus dispatched input.
-   - Text entry uses `Input.insertText`, so composition and IME work. The
-     reference implementations synthesize from `charCode` and are
-     ASCII-only; that is not acceptable here.
+     methods. The human's side is an RFB framebuffer with **ZRLE**.
+   - **The human's input goes through X11, not CDP.** `Xvnc` injects it as
+     real OS-level events, so IME and dead keys come from the input stack.
+     The composition risk an earlier draft carried is gone rather than
+     mitigated.
+   - Screen size is fixed when the session starts and the client scales.
+     That removes the resize edge the video design carried as its sharpest
+     risk.
    - The current URL stays continuously visible in the panel. It is the one
      new risk: the human now sees whatever the agent's browser shows, so an
      agent could render a convincing login page inside our own interface.
-   - **Sequence the transport first.** Chromium + `Xvfb` + `ffmpeg` +
-     WebCodecs with no product surface attached.
-     **Done 2026-10-03.** Capture 60 fps at speed 1.0x, encode 903 kbps,
-     decode 2160 of 2160 frames with zero errors, key down to a changed
-     frame 31.2 ms median, wheel 33.3 ms median, so **50 to 70 ms end to
-     end**. Latency is two frame intervals, so **frame rate is the latency
-     dial** and the presets need a 30 fps option.
-   - Two facts the spike established: `libx264 -f h264` emits Annex-B and
-     WebCodecs needs AVCC plus an `avcC` description, so that conversion is
-     mandatory client work. Chromium binds its debugging port to
-     container-loopback even with `--remote-debugging-address`, so the pipe
-     form is the only workable one.
-   - Not yet measured: resize, and headful input latency.
-   - Status: ADR-0003 accepted 2026-10-02, transport verified 2026-10-03.
+     The same sharing means the agent can read what the human types,
+     credentials included. Accepted.
+   - **Transport measured 2026-10-03, and RFB won.** Keys to visible pixels
+     **14.4 ms median** against the video path's 31.2 ms, consistent across
+     four runs. The video path spent its budget on frame alignment — 31 ms is
+     two frame intervals at 60 fps — and RFB has no vsync. Volume with ZRLE:
+     keypress **2.0 KB**, scroll **25.4 KB**, against 34.6 KB and 1.64 MB
+     for Raw.
+   - Chromium binds its debugging port to container-loopback even with
+     `--remote-debugging-address`, so `--remote-debugging-pipe` is the only
+     workable form. That finding survived from the video spike.
+   - **One gap:** scroll latency under ZRLE is unmeasured. With Raw it was
+     48.3 ms against video's 33.3 ms, so it is the one case where video
+     might still win. The fix is a two-line probe change and it does not
+     need a spike. Close it in the product.
+   - **The largest remaining piece is the RFB client.** RFB is a published
+     spec, so we can write one and avoid noVNC's MPL-2.0 terms.
+   - Status: ADR-0003 accepted 2026-10-02, transport chosen 2026-10-03.
    - Deferred to a later phase: cptr's per-tab choice between this stream and
      an iframe proxy, which needs the proxy route and a URL rewriter. The
      route and its tests are preserved on `scratch/preview-proxy`.
