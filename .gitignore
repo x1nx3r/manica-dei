@@ -19,6 +19,7 @@ ts-dist
 .omo/
 /result
 refs
+/ref
 Session.vim
 /opencode.json
 a.out

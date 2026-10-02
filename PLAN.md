@@ -55,13 +55,39 @@ with zero calls to anomalyco infrastructure.
 Under the takeover these are simply product features — no manus-dei
 dependency, no sequencing against its roadmap.
 
-6. **Preview.** The **server** gains a same-origin proxy route scoped to
-   container-localhost ports that the session manifest declares (guard it:
-   localhost only, allowlist from the manifest — a proxy inside the
-   container must not become an SSRF ladder). The UI gets a preview tab
-   iframing its own server. Because the server serves the UI, API, PTY,
-   and preview on one origin, nothing extra gets published and manus-dei
-   needs no proxy at all.
+6. **The session browser.** The agent and the human work on the same page
+   together. Either hands the other a URL, a page, or a decision, and the
+   other picks it up. One Chromium per session in the container, driven by
+   both parties, streamed to the human.
+   - The human's browser is outside the container and the agent's Chromium
+     is inside it, so the instance is shared by **streaming its output**.
+     That is the constraint the whole design follows from, and it is why a
+     local renderer, an embedded client-side engine, or a two-browser design
+     cannot serve this goal.
+   - The server owns the lifecycle: launch, resize, restart, teardown. It
+     launches headful on `Xvfb` and encodes with `ffmpeg`, because Chromium
+     has no native H.264 screencast. Those become container dependencies
+     (the manus template image changes, their side).
+   - Both parties drive the same instance, so **there is no state
+     synchronization and none is planned**. Whoever acts last wins and the
+     other sees it, the way a shared screen behaves. This is what makes the
+     feature affordable.
+   - The agent's side is a curated tool surface over CDP — never raw CDP
+     methods. The human's side is decoded video plus dispatched input.
+   - Text entry uses `Input.insertText`, so composition and IME work. The
+     reference implementations synthesize from `charCode` and are
+     ASCII-only; that is not acceptable here.
+   - The current URL stays continuously visible in the panel. It is the one
+     new risk: the human now sees whatever the agent's browser shows, so an
+     agent could render a convincing login page inside our own interface.
+   - **Sequence the transport first.** Spike Chromium + `Xvfb` + `ffmpeg` +
+     WebSocket + WebCodecs with no product surface, and measure latency,
+     frame rate, CPU, and input responsiveness. Then build the product on
+     whatever that validates.
+   - Status: ADR-0003 accepted 2026-10-02.
+   - Deferred to a later phase: cptr's per-tab choice between this stream and
+     an iframe proxy, which needs the proxy route and a URL rewriter. The
+     route and its tests are preserved on `scratch/preview-proxy`.
 7. **Trail and spend.** Both are native server data — message history and
    per-session cost/tokens are already in the session objects. Surface
    them in the UI (the timeline exists; add a usage/cost view). Cross-
