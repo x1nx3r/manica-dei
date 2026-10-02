@@ -166,20 +166,91 @@ reducing any real capability.
 
 ## Sequencing: prove the transport before building on it
 
-The risky part is the encoder path, and it is the part we know least about.
-So it goes first, as an isolated experiment with no product surface attached:
+The risky part is the encoder path, and it is the part we knew least about.
+So it went first, as an isolated experiment with no product surface attached.
+It is now run. Its results follow, and then the remaining work.
 
 1. **The transport spike.** Headful Chromium on `Xvfb`, `ffmpeg` encoding to
-   H.264, a WebSocket, and a minimal client using the WebCodecs
-   `VideoDecoder` to display frames and to round-trip input. It measures
-   end-to-end latency, frame rate under typing and scrolling, CPU cost in
-   the container, and whether input feels responsive.
+   H.264, and a minimal client using the WebCodecs `VideoDecoder`.
+   **Done**, except for one inferred term noted below.
 2. **The product.** Lifecycle, both drivers, input mapping, the trail, and
-   the panel, on top of the transport the spike validated.
+   the panel, on top of the validated transport. Not started.
 3. **The mode choice.** Deferred, and described in Consequences.
 
-The spike is the cheapest possible answer to "is this encoder path robust
-enough," which is the question that decides everything after it.
+## Spike results
+
+Run in a `debian:bookworm-slim` container, which supplies Chromium 154,
+`Xvfb`, and ffmpeg 5.1.9 from stock packages with no extra repository. CPU
+was 4 cores of an AMD Ryzen 5 4500U. Capture was 1280x720.
+
+| Stage                                    | Result                                     | Status       |
+| ---------------------------------------- | ------------------------------------------ | ------------ |
+| Capture, `x11grab` from `Xvfb`           | 60 fps, speed 1.0x                         | measured     |
+| Encode, libx264 veryfast and zerolatency | 903 kbps, 6 s to 677 KB                    | measured     |
+| Decode, WebCodecs `VideoDecoder`         | 2160 of 2160 frames, 1931 fps, zero errors | measured     |
+| Decoded geometry and format              | 1280x738 coded, `I420`                     | measured     |
+| CDP round trip, localhost                | 0.3 ms median, 0.73 ms p95                 | measured     |
+| `Input.insertText` round trip            | passes                                     | measured     |
+| Key down to a changed frame              | 31.2 ms median, 37.2 ms p95                | measured     |
+| Wheel to a changed frame                 | 33.3 ms median, 40.0 ms p95                | measured     |
+| Encode latency per frame                 | about one frame                            | **inferred** |
+
+End to end the budget is therefore **roughly 50 to 70 ms**, with one term
+inferred rather than measured.
+
+### What the numbers decide
+
+**Latency is dominated by frame alignment, not by our code.** The
+31 ms median is almost exactly two frame intervals at 60 fps. The path is
+dispatch, then paint on the next vsync, then emission of that painted
+frame. CDP overhead is 0.3 ms and does not matter.
+
+**Frame rate is therefore the latency dial, not bandwidth.** Halving the
+capture rate should roughly halve the input-to-frame term. The quality
+presets must carry a 30 fps option for that reason, and cptr's presets of
+15, 24, and 30 fps read as latency choices rather than bitrate choices.
+
+**The Annex-B conversion is mandatory client work.** `libx264 -f h264`
+emits start-code-prefixed Annex-B, and `VideoDecoder` needs length-
+prefixed AVCC chunks plus an `avcC` description built from the SPS and PPS
+NALs. A working converter against real ffmpeg output is about sixty lines.
+Without it nothing decodes, and nothing in the documentation says so.
+
+**Input fidelity has a working primitive.** `Input.insertText` round
+trips, so the composition requirement in this ADR is met rather than
+assumed.
+
+**The port decision is now justified by evidence, not preference.**
+Chromium binds its debugging port to loopback _inside_ the container even
+with `--remote-debugging-address=0.0.0.0`, so a published port cannot
+reach it. `--remote-debugging-pipe` is the only workable form when the
+server owns the process, which is what this ADR already chose.
+
+### What the spike does not tell us
+
+State these as limits, not as results:
+
+- **Latency was measured with CDP screencast, not with `x11grab`.** Headful
+  compositing may add about one frame, so the committed path may be ~16 ms
+  slower on capture. Skipping the JPEG pre-loss partly offsets it, but the
+  offset is unmeasured.
+- **Latency was measured headless.** Capture and encode were verified
+  headful. The combination was not.
+- **Everything was loopback.** The container adds a real hop.
+- **Encode latency is inferred** from steady-state throughput running at
+  1.0x real time. That shows the encoder keeps up. It does not show the
+  time to first byte for one frame.
+
+### A measurement error worth recording
+
+The first wheel measurement reported 120 ms and was wrong. The test page
+had nothing to scroll, so 15 of 25 attempts never changed a pixel and timed
+out against noise. With a scrollable page, 25 of 25 completed and the
+answer was 33 ms.
+
+Record it because the lesson generalises: **a latency measurement must
+report its completion count.** Without that number the result was five
+times worse than reality and still looked plausible.
 
 ## Consequences
 
@@ -199,11 +270,15 @@ enough," which is the question that decides everything after it.
   instance first and to judge the encoder path before committing to a second
   surface. The proxy route and its tests are preserved on the
   `scratch/preview-proxy` branch for that follow-up.
+- **The transport is measured and it holds.** End to end roughly 50 to
+  70 ms, which is the range a remote desktop over a good link delivers,
+  and acceptable for typing. The remaining risk is not the codec. It is
+  resize handling, which is untested.
 - **Tests.** Input mapping is a pure function from a DOM event to CDP
   parameters, so it is unit-tested exhaustively, including composition
   events. Lifecycle and restart are tested against a real Chromium in a
-  guarded integration run. The transport spike is validated by measurement,
-  not by assertion.
+  guarded integration run. The Annex-B conversion is a pure function and
+  is unit-tested against a fixture captured from `ffmpeg`.
 
 ## Out of scope
 

@@ -80,11 +80,20 @@ dependency, no sequencing against its roadmap.
    - The current URL stays continuously visible in the panel. It is the one
      new risk: the human now sees whatever the agent's browser shows, so an
      agent could render a convincing login page inside our own interface.
-   - **Sequence the transport first.** Spike Chromium + `Xvfb` + `ffmpeg` +
-     WebSocket + WebCodecs with no product surface, and measure latency,
-     frame rate, CPU, and input responsiveness. Then build the product on
-     whatever that validates.
-   - Status: ADR-0003 accepted 2026-10-02.
+   - **Sequence the transport first.** Chromium + `Xvfb` + `ffmpeg` +
+     WebCodecs with no product surface attached.
+     **Done 2026-10-03.** Capture 60 fps at speed 1.0x, encode 903 kbps,
+     decode 2160 of 2160 frames with zero errors, key down to a changed
+     frame 31.2 ms median, wheel 33.3 ms median, so **50 to 70 ms end to
+     end**. Latency is two frame intervals, so **frame rate is the latency
+     dial** and the presets need a 30 fps option.
+   - Two facts the spike established: `libx264 -f h264` emits Annex-B and
+     WebCodecs needs AVCC plus an `avcC` description, so that conversion is
+     mandatory client work. Chromium binds its debugging port to
+     container-loopback even with `--remote-debugging-address`, so the pipe
+     form is the only workable one.
+   - Not yet measured: resize, and headful input latency.
+   - Status: ADR-0003 accepted 2026-10-02, transport verified 2026-10-03.
    - Deferred to a later phase: cptr's per-tab choice between this stream and
      an iframe proxy, which needs the proxy route and a URL rewriter. The
      route and its tests are preserved on `scratch/preview-proxy`.
