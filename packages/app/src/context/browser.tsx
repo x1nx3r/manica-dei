@@ -127,6 +127,27 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       return true
     }
 
+    /**
+     * Handle a stream that stopped when it should not have.
+     *
+     * Both the socket closing and the poll finding no browser land here, so the
+     * retry decision is made once. A drop is retried, because it is usually the
+     * container restarting; when the attempts run out the state becomes
+     * "failed", which is terminal and carries the reason.
+     */
+    const dropStream = (reason: string) => {
+      stopPolling()
+      stopRetrying()
+      client?.close()
+      socket?.close()
+      client = undefined
+      socket = undefined
+      latest = undefined
+      setCursor(undefined)
+      if (scheduleRetry()) return
+      setStore({ status: "failed", error: reason })
+    }
+
     const open = async () => {
       if (store.status === "connecting" || store.status === "open" || store.status === "reconnecting") return
       deliberate = false
@@ -170,11 +191,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
           onClose: (error) => {
             console.debug("[browser] closed", error?.message ?? "(clean)")
             if (current !== generation) return
-            // A drop is retried, because it is usually the container
-            // restarting. When the attempts run out the state becomes
-            // "failed", which is terminal and carries the reason.
-            if (scheduleRetry()) return
-            setStore({ status: "failed", error: error?.message ?? "the connection closed" })
+            dropStream(error?.message ?? "the connection closed")
           },
           onCursor: (cursor) => {
             // The server sends the cursor shape when it changes, not when it
@@ -267,7 +284,23 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
         // connection is still fine, so this is separate from `status`.
         const next = typeof body.error === "string" ? body.error : undefined
         if (next !== store.urlError) setStore("urlError", next)
+
+        // "no browser" is not a page that failed to read: it is the server
+        // saying there is no live browser at all. The RFB socket may still be
+        // open, because a killed server process does not close its accepted
+        // connections — verified: a direct TCP connection to a killed Xvnc
+        // stays open past five seconds. So the socket is not a liveness signal
+        // and this poll is. When the browser is gone the stream is dead
+        // whatever the socket says, so treat it as a drop and let the retry
+        // bring it back.
+        if (next === "no browser" && store.status === "open") {
+          console.debug("[browser] the server reports no browser; treating the stream as dropped")
+          dropStream("the browser is gone")
+        }
       } catch (error) {
+        // A transport failure is not a browser death: the server may be busy or
+        // restarting, and tearing down a healthy stream on one bad poll would
+        // be worse than waiting for the next one.
         setStore("urlError", error instanceof Error ? error.message : String(error))
       }
     }

@@ -26,8 +26,10 @@ beforeAll(async () => {
   mock.module("./sdk", () => ({
     useSDK: () => () => ({ url: "http://127.0.0.1:4096", directory: "/tmp" }),
   }))
-  // The URL poll would otherwise reach a real port and log a CORS error.
-  globalThis.fetch = (async () => new Response(JSON.stringify({ url: "" }), { status: 200 })) as unknown as typeof fetch
+  // The URL poll is a liveness signal, so the default answer is a live browser.
+  // A test that wants a dead one overrides this.
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ url: "about:blank" }), { status: 200 })) as unknown as typeof fetch
   // A client whose `onClose` the test can fire, and which records how many times
   // it was started.
   await import("./browser")
@@ -130,4 +132,27 @@ describe("browser provider reconnect", () => {
     await Bun.sleep(50)
     expect(opens.length).toBeGreaterThanOrEqual(1)
   })
+
+  test("the URL poll detects a browser that died without closing the socket", async () => {
+    // A killed server process does not close its accepted connections — a
+    // direct TCP connection to a killed Xvnc stays open past five seconds — so
+    // the RFB socket is not a liveness signal. The poll is. When it reports no
+    // browser, the stream is dead whatever the socket says.
+    const { opens } = harness()
+    const ctx = capturedInit!()
+    await ctx.open()
+    expect(ctx.state.status).toBe("open")
+
+    // The server now says there is no browser.
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ url: "", error: "no browser" }), { status: 200 })) as unknown as typeof fetch
+
+    // The poll runs every second while open.
+    await Bun.sleep(1_400)
+    expect(ctx.state.status).toBe("reconnecting")
+
+    // And a reconnect follows, which relaunches the browser on demand.
+    await Bun.sleep(700)
+    expect(opens.length).toBeGreaterThanOrEqual(2)
+  }, 15_000)
 })
