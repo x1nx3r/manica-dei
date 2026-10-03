@@ -133,6 +133,64 @@ export function rawUpdate(width: number, height: number, rgb: [number, number, n
 export const bell = Uint8Array.from([2])
 
 /**
+ * An update carrying one Cursor pseudo-rect (-239).
+ *
+ * The layout the server sends: the rect header with the hotspot in x and y, then
+ * the pixels and the mask written directly, with no nested rect. A width or
+ * height of zero has no payload at all.
+ */
+export function cursorUpdate(
+  width: number,
+  height: number,
+  options: {
+    hotspotX?: number
+    hotspotY?: number
+    rgb?: [number, number, number]
+    alpha?: (x: number, y: number) => boolean
+  } = {},
+) {
+  const hotspotX = options.hotspotX ?? 0
+  const hotspotY = options.hotspotY ?? 0
+  const rgb = options.rgb ?? [255, 0, 0]
+  const alpha = options.alpha ?? (() => true)
+  const header = Uint8Array.from([
+    0,
+    0,
+    0,
+    1,
+    (hotspotX >> 8) & 0xff,
+    hotspotX & 0xff,
+    (hotspotY >> 8) & 0xff,
+    hotspotY & 0xff,
+    (width >> 8) & 0xff,
+    width & 0xff,
+    (height >> 8) & 0xff,
+    height & 0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x11, // encoding -239
+  ])
+  if (width === 0 || height === 0) return header
+
+  // PIXELs: four bytes each, blue-green-red in memory.
+  const pixels = new Uint8Array(width * height * 4)
+  for (let i = 0; i < width * height; i++) {
+    pixels[i * 4] = rgb[2]
+    pixels[i * 4 + 1] = rgb[1]
+    pixels[i * 4 + 2] = rgb[0]
+  }
+  const stride = Math.floor((width + 7) / 8)
+  const mask = new Uint8Array(stride * height)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (alpha(x, y)) mask[y * stride + (x >> 3)]! |= 1 << (7 - (x & 7))
+    }
+  }
+  return new Uint8Array([...header, ...pixels, ...mask])
+}
+
+/**
  * An update carrying one ExtendedDesktopSize pseudo-rect.
  *
  * `reason` is the rect's x-position and `status` its y-position; `width` and

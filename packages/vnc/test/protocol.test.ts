@@ -226,10 +226,14 @@ describe("readMessage", () => {
     expect(Array.from(framebuffer.data.slice(4, 8))).toEqual([0, 255, 0, 255])
   })
 
-  test("consumes the cursor pseudo rect so the stream stays aligned", async () => {
-    // A cursor rect is a header, then its own rect whose pixel data must be
-    // read. Treating the pseudo rect as payload-less desynchronises everything
-    // after it, which is the trap this pins.
+  test("decodes a cursor rect and keeps the stream aligned", async () => {
+    // The cursor pseudo-rect's payload is the pixels and the mask, written
+    // directly. There is no nested rect. The rect's own x and y are the
+    // hotspot, not a framebuffer position.
+    //
+    // An earlier version read a nested rect header here. It never surfaced
+    // because the client requested no cursor; a live Xvnc desynchronised on the
+    // first cursor the moment -239 was requested.
     const queue = new ByteQueue()
     queue.push(
       bytes(
@@ -237,11 +241,11 @@ describe("readMessage", () => {
         0,
         0,
         2, // update, padding, two rectangles
-        // cursor pseudo rect at 0,0 sized 2x2
+        // cursor pseudo rect: hotspot (1,2), size 2x2, encoding -239
         0,
+        1,
         0,
-        0,
-        0,
+        2,
         0,
         2,
         0,
@@ -249,37 +253,29 @@ describe("readMessage", () => {
         0xff,
         0xff,
         0xff,
-        0x11, // encoding -239
-        // its pixel rect
+        0x11,
+        // pixels: 2x2 of 32bpp, blue-green-red in memory. Four opaque, then the
+        // mask marks the third pixel transparent.
+        0,
+        0,
+        255,
         0,
         0,
         0,
-        0,
-        0,
-        2,
-        0,
-        2,
+        255,
         0,
         0,
         0,
-        0, // encoding raw
-        // 2x2 of 32bpp PIXELs, all black.
+        255,
         0,
         0,
         0,
+        255,
         0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
+        // mask: row padded to one byte, MSB leftmost. 0b1100 = valid, valid,
+        // transparent, transparent on the top row; none on the bottom.
+        0xc0,
+        0x00,
         // the real rect, a 2x1 raw at 0,0
         0,
         0,
@@ -293,6 +289,7 @@ describe("readMessage", () => {
         0,
         0,
         0,
+        // two PIXELs: red, then green.
         0,
         0,
         255,
@@ -306,10 +303,115 @@ describe("readMessage", () => {
     const framebuffer = target()
     const update = await readMessage(queue, framebuffer, zrle())
     expect(update.kind).toBe("rects")
-    // The real rect was reached and applied, which only happens if the cursor
-    // rect was consumed exactly.
+    if (update.kind !== "rects") throw new Error("expected a framebuffer update")
+    // The cursor was decoded, with the hotspot from the header's x and y.
+    expect(update.cursor?.width).toBe(2)
+    expect(update.cursor?.height).toBe(2)
+    expect(update.cursor?.hotspotX).toBe(1)
+    expect(update.cursor?.hotspotY).toBe(2)
+    // The mask set alpha: 255 where the bit is 1, 0 where it is not.
+    expect(update.cursor?.pixels[3]).toBe(255)
+    expect(update.cursor?.pixels[11]).toBe(0)
+    // The real rect was still reached and applied, which only happens if the
+    // cursor rect was consumed exactly.
     expect(Array.from(framebuffer.data.slice(0, 4))).toEqual([255, 0, 0, 255])
     expect(Array.from(framebuffer.data.slice(4, 8))).toEqual([0, 255, 0, 255])
+  })
+
+  test("a zero-sized cursor means no cursor", async () => {
+    const queue = new ByteQueue()
+    queue.push(
+      bytes(
+        0,
+        0,
+        0,
+        1, // update, padding, one rectangle
+        // cursor pseudo rect at 0,0 sized 0x0
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0xff,
+        0xff,
+        0xff,
+        0x11,
+      ),
+    )
+    const update = await readMessage(queue, target(), zrle())
+    if (update.kind !== "rects") throw new Error("expected a framebuffer update")
+    expect(update.cursor?.width).toBe(0)
+    expect(update.cursor?.height).toBe(0)
+    expect(update.cursor?.pixels.length).toBe(0)
+  })
+
+  test("a resize and a cursor in one update are both reported", async () => {
+    // Xvnc sends both in the same FramebufferUpdate. An earlier shape returned
+    // one or the other, so the cursor was dropped whenever a resize came with
+    // it, and the cursor never reached the caller.
+    const queue = new ByteQueue()
+    queue.push(
+      bytes(
+        0,
+        0,
+        0,
+        2, // update, padding, two rectangles
+        // cursor, 0x0
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0xff,
+        0xff,
+        0xff,
+        0x11,
+        // extended desktop size 8x4, reason 0
+        0,
+        0,
+        0,
+        0,
+        0,
+        8,
+        0,
+        4,
+        0xff,
+        0xff,
+        0xfe,
+        0xcc,
+        1,
+        0,
+        0,
+        0, // one screen, padding
+        0,
+        0,
+        0,
+        1, // id
+        0,
+        0,
+        0,
+        0, // x, y
+        0,
+        8,
+        0,
+        4, // width, height
+        0,
+        0,
+        0,
+        0, // flags
+      ),
+    )
+    const update = await readMessage(queue, target(), zrle())
+    if (update.kind !== "rects") throw new Error("expected a framebuffer update")
+    expect(update.size?.width).toBe(8)
+    expect(update.size?.reason).toBe(0)
+    expect(update.cursor?.width).toBe(0)
   })
 
   test("reports a bell without touching the framebuffer", async () => {

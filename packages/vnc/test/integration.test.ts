@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import net from "node:net"
 import { start, type Interface } from "../src/client"
 import { ByteQueue } from "../src/protocol"
-import { type DesktopSize, type Framebuffer } from "../src/index"
+import { type Cursor, type DesktopSize, type Framebuffer } from "../src/index"
 import { start as startXvnc, type Server } from "./xvnc"
 
 // The client against a real RFB server.
@@ -47,10 +47,12 @@ describe.skipIf(skip)(reason ?? "rfb integration", () => {
     client: Interface
     frames: Framebuffer[]
     sizes: DesktopSize[]
+    cursors: Cursor[]
     stop: () => void
   }> {
     const frames: Framebuffer[] = []
     const sizes: DesktopSize[] = []
+    const cursors: Cursor[] = []
     // The queue must be the one the transport fills. `start` builds its own
     // when none is given, and the handshake would then wait on an empty queue
     // while the socket feeds a different one — which looks like a server that
@@ -60,8 +62,9 @@ describe.skipIf(skip)(reason ?? "rfb integration", () => {
       queue,
       onFrame: (framebuffer) => frames.push(framebuffer),
       onDesktopSize: (size) => sizes.push(size),
+      onCursor: (cursor) => cursors.push(cursor),
     })
-    return { client, frames, sizes, stop: close }
+    return { client, frames, sizes, cursors, stop: close }
   }
 
   /** Wait for a predicate, or give up. Returns whether it became true. */
@@ -131,6 +134,29 @@ describe.skipIf(skip)(reason ?? "rfb integration", () => {
       expect(reply!.status).toBe(0)
       expect(client.framebuffer.width).toBe(640)
       expect(client.framebuffer.height).toBe(480)
+    } finally {
+      client.close()
+      stop()
+    }
+  }, 30_000)
+
+  test("requests the rich cursor and receives one", async () => {
+    // The client asks for -239, so a server declares the cursor locally. What a
+    // headless Xvnc sends is a zero-sized shape: it has no cursor of its own,
+    // so the pane draws a default. A non-zero shape needs a client window with
+    // its own cursor, which this display does not have, and the decode of one is
+    // pinned by the unit tests instead.
+    const { client, cursors, stop } = await connect()
+    try {
+      const ok = await waitFor(() => cursors.length > 0)
+      console.log(`[vnc] cursor=${cursors[0] ? `${cursors[0].width}x${cursors[0].height}` : "none"}`)
+      expect(ok).toBe(true)
+      expect(cursors[0]!.width).toBe(0)
+      expect(cursors[0]!.height).toBe(0)
+      // And the session is still healthy: the cursor did not desynchronise the
+      // stream, which is exactly what an earlier version did.
+      client.resize(600, 400)
+      expect(await waitFor(() => client.framebuffer.width === 600)).toBe(true)
     } finally {
       client.close()
       stop()

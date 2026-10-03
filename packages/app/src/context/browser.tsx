@@ -1,7 +1,7 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { createMemo, type Accessor } from "solid-js"
+import { createMemo, createSignal, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
-import { start, type Interface as Client, type Framebuffer } from "@manica-dei/vnc"
+import { start, type Cursor, type Interface as Client, type Framebuffer } from "@manica-dei/vnc"
 import { connect } from "@opencode-ai/core/browser/relay"
 import { useSDK } from "./sdk"
 
@@ -46,6 +46,11 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       urlError: undefined,
     })
 
+    // The cursor shape the server last sent, or undefined for "no local
+    // cursor". A signal rather than a store field: it is small, it changes on
+    // its own schedule, and the pane reads it directly.
+    const [cursor, setCursor] = createSignal<Cursor | undefined>(undefined)
+
     // Neither belongs in reactive state: a client is not serialisable, and the
     // framebuffer is large.
     let client: Client | undefined
@@ -68,6 +73,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       client = undefined
       socket = undefined
       latest = undefined
+      setCursor(undefined)
     }
 
     const open = async () => {
@@ -113,6 +119,13 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
             console.debug("[browser] closed", error?.message ?? "(clean)")
             if (current !== generation) return
             setStore({ status: error ? "failed" : "closed", error: error?.message })
+          },
+          onCursor: (cursor) => {
+            // The server sends the cursor shape when it changes, not when it
+            // moves, and a zero size means it has no local cursor. The pane
+            // draws it; the position is the pane's to track, because the
+            // human's pointer is over the pane and not in the container.
+            setCursor(cursor.width > 0 && cursor.height > 0 ? cursor : undefined)
           },
           onCutText: () => {
             // The remote clipboard is ignored on purpose. Wiring it to the
@@ -194,6 +207,11 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
        * looping, so a caller may call this freely and need not compare.
        */
       resize: (width: number, height: number) => client?.resize(width, height),
+      /**
+       * The cursor shape the server last sent, or undefined for "no local
+       * cursor" — in which case the pane draws its own default arrow.
+       */
+      cursor,
     }
   },
 })

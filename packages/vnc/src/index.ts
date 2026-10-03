@@ -33,6 +33,7 @@ export {
   encodeKeyEvent,
   encodePointerEvent,
   encodeSetDesktopSize,
+  type Cursor,
   type DesktopSize,
   type RectHeader,
   type Screen,

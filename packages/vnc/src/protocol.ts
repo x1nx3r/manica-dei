@@ -106,6 +106,24 @@ export type DesktopSize = {
 }
 
 /**
+ * A cursor shape sent by the server.
+ *
+ * The header's x and y are the **hotspot**, not a framebuffer position. A
+ * cursor of width or height zero means the server has no local cursor and the
+ * caller should draw its own default.
+ *
+ * `pixels` is RGBA, row major, `width * height * 4`, with alpha from the
+ * server's validity mask: 255 where the bit is set, 0 where it is not.
+ */
+export type Cursor = {
+  width: number
+  height: number
+  hotspotX: number
+  hotspotY: number
+  pixels: Uint8Array
+}
+
+/**
  * Accumulates bytes and hands out exact reads.
  *
  * A stream arrives in arbitrary chunks while the protocol needs fixed sizes, so
@@ -232,6 +250,11 @@ export async function handshake(queue: ByteQueue, transport: Transport) {
       // The server sends an ExtendedDesktopSize rect in reply to our first
       // non-incremental request, which is how we learn the screen ids.
       ENCODING.extendedDesktopSize,
+      // Declares that we draw the cursor ourselves, so the server sends its
+      // shape instead of painting it into the framebuffer. The rich cursor is
+      // the one we ask for: it is the spec encoding, the server prefers it over
+      // the X cursor, and its payload has no nested encoding word.
+      ENCODING.cursor,
     ]),
   )
 
@@ -375,8 +398,11 @@ export type RectHeader = { x: number; y: number; width: number; height: number; 
  * pixels changed.
  */
 export type Update =
-  | { kind: "rects"; rects: number; changed: boolean }
-  | { kind: "desktopSize"; size: DesktopSize }
+  // A FramebufferUpdate. It may carry pixel rectangles, a resize, a cursor, or
+  // any combination: Xvnc routinely sends a cursor and a resize in one update.
+  // An earlier shape treated these as exclusive and silently dropped the cursor
+  // whenever a resize was present.
+  | { kind: "rects"; rects: number; changed: boolean; size?: DesktopSize; cursor?: Cursor }
   | { kind: "bell" }
   | { kind: "cut"; text: string }
   | { kind: "colourMap" }
@@ -416,6 +442,9 @@ export async function readMessage(
   // must not also carry pixel changes. It is reported separately so the caller
   // can reallocate before drawing.
   let size: DesktopSize | undefined
+  // A cursor is a shape, not a framebuffer region, so it is reported on its own
+  // rather than merged into the pixel rectangles.
+  let cursor: Cursor | undefined
 
   for (let index = 0; index < count; index++) {
     const header = await readRectHeader(queue)
@@ -437,19 +466,31 @@ export async function readMessage(
       continue
     }
 
-    if (header.encoding === ENCODING.cursor || header.encoding === ENCODING.cursorAlpha) {
-      // A cursor pseudo-rect is followed by its own pixel rectangle, so it must
-      // be consumed or the stream desynchronises.
-      const nested = await readRectHeader(queue)
-      await skipRect(queue, nested)
+    if (header.encoding === ENCODING.cursor) {
+      cursor = await readCursor(queue, header)
+      continue
+    }
+
+    if (header.encoding === ENCODING.cursorAlpha) {
+      // The X cursor is a different shape: two colours and two bitmaps, and a
+      // zero size again means no cursor. We ask for the rich cursor, so a server
+      // should send that, but the spec says to cope with either.
+      cursor = await readXCursor(queue, header)
       continue
     }
 
     changed = (await applyRect(queue, header, target, zrle)) || changed
   }
 
-  if (size) return { kind: "desktopSize", size }
-  return { kind: "rects", rects: count, changed }
+  // One update may carry a resize and a cursor together, so the result holds
+  // whichever were present rather than choosing one.
+  return {
+    kind: "rects",
+    rects: count,
+    changed,
+    ...(size ? { size } : {}),
+    ...(cursor ? { cursor } : {}),
+  }
 }
 
 /**
@@ -492,22 +533,80 @@ async function readRectHeader(queue: ByteQueue): Promise<RectHeader> {
   }
 }
 
-async function skipRect(queue: ByteQueue, header: RectHeader) {
-  if (header.encoding === ENCODING.raw) {
-    // PIXELs, not CPIXELs: the full 32 bits we negotiate.
-    await queue.take(header.width * header.height * 4)
-    return
+/** The shape a zero-sized cursor decodes to: nothing to draw. */
+const HIDDEN_CURSOR: Cursor = { width: 0, height: 0, hotspotX: 0, hotspotY: 0, pixels: new Uint8Array(0) }
+
+/**
+ * Read a Cursor pseudo-rect (encoding -239).
+ *
+ * The rect's own x and y are the hotspot. The payload follows **directly**: the
+ * whole cursor's PIXELs, then a validity bitmask. It is not a nested rectangle,
+ * and a zero-sized cursor has no payload at all.
+ *
+ * An earlier version read a nested rect header here. It never showed because the
+ * client requested no cursor, so no such rect arrived. The moment -239 was
+ * requested against a live Xvnc, the stream desynchronised on the first cursor.
+ *
+ * The pixels are the negotiated format, so four bytes each, blue-green-red in
+ * memory. The mask is row-padded and most-significant-bit leftmost, and a set
+ * bit means the pixel is opaque.
+ */
+async function readCursor(queue: ByteQueue, header: RectHeader): Promise<Cursor> {
+  if (header.width === 0 || header.height === 0) return HIDDEN_CURSOR
+
+  const raw = await queue.take(header.width * header.height * 4)
+  const mask = await queue.take(cursorMaskBytes(header.width) * header.height)
+
+  const pixels = new Uint8Array(header.width * header.height * 4)
+  const stride = cursorMaskBytes(header.width)
+  for (let y = 0; y < header.height; y++) {
+    for (let x = 0; x < header.width; x++) {
+      const at = (y * header.width + x) * 4
+      const bit = (mask[y * stride + (x >> 3)]! >> (7 - (x & 7))) & 1
+      pixels[at] = raw[at + 2]!
+      pixels[at + 1] = raw[at + 1]!
+      pixels[at + 2] = raw[at]!
+      pixels[at + 3] = bit ? 255 : 0
+    }
   }
-  if (header.encoding === ENCODING.zrle) {
-    const length = await queue.takeU32()
-    await queue.take(length)
-    return
+  return { width: header.width, height: header.height, hotspotX: header.x, hotspotY: header.y, pixels }
+}
+
+/**
+ * Read an X Cursor pseudo-rect (encoding -240).
+ *
+ * A different shape from the rich cursor: two RGB colours, then a one-bit
+ * bitmap choosing between them, then a validity mask. A zero size again means
+ * no cursor. We request the rich cursor, so a server should send that, but the
+ * spec says to cope with either and the decode is small.
+ */
+async function readXCursor(queue: ByteQueue, header: RectHeader): Promise<Cursor> {
+  if (header.width === 0 || header.height === 0) return HIDDEN_CURSOR
+
+  const colours = await queue.take(6)
+  const stride = cursorMaskBytes(header.width)
+  const bitmap = await queue.take(stride * header.height)
+  const mask = await queue.take(stride * header.height)
+
+  const pixels = new Uint8Array(header.width * header.height * 4)
+  for (let y = 0; y < header.height; y++) {
+    for (let x = 0; x < header.width; x++) {
+      const at = (y * header.width + x) * 4
+      const primary = (bitmap[y * stride + (x >> 3)]! >> (7 - (x & 7))) & 1
+      const valid = (mask[y * stride + (x >> 3)]! >> (7 - (x & 7))) & 1
+      const from = primary ? 0 : 3
+      pixels[at] = colours[from]!
+      pixels[at + 1] = colours[from + 1]!
+      pixels[at + 2] = colours[from + 2]!
+      pixels[at + 3] = valid ? 255 : 0
+    }
   }
-  if (header.encoding === ENCODING.copyRect) {
-    await queue.take(4)
-    return
-  }
-  throw new ProtocolError(`cannot skip a rect with encoding ${header.encoding}`)
+  return { width: header.width, height: header.height, hotspotX: header.x, hotspotY: header.y, pixels }
+}
+
+/** A cursor bitmask row is padded to whole bytes, and holds one bit per pixel. */
+function cursorMaskBytes(width: number): number {
+  return Math.floor((width + 7) / 8)
 }
 
 /** Apply one rectangle and report whether it changed pixels. */

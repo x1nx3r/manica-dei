@@ -8,6 +8,7 @@ import {
   encodeSetDesktopSize,
   handshake,
   readMessage,
+  type Cursor,
   type DesktopSize,
   type Screen,
   type ServerInit,
@@ -39,6 +40,10 @@ export type Options = {
   // the new one when the size changed, and the same one otherwise. A caller
   // that holds the framebuffer must swap to this one.
   onDesktopSize?: (size: DesktopSize, framebuffer: Framebuffer) => void
+  // Called when the server sends a cursor shape. `cursor` is the shape and its
+  // hotspot; a zero size means the server has no local cursor and the caller
+  // should draw its own default. The framebuffer is unchanged by a cursor.
+  onCursor?: (cursor: Cursor) => void
   // Called once when the session ends, with a reason when there was one.
   onClose?: (error?: Error) => void
   // Called for server cut text, which carries the remote clipboard.
@@ -161,11 +166,24 @@ export async function start(transport: Transport, options: Options & { queue?: B
         }
         if (update.kind === "bell" || update.kind === "colourMap") continue
 
-        if (update.kind === "desktopSize") {
-          // A resize is not a frame. The reason and status decide whether the
-          // geometry actually changed: reason 1 means we asked, and then the
-          // status must be 0 for the change to have happened. On a denial the
-          // width and height fields are undefined, so they must not be trusted.
+        // This is a FramebufferUpdate, which may carry any combination of a
+        // cursor, a resize, and pixel rectangles. They are applied in that
+        // order: the cursor is a shape, the resize may replace the framebuffer,
+        // and the frame must be drawn into the buffer that exists after both.
+        //
+        // It always counts as a reply, so the next request is incremental. The
+        // server answers a non-incremental request with a fresh state report
+        // every time, so this is what keeps the session from looping.
+        if (outstanding > 0) outstanding--
+        received = true
+
+        if (update.cursor) options.onCursor?.(update.cursor)
+
+        if (update.size) {
+          // The reason and status decide whether the geometry actually changed:
+          // reason 1 means we asked, and then the status must be 0 for the
+          // change to have happened. On a denial the width and height are
+          // undefined, so they must not be trusted.
           const accepted = update.size.reason !== 1 || update.size.status === 0
           // The screens are kept regardless: even a denied reply describes the
           // current layout, and the ids are what a later request must name.
@@ -176,21 +194,8 @@ export async function start(transport: Transport, options: Options & { queue?: B
             framebuffer = createFramebuffer(width, height)
           }
           options.onDesktopSize?.(update.size, framebuffer)
-          // A resize rect is a reply, so the next request is incremental. This
-          // is not optional: the server answers a non-incremental request with
-          // a fresh state report every time, so leaving `received` false here
-          // makes the client ask non-incrementally forever and the server reply
-          // with the same rect each time. A live Xvnc produced four identical
-          // reports in two seconds before this line existed.
-          if (outstanding > 0) outstanding--
-          received = true
-          request()
-          scheduleIdleRequest()
-          continue
         }
 
-        if (outstanding > 0) outstanding--
-        received = true
         if (update.changed) options.onFrame?.(framebuffer)
         // Ask again, and keep the idle wake alive.
         request()

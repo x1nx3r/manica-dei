@@ -53,6 +53,45 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
     }
   })
 
+  /**
+   * The CSS cursor for the canvas.
+   *
+   * The server sends the cursor as a shape, and the browser composites it: a
+   * data URL with the hotspot is enough, and it avoids drawing an overlay at a
+   * position we would have to track through every frame. When the server has no
+   * local cursor — a zero-sized shape, which is what a headless Xvnc sends — the
+   * default arrow stands in, or the pane would have no pointer at all.
+   *
+   * The shape is scaled to match the canvas, because the canvas is scaled to fit
+   * the container and a framebuffer-sized cursor would look wrong beside it.
+   */
+  const cursorStyle = createMemo(() => {
+    const shape = browser.cursor()
+    const frame = frameSize()
+    if (!shape || !frame || box.width === 0 || box.height === 0) return "default"
+    const scale = Math.min(box.width / frame.width, box.height / frame.height)
+    const width = Math.max(1, Math.round(shape.width * scale))
+    const height = Math.max(1, Math.round(shape.height * scale))
+    const hotspotX = Math.round(shape.hotspotX * scale)
+    const hotspotY = Math.round(shape.hotspotY * scale)
+
+    const canvas = document.createElement("canvas")
+    canvas.width = width
+    canvas.height = height
+    const context = canvas.getContext("2d")
+    if (!context) return "default"
+    const image = new ImageData(new Uint8ClampedArray(shape.pixels), shape.width, shape.height)
+    // Draw through an offscreen canvas so the browser scales with smoothing.
+    const source = document.createElement("canvas")
+    source.width = shape.width
+    source.height = shape.height
+    const sourceContext = source.getContext("2d")
+    if (!sourceContext) return "default"
+    sourceContext.putImageData(image, 0, 0)
+    context.drawImage(source, 0, 0, shape.width, shape.height, 0, 0, width, height)
+    return `url(${canvas.toDataURL()}) ${hotspotX} ${hotspotY}, default`
+  })
+
   // The last frame, held so it can be drawn when the canvas appears. The canvas
   // lives inside a Show on the connection status, so the first replayed frame
   // arrives before the element exists and would otherwise be lost. A static
@@ -283,6 +322,7 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
                 left: "50%",
                 top: "50%",
                 transform: "translate(-50%, -50%)",
+                cursor: cursorStyle(),
                 "image-rendering": "auto",
               }}
               tabindex={0}
