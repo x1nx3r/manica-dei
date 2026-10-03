@@ -23,6 +23,10 @@ export type State = {
   // connection; RFB itself carries pixels and has no notion of a URL.
   url: string
   error?: string
+  // Why the URL could not be read, when the server gave a reason. Kept apart
+  // from `error`, which is a connection failure: the stream can be perfectly
+  // healthy while the page read is not.
+  urlError?: string
 }
 
 export const { use: useBrowser, provider: BrowserProvider } = createSimpleContext({
@@ -39,6 +43,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
     const [store, setStore] = createStore<State>({
       status: "idle",
       url: "",
+      urlError: undefined,
     })
 
     // Neither belongs in reactive state: a client is not serialisable, and the
@@ -68,7 +73,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
     const open = async () => {
       if (store.status === "connecting" || store.status === "open") return
       const current = ++generation
-      setStore({ status: "connecting", error: undefined })
+      setStore({ status: "connecting", error: undefined, urlError: undefined })
 
       try {
         const opened = await connect({ url: baseUrl(), directory: directory() })
@@ -136,11 +141,19 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
         const response = await fetch(`${baseUrl()}/browser/url`, {
           headers: { "x-opencode-directory": directory() },
         })
-        if (!response.ok) return
-        const body = (await response.json()) as { url?: string }
+        if (!response.ok) {
+          setStore("url", "")
+          setStore("urlError", `the server answered ${response.status}`)
+          return
+        }
+        const body = (await response.json()) as { url?: string; error?: string }
         if (typeof body.url === "string" && body.url !== store.url) setStore("url", body.url)
-      } catch {
-        // A failed read is not worth surfacing; the next poll retries.
+        // A reason from the server is surfaced rather than swallowed. The
+        // connection is still fine, so this is separate from `status`.
+        const next = typeof body.error === "string" ? body.error : undefined
+        if (next !== store.urlError) setStore("urlError", next)
+      } catch (error) {
+        setStore("urlError", error instanceof Error ? error.message : String(error))
       }
     }
 

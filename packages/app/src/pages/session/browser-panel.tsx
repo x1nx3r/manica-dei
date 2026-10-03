@@ -130,7 +130,10 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
             title={browser.state.url}
             aria-label={language.t("browser.currentUrl")}
           >
-            {browser.state.url || language.t("browser.noUrl")}
+            {browser.state.url ||
+              (browser.state.urlError
+                ? language.t("browser.urlFailed", { reason: browser.state.urlError })
+                : language.t("browser.noUrl"))}
           </div>
 
           <span class="shrink-0 px-2 py-0.5 rounded-full bg-surface-base text-11-medium text-text-weak">

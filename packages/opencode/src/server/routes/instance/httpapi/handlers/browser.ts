@@ -47,20 +47,31 @@ export const browserConnectHandlers = HttpApiBuilder.group(BrowserConnectApi, "b
           const endpoint = yield* browser(Browser.Service.use((service) => service.endpoint)).pipe(
             Effect.catch(() => Effect.succeed(undefined)),
           )
-          if (!endpoint) return { url: "" }
+          // Empty has two meanings and they must not be conflated: no browser
+          // is running, or the browser is running and the page could not be
+          // read. A single empty string for both is the kind of silent failure
+          // that reads as "nothing open" while the server is in fact broken.
+          if (!endpoint) return { url: "", error: "no browser" as const }
+
           // Page commands live on the page's own socket, so a page connection
-          // is how the location is read.
-          return yield* Effect.tryPromise({
+          // is how the location is read. The timeout is generous because a cold
+          // Chromium needs longer than a second to expose a page target, and
+          // the pane polls this route while the browser is starting.
+          const read = yield* Effect.tryPromise({
             try: async () => {
-              const page = await connectPage(endpoint, { timeoutMs: 1000 })
+              const page = await connectPage(endpoint, { timeoutMs: 5_000 })
               try {
                 return { url: await currentUrl(page) }
               } finally {
                 page.close()
               }
             },
-            catch: () => "unreachable" as const,
-          }).pipe(Effect.catch(() => Effect.succeed({ url: "" })))
+            catch: (error) => (error instanceof Error ? error.message : String(error)),
+          }).pipe(
+            Effect.map((value) => ({ url: value.url, error: undefined })),
+            Effect.catch((message) => Effect.succeed({ url: "", error: message })),
+          )
+          return read
         }),
       )
       .handle("connectToken", () =>

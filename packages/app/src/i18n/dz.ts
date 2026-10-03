@@ -1187,4 +1187,5 @@ export const dict: Record<string, string> = {
   "browser.waiting": "Starting the browser...",
   "browser.failed": "The browser connection failed",
   "browser.closed": "Not connected",
+  "browser.urlFailed": "Could not read the page: {{reason}}",
 }

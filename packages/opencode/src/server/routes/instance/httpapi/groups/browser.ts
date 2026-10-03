@@ -25,6 +25,9 @@ export const BrowserPaths = {
 export const UrlState = Schema.Struct({
   // The page the agent's browser is showing. Empty while nothing is open.
   url: Schema.String,
+  // Why the URL is empty, when it is empty for a reason other than "no browser
+  // is running". Present so a reader can tell a broken server from an idle one.
+  error: Schema.optional(Schema.String),
 })
 
 export const CursorQuery = Schema.Struct({
