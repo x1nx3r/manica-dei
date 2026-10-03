@@ -1,9 +1,11 @@
 export * as Browser from "./browser"
 
 import { spawn, type ChildProcess } from "child_process"
+import { Readable, Writable } from "node:stream"
 import { Context, Effect, Layer, Schema, Types } from "effect"
 import net from "node:net"
 import { makeLocationNode } from "../effect/app-node"
+import * as Cdp from "./cdp"
 
 // ADR-0003: one Chromium per session, headful on Xvnc. The agent drives it
 // over CDP and the human watches it over RFB. Xvnc is the display server and
@@ -37,6 +39,10 @@ export interface Interface {
   readonly get: Effect.Effect<Info | undefined>
   // Idempotent start. Verifies the RFB port answers before resolving.
   readonly ensure: Effect.Effect<Info, LaunchError>
+  // The CDP client for the running browser, or undefined while it is not up.
+  // Starting the browser is a separate step, so a caller that needs to talk to
+  // it can ensure() first and decide what a failure means.
+  readonly cdp: Effect.Effect<Cdp.Interface | undefined>
   // Stop the browser and the display server. Safe when already down.
   readonly stop: Effect.Effect<void>
 }
@@ -47,6 +53,7 @@ type Active = {
   info: Info
   chrome: ChildProcess
   xvnc: ChildProcess
+  cdp: Cdp.Interface
 }
 
 function probeRfb(port: number): Promise<boolean> {
@@ -170,7 +177,25 @@ const layer = Layer.effect(
         teardown()
         return yield* new LaunchError({ message: "chromium did not spawn" })
       }
-      active = { info: { display: n, rfbPort, pid: chrome.pid }, chrome, xvnc }
+      // stdio entries are typed as the base Stream, so narrow to the Node
+      // stream types the client needs.
+      const toChromium = chrome.stdio[3]
+      const fromChromium = chrome.stdio[4]
+      if (!(toChromium instanceof Writable) || !(fromChromium instanceof Readable)) {
+        teardown()
+        return yield* new LaunchError({ message: "chromium did not expose the debugging pipe" })
+      }
+      const cdp = Cdp.make(toChromium, fromChromium, {
+        // A pipe that ends means the browser is gone, so drop state and let the
+        // next ensure() relaunch rather than leaving a dead client behind.
+        onClose: () => {
+          if (active?.chrome === chrome) {
+            kill(xvnc)
+            active = undefined
+          }
+        },
+      })
+      active = { info: { display: n, rfbPort, pid: chrome.pid }, chrome, xvnc, cdp }
       watch(chrome, xvnc)
       return active.info
     })
@@ -186,11 +211,16 @@ const layer = Layer.effect(
       return active && active.chrome.exitCode === null ? active.info : undefined
     })
 
+    const cdp: Effect.Effect<Cdp.Interface | undefined> = Effect.gen(function* () {
+      if (!active || active.chrome.exitCode !== null || active.cdp.closed()) return undefined
+      return active.cdp
+    })
+
     const stop: Effect.Effect<void> = Effect.gen(function* () {
       yield* Effect.sync(teardown)
     })
 
-    return Service.of({ get, ensure, stop })
+    return Service.of({ get, ensure, cdp, stop })
   }),
 )
 
