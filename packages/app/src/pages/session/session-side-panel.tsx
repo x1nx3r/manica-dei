@@ -33,6 +33,8 @@ import { normalizeFileTreeV2Path } from "@/components/file-tree-v2-model"
 import { SessionContextUsage } from "@/components/session-context-usage"
 
 const reviewTabID = "session-side-panel-review-tab"
+const browserTabID = "session-side-panel-browser-tab"
+const browserTabPanelID = "session-side-panel-browser-tabpanel"
 const reviewTabPanelID = "session-side-panel-review-tabpanel"
 const fileBrowserTabPanelID = "session-side-panel-file-browser-tabpanel"
 import { SessionContextTab, SortableTab, SortableTabV2, FileVisual } from "@/components/session"
@@ -46,6 +48,7 @@ import { useSettings } from "@/context/settings"
 import { createFileTabListSync } from "@/pages/session/file-tab-scroll"
 import { FileTabContent } from "@/pages/session/file-tabs"
 import {
+  SESSION_BROWSER_TAB,
   SESSION_OPEN_FILE_TAB,
   createOpenSessionFileTab,
   createSessionTabs,
@@ -56,6 +59,7 @@ import {
 import { setSessionHandoff } from "@/pages/session/handoff"
 import { useSessionLayout } from "@/pages/session/session-layout"
 import { SessionFileBrowserTab, type SessionFileBrowserState } from "@/pages/session/v2/session-file-browser-tab"
+import { BrowserPanel } from "@/pages/session/browser-panel"
 
 type ReviewDiff = FileDiffInfo | SnapshotFileDiff | VcsFileDiff
 type RenderDiff = FileDiffInfo | (SnapshotFileDiff & { file: string }) | VcsFileDiff
@@ -180,6 +184,9 @@ export function SessionSidePanel(props: {
     review: reviewTab,
     hasReview: props.canReview,
     fileBrowser: () => !!props.fileBrowserState,
+    // Desktop only, like review. The browser tab has no sidebar and takes the
+    // panel's full width.
+    browser: () => isDesktop(),
   })
   const contextOpen = tabState.contextOpen
   const openFileOpen = tabState.openFileOpen
@@ -363,6 +370,18 @@ export function SessionSidePanel(props: {
                                   </div>
                                 </Tabs.Trigger>
                               </Show>
+                              <Show when={reviewTab()}>
+                                <Tabs.Trigger
+                                  value={SESSION_BROWSER_TAB}
+                                  id={browserTabID}
+                                  aria-controls={activeTab() === SESSION_BROWSER_TAB ? browserTabPanelID : undefined}
+                                >
+                                  <div class="flex items-center gap-1.5">
+                                    <Icon size="small" name="window-cursor" />
+                                    <div>{language.t("browser.title")}</div>
+                                  </div>
+                                </Tabs.Trigger>
+                              </Show>
                               <Show when={contextOpen()}>
                                 <Tabs.Trigger
                                   value="context"
@@ -474,6 +493,18 @@ export function SessionSidePanel(props: {
                               class="flex flex-col h-full overflow-hidden contain-strict"
                             >
                               {props.reviewPanel()}
+                            </div>
+                          </Show>
+
+                          <Show when={reviewTab() && activeTab() === SESSION_BROWSER_TAB}>
+                            <div
+                              id={browserTabPanelID}
+                              role="tabpanel"
+                              aria-labelledby={browserTabID}
+                              data-slot="tabs-content"
+                              class="flex flex-col h-full overflow-hidden contain-strict"
+                            >
+                              <BrowserPanel />
                             </div>
                           </Show>
 
@@ -702,6 +733,18 @@ export function SessionSidePanel(props: {
                             class="flex flex-col h-full overflow-hidden contain-strict"
                           >
                             {props.reviewPanel()}
+                          </div>
+                        </Show>
+
+                        <Show when={reviewTab() && activeTab() === SESSION_BROWSER_TAB}>
+                          <div
+                            id={browserTabPanelID}
+                            role="tabpanel"
+                            aria-labelledby={browserTabID}
+                            data-slot="tabs-content"
+                            class="flex flex-col h-full overflow-hidden contain-strict"
+                          >
+                            <BrowserPanel />
                           </div>
                         </Show>
 

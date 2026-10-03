@@ -22,6 +22,7 @@ import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { focusTerminalById } from "@/pages/session/helpers"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { SESSION_BROWSER_TAB } from "@/context/layout-tabs"
 import { messageAgentColor } from "@/utils/agent"
 import { decode64 } from "@/utils/base64"
 import { fileManagerApp } from "@/utils/file-manager"
@@ -146,7 +147,7 @@ export function SessionHeader() {
   const settings = useSettings()
   const sync = useSync()
   const terminal = useTerminal()
-  const { params, view } = useSessionLayout()
+  const { params, view, tabs } = useSessionLayout()
 
   const projectDirectory = createMemo(() => decode64(params.dir) ?? "")
   const project = createMemo(() => {
@@ -217,10 +218,12 @@ export function SessionHeader() {
     focusTerminalById(id)
   }
 
-  // The shared browser pane. Opening it is enough: the transport starts the
-  // browser on demand, so there is nothing to wait for here.
+  // The shared browser is a tab in the side panel, not a panel of its own, so
+  // this opens and focuses the tab, and closing is the tab's own control. It is
+  // idempotent: opening an already open tab focuses it.
+  // The transport starts the browser on demand, so there is nothing to wait for.
   const toggleBrowser = () => {
-    view().browser.toggle()
+    tabs().open(SESSION_BROWSER_TAB)
   }
 
   const [prefs, setPrefs] = persisted(Persist.global("open.app"), createStore({ app: "finder" as OpenApp }))
@@ -476,8 +479,7 @@ export function SessionHeader() {
                         class="group/browser-toggle titlebar-icon w-8 h-6 p-0 box-border shrink-0"
                         onClick={toggleBrowser}
                         aria-label={language.t("command.browser.toggle")}
-                        aria-expanded={view().browser.opened()}
-                        aria-controls="browser-panel"
+                        aria-controls="session-side-panel-browser-tabpanel"
                       >
                         <Icon size="small" name="window-cursor" />
                       </Button>

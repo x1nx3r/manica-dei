@@ -18,6 +18,7 @@ import { createSessionTabs } from "@/pages/session/helpers"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { Message, Part, UserMessage } from "@opencode-ai/sdk/v2"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { SESSION_BROWSER_TAB } from "@/context/layout-tabs"
 import { useSessionArchive } from "@/pages/session/session-archive"
 import { createSessionOwnership } from "./session-ownership"
 import { useLocal } from "@/context/local"
@@ -550,7 +551,7 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
       keybind: "ctrl+alt+b",
       slash: "browser",
       onSelect: () => {
-        view().browser.toggle()
+        tabs().open(SESSION_BROWSER_TAB)
       },
     }),
     viewCommand({

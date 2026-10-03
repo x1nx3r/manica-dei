@@ -73,9 +73,6 @@ type SessionView = {
   pendingMessage?: string
   pendingMessageAt?: number
   todoCollapsed?: boolean
-  // The shared browser pane's visibility. The connection itself is held by
-  // BrowserProvider; this is only whether the pane is on screen.
-  browserOpened?: boolean
 }
 
 type TabHandoff = {
@@ -887,21 +884,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             toggle() {
               setTerminalOpened(!terminalOpened())
-            },
-          },
-          // The shared browser pane. Visibility rides the session view like the
-          // terminal's, because the pane belongs to the session rather than to
-          // the app, and the connection it renders is held by BrowserProvider.
-          browser: {
-            opened: createMemo(() => s().browserOpened ?? false),
-            open() {
-              setStore("sessionView", key(), "browserOpened", true)
-            },
-            close() {
-              setStore("sessionView", key(), "browserOpened", false)
-            },
-            toggle() {
-              setStore("sessionView", key(), "browserOpened", !(s().browserOpened ?? false))
             },
           },
           reviewPanel: {

@@ -1,5 +1,9 @@
 export const SESSION_OPEN_FILE_TAB = "open-file"
 
+// The shared browser. A reserved tab like the file browser, never a file path,
+// so the tab list must filter it rather than treat it as one.
+export const SESSION_BROWSER_TAB = "browser"
+
 export type SessionTabs = {
   active?: string
   all: string[]
