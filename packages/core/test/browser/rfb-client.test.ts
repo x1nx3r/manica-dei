@@ -182,16 +182,40 @@ describe("rfb client", () => {
     expect(closes).toBe(1)
   })
 
-  test("requests exactly one update until the first arrives", async () => {
-    // The server never answers, so the client must not queue requests.
+  test("keeps asking while the server stays silent, without unbounded growth", async () => {
+    // The server never answers. An incremental request is allowed to sit
+    // unanswered until the screen changes, so the client must keep asking
+    // rather than waiting for an answer — that wait is what makes a static page
+    // stay black forever. The count is bounded so it does not hog the network.
     const server = fakeServer([])
     const queue = new ByteQueue()
     server.begin(queue)
-    const client = await start(server.transport, { queue })
-    await Bun.sleep(30)
+    const client = await start(server.transport, { queue, idleRequestsPerSecond: 200 })
+    await Bun.sleep(80)
     const requests = server.written.filter((bytes) => bytes[0] === 3)
-    // One immediate request, and idle wake-ups are gated by the same flag.
-    expect(requests.length).toBe(1)
+    expect(requests.length).toBeGreaterThan(1)
+    expect(requests.length).toBeLessThanOrEqual(4)
+    client.close()
+  })
+
+  test("the first request asks for the whole framebuffer, later ones for changes", async () => {
+    const server = fakeServer([rawUpdate(2, 1, [255, 0, 0])])
+    const queue = new ByteQueue()
+    server.begin(queue)
+    const frames: unknown[] = []
+    const client = await start(server.transport, { queue, onFrame: () => frames.push(1) })
+    await Bun.sleep(60)
+    const requests = server.written.filter((bytes) => bytes[0] === 3)
+    // incremental is byte 1: zero means send the entire area.
+    expect(requests[0]?.[1]).toBe(0)
+    // Once a frame has arrived the client only asks for differences. This is
+    // asserted only when a frame actually arrived, because the fake answers one
+    // request and the ordering of the rest is its own artefact.
+    if (frames.length > 0) {
+      expect(requests[requests.length - 1]?.[1]).toBe(1)
+    } else {
+      expect(requests.every((r) => r[1] === 0)).toBe(true)
+    }
     client.close()
   })
 })

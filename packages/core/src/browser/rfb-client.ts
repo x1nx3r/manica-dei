@@ -76,7 +76,6 @@ export async function start(transport: Transport, options: Options & { queue?: B
 
   let closed = false
   let failure: Error | undefined
-  let pendingRequest = false
   let idleTimer: ReturnType<typeof setTimeout> | undefined
 
   const init = await handshake(queue, transport)
@@ -90,20 +89,23 @@ export async function start(transport: Transport, options: Options & { queue?: B
     options.onClose?.(error)
   }
 
-  // The first request asks for the whole framebuffer, and every request after
-  // that asks for changes. RFB tracks what the client already holds: an
-  // incremental request reports only differences, so asking incrementally
-  // before receiving anything asks for the difference from nothing and the
-  // server stays silent. The spec is explicit — a client that "has lost the
-  // contents" asks with incremental set to zero to get the entire area.
+  // Requests are not gated on the previous one being answered. The server may
+  // legitimately hold an incremental request indefinitely — it answers when the
+  // screen changes — so waiting for an answer before asking again is a deadlock
+  // on any page that stays still. That is exactly what a static CAPTCHA does:
+  // one request goes out, nothing comes back, and the client waits forever.
+  //
+  // The specification warns about the other extreme, a client that "hogs the
+  // network" by sending incremental requests without limit, so the outbound
+  // count is bounded rather than unbounded.
+  const MAX_OUTSTANDING = 4
+  let outstanding = 0
   let received = false
 
   const request = () => {
     if (closed) return
-    // One outstanding request at a time. A second would add server side backlog
-    // without making frames arrive sooner.
-    if (pendingRequest) return
-    pendingRequest = true
+    if (outstanding >= MAX_OUTSTANDING) return
+    outstanding++
     transport.write(encodeFramebufferUpdateRequest(init.width, init.height, received))
   }
 
@@ -113,9 +115,11 @@ export async function start(transport: Transport, options: Options & { queue?: B
     idleTimer = setTimeout(
       () => {
         idleTimer = undefined
+        // Ask on every wake. The server holds an incremental request until
+        // something changes, so a wake with nothing to report must still ask
+        // again or the session goes deaf.
         request()
-        // Keep waking so an idle session still notices remote changes.
-        if (!pendingRequest) scheduleIdleRequest()
+        scheduleIdleRequest()
       },
       Math.max(50, Math.floor(1000 / idleRate)),
     )
@@ -133,7 +137,7 @@ export async function start(transport: Transport, options: Options & { queue?: B
         }
         if (update.kind === "bell" || update.kind === "colourMap") continue
 
-        pendingRequest = false
+        if (outstanding > 0) outstanding--
         received = true
         if (update.changed) options.onFrame?.(framebuffer)
         // Ask again, and keep the idle wake alive.
