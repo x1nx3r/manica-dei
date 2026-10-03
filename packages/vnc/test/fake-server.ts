@@ -111,3 +111,62 @@ export function rawUpdate(width: number, height: number, rgb: [number, number, n
 
 /** A bell, which must never produce a frame. */
 export const bell = Uint8Array.from([2])
+
+/**
+ * An update carrying one ExtendedDesktopSize pseudo-rect.
+ *
+ * `reason` is the rect's x-position and `status` its y-position; `width` and
+ * `height` are the new framebuffer size. A screen with `id` 1 covers the whole
+ * desktop, which is the single-screen shape a server sends.
+ */
+export function extendedDesktopSize(
+  width: number,
+  height: number,
+  options: { reason?: number; status?: number; id?: number } = {},
+) {
+  const reason = options.reason ?? 0
+  const status = options.status ?? 0
+  const id = options.id ?? 1
+  const header = Uint8Array.from([
+    0,
+    0,
+    0,
+    1,
+    (reason >> 8) & 0xff,
+    reason & 0xff,
+    (status >> 8) & 0xff,
+    status & 0xff,
+    (width >> 8) & 0xff,
+    width & 0xff,
+    (height >> 8) & 0xff,
+    height & 0xff,
+    // -308 as a signed 32-bit big-endian value.
+    0xff,
+    0xff,
+    0xfe,
+    0xcc,
+  ])
+  const body = Uint8Array.from([
+    1,
+    0,
+    0,
+    0, // screen count, padding
+    0,
+    0,
+    0,
+    id & 0xff, // id
+    0,
+    0,
+    0,
+    0, // x, y
+    (width >> 8) & 0xff,
+    width & 0xff,
+    (height >> 8) & 0xff,
+    height & 0xff,
+    0,
+    0,
+    0,
+    0, // flags
+  ])
+  return new Uint8Array([...header, ...body])
+}

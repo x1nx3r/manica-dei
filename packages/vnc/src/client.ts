@@ -5,8 +5,11 @@ import {
   encodeFramebufferUpdateRequest,
   encodeKeyEvent,
   encodePointerEvent,
+  encodeSetDesktopSize,
   handshake,
   readMessage,
+  type DesktopSize,
+  type Screen,
   type ServerInit,
 } from "./protocol"
 
@@ -32,6 +35,10 @@ export type Options = {
   // Called when the framebuffer changed and should be drawn. Not called for
   // bells, cut text, or pseudo-rects.
   onFrame?: (framebuffer: Framebuffer) => void
+  // Called when the desktop geometry is reported or changes. The framebuffer is
+  // the new one when the size changed, and the same one otherwise. A caller
+  // that holds the framebuffer must swap to this one.
+  onDesktopSize?: (size: DesktopSize, framebuffer: Framebuffer) => void
   // Called once when the session ends, with a reason when there was one.
   onClose?: (error?: Error) => void
   // Called for server cut text, which carries the remote clipboard.
@@ -50,10 +57,17 @@ export class RfbError extends Error {
 
 export interface Interface {
   readonly init: ServerInit
+  // The current framebuffer. It is replaced when the desktop is resized, so a
+  // caller must read it after `onDesktopSize` rather than caching it.
   readonly framebuffer: Framebuffer
   // Ask for the next update. The loop does this itself, so a caller only needs
   // it to wake an idle session.
   readonly request: () => void
+  // Request a new desktop size. A no-op when the size is already current, which
+  // is required: a server that receives a request for the size it already has
+  // may send a resize rect for no change, and a client that answers that can
+  // loop. The result arrives through `onDesktopSize`.
+  readonly resize: (width: number, height: number) => void
   readonly key: (keysym: number, down: boolean) => void
   readonly pointer: (x: number, y: number, mask: number) => void
   readonly close: () => void
@@ -80,7 +94,16 @@ export async function start(transport: Transport, options: Options & { queue?: B
   let idleTimer: ReturnType<typeof setTimeout> | undefined
 
   const init = await handshake(queue, transport)
-  const framebuffer = createFramebuffer(init.width, init.height)
+  // The current geometry, which a resize can change. `received` stays true
+  // across a resize: the specification says the client may assume the
+  // framebuffer is retained, and the way to say so is to keep incremental set.
+  // Sending a non-incremental request after a resize makes the session loop.
+  let width = init.width
+  let height = init.height
+  let framebuffer = createFramebuffer(width, height)
+  // The screens the server last described, kept so a resize can name them by
+  // the id the server gave.
+  let screens: Screen[] = []
 
   const finish = (error?: Error) => {
     if (closed) return
@@ -107,7 +130,7 @@ export async function start(transport: Transport, options: Options & { queue?: B
     if (closed) return
     if (outstanding >= MAX_OUTSTANDING) return
     outstanding++
-    transport.write(encodeFramebufferUpdateRequest(init.width, init.height, received))
+    transport.write(encodeFramebufferUpdateRequest(width, height, received))
   }
 
   const scheduleIdleRequest = () => {
@@ -138,6 +161,27 @@ export async function start(transport: Transport, options: Options & { queue?: B
         }
         if (update.kind === "bell" || update.kind === "colourMap") continue
 
+        if (update.kind === "desktopSize") {
+          // A resize is not a frame. The reason and status decide whether the
+          // geometry actually changed: reason 1 means we asked, and then the
+          // status must be 0 for the change to have happened. On a denial the
+          // width and height fields are undefined, so they must not be trusted.
+          const accepted = update.size.reason !== 1 || update.size.status === 0
+          // The screens are kept regardless: even a denied reply describes the
+          // current layout, and the ids are what a later request must name.
+          screens = update.size.screens
+          if (accepted && (update.size.width !== width || update.size.height !== height)) {
+            width = update.size.width
+            height = update.size.height
+            framebuffer = createFramebuffer(width, height)
+          }
+          options.onDesktopSize?.(update.size, framebuffer)
+          // Ask again, in case the update carried nothing else.
+          request()
+          scheduleIdleRequest()
+          continue
+        }
+
         if (outstanding > 0) outstanding--
         received = true
         if (update.changed) options.onFrame?.(framebuffer)
@@ -157,8 +201,21 @@ export async function start(transport: Transport, options: Options & { queue?: B
 
   return {
     init,
-    framebuffer,
+    // A getter, not the value: a resize replaces the buffer, and a caller that
+    // kept the old reference would draw the new frame into the wrong size.
+    get framebuffer() {
+      return framebuffer
+    },
     request,
+    resize: (nextWidth, nextHeight) => {
+      if (closed) return
+      // A request for the size that is already current is not sent. The
+      // specification says a server should only send a resize rect for an
+      // actual change, and a client that answers a no-op can loop, so the
+      // surest guard is to never ask for a no-op.
+      if (nextWidth === width && nextHeight === height) return
+      transport.write(encodeSetDesktopSize(nextWidth, nextHeight, screens))
+    },
     key: (keysym, down) => {
       if (!closed) transport.write(encodeKeyEvent(keysym, down))
     },

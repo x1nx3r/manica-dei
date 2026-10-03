@@ -32,7 +32,10 @@ export {
   encodeFramebufferUpdateRequest,
   encodeKeyEvent,
   encodePointerEvent,
+  encodeSetDesktopSize,
+  type DesktopSize,
   type RectHeader,
+  type Screen,
   type ServerInit,
   type Update,
 } from "./protocol"

@@ -78,3 +78,29 @@ end.
 - The cursor pseudo-encodings are recognised and skipped to keep the stream
   aligned, but the cursor is not drawn. That is the next feature, and it will
   be built here, against the fake server.
+
+## Resize: who owns the geometry
+
+The pane fills its container in two senses, and the package owns one of them.
+
+**Fit on client** — the canvas scales to the pane, the browser interpolates.
+That is the app's, and it is the baseline: it always works, even when a resize
+is denied or not yet applied.
+
+**Fill the container** — the remote framebuffer is reshaped to the pane's
+aspect ratio. That is a protocol operation, so it belongs to the package:
+`Resize` is a client method, `onDesktopSize` a client callback, and the
+geometry bookkeeping is the client's.
+
+The app decides _when_ to resize. It debounces the container signal by 400 ms,
+keeps the pixel count and changes only the shape, ignores changes under half a
+percent, and never asks for the size that is already current. Those rules exist
+because the display is shared: a resize marks the whole framebuffer changed,
+which costs the agent a full repaint, and a dragged panel passes through many
+near-identical shapes.
+
+Two loops are possible, and both are closed in the package because both are
+protocol-level. A client that answers a resize with a non-incremental request
+loops; ours keeps the incremental flag across a resize. A client that asks for
+the size it already has can loop when the server replies; `Resize` ignores a
+no-op. The tests assert both, because both fail silently.

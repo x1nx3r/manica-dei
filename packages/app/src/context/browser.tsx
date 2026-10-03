@@ -92,6 +92,23 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
             latest = framebuffer
             for (const listener of listeners) listener(framebuffer)
           },
+          onDesktopSize: (size, framebuffer) => {
+            // The framebuffer may have been replaced, so a pane holding the old
+            // one must swap. It is delivered like a frame: the panel sizes its
+            // canvas from the argument and re-reads `client.framebuffer`.
+            console.debug(
+              "[browser] desktop size",
+              size.width,
+              "x",
+              size.height,
+              "reason",
+              size.reason,
+              "status",
+              size.status,
+            )
+            latest = framebuffer
+            for (const listener of listeners) listener(framebuffer)
+          },
           onClose: (error) => {
             console.debug("[browser] closed", error?.message ?? "(clean)")
             if (current !== generation) return
@@ -171,6 +188,12 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       /** Input goes straight to the display, so the agent sees the human act. */
       pointer: (x: number, y: number, mask: number) => client?.pointer(x, y, mask),
       key: (keysym: number, down: boolean) => client?.key(keysym, down),
+      /**
+       * Ask the remote desktop to resample to a size. The client ignores a
+       * request for the size it already has, which is what keeps a resize from
+       * looping, so a caller may call this freely and need not compare.
+       */
+      resize: (width: number, height: number) => client?.resize(width, height),
     }
   },
 })

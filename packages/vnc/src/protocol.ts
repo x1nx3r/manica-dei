@@ -43,6 +43,10 @@ export const ENCODING = {
   cursor: -239,
   cursorAlpha: -240,
   desktopSize: -223,
+  // The extended form. A client asking for both receives this one, and only a
+  // client that has received it may send SetDesktopSize. We request this rather
+  // than the plain form so we can read the reason and the status of a resize.
+  extendedDesktopSize: -308,
   lastRect: -224,
 } as const
 
@@ -68,6 +72,37 @@ export type ServerInit = {
   width: number
   height: number
   name: string
+}
+
+/**
+ * A screen in the desktop. Part of ExtendedDesktopSize and SetDesktopSize.
+ *
+ * `id` identifies a screen across changes: the client must send back the id the
+ * server last gave it, so the server can tell a moved screen from a new one.
+ */
+export type Screen = {
+  id: number
+  x: number
+  y: number
+  width: number
+  height: number
+  flags: number
+}
+
+/**
+ * The desktop geometry, as reported by an ExtendedDesktopSize pseudo-rect.
+ *
+ * `reason` is the rect's x-position: 0 for a change by other means or a reply to
+ * a state query, 1 when this client asked for it, 2 when another client did.
+ * `status` is the rect's y-position: meaningful when `reason` is 1, where 0
+ * means success and non-zero is an error code.
+ */
+export type DesktopSize = {
+  width: number
+  height: number
+  reason: number
+  status: number
+  screens: Screen[]
 }
 
 /**
@@ -188,7 +223,17 @@ export async function handshake(queue: ByteQueue, transport: Transport) {
   const name = nameLength ? new TextDecoder("utf-8").decode(await queue.take(nameLength)) : ""
 
   transport.write(encodeSetPixelFormat())
-  transport.write(encodeSetEncodings([ENCODING.zrle, ENCODING.copyRect, ENCODING.raw]))
+  transport.write(
+    encodeSetEncodings([
+      ENCODING.zrle,
+      ENCODING.copyRect,
+      ENCODING.raw,
+      // Declares that we can cope with a resize and will send SetDesktopSize.
+      // The server sends an ExtendedDesktopSize rect in reply to our first
+      // non-incremental request, which is how we learn the screen ids.
+      ENCODING.extendedDesktopSize,
+    ]),
+  )
 
   return { width, height, name } satisfies ServerInit
 }
@@ -274,6 +319,53 @@ export function encodePointerEvent(x: number, y: number, mask: number) {
   return bytes
 }
 
+/**
+ * SetDesktopSize (message 251): request a new framebuffer size.
+ *
+ * The message may only be sent once the client has received an
+ * ExtendedDesktopSize rect, and the screen `id` values must be the ones the
+ * server last sent — the server uses them to tell a moved screen from a new
+ * one. With no known screens this sends a single screen covering the whole
+ * framebuffer, which is the shape a single-screen server expects, but the id
+ * comes from `screens` when one is known.
+ *
+ * Layout: type, padding, width, height, screen count, padding, then 16 bytes
+ * per screen.
+ */
+export function encodeSetDesktopSize(width: number, height: number, screens: Screen[] = []) {
+  const list: Screen[] =
+    screens.length > 0
+      ? screens.map((screen) => ({ ...screen, x: 0, y: 0, width, height }))
+      : [{ id: 0, x: 0, y: 0, width, height, flags: 0 }]
+  const bytes = new Uint8Array(8 + list.length * 16)
+  bytes[0] = 251
+  bytes[2] = (width >> 8) & 0xff
+  bytes[3] = width & 0xff
+  bytes[4] = (height >> 8) & 0xff
+  bytes[5] = height & 0xff
+  bytes[6] = list.length & 0xff
+  let offset = 8
+  const u16 = (value: number) => {
+    bytes[offset++] = (value >> 8) & 0xff
+    bytes[offset++] = value & 0xff
+  }
+  const u32 = (value: number) => {
+    bytes[offset++] = (value >>> 24) & 0xff
+    bytes[offset++] = (value >>> 16) & 0xff
+    bytes[offset++] = (value >>> 8) & 0xff
+    bytes[offset++] = value & 0xff
+  }
+  for (const screen of list) {
+    u32(screen.id)
+    u16(screen.x)
+    u16(screen.y)
+    u16(screen.width)
+    u16(screen.height)
+    u32(screen.flags)
+  }
+  return bytes
+}
+
 export type RectHeader = { x: number; y: number; width: number; height: number; encoding: number }
 
 /**
@@ -284,6 +376,7 @@ export type RectHeader = { x: number; y: number; width: number; height: number; 
  */
 export type Update =
   | { kind: "rects"; rects: number; changed: boolean }
+  | { kind: "desktopSize"; size: DesktopSize }
   | { kind: "bell" }
   | { kind: "cut"; text: string }
   | { kind: "colourMap" }
@@ -319,12 +412,30 @@ export async function readMessage(
   await queue.take(1) // padding
   const count = await queue.takeU16()
   let changed = false
+  // A resize describes the desktop, not the pixels, and an update carrying one
+  // must not also carry pixel changes. It is reported separately so the caller
+  // can reallocate before drawing.
+  let size: DesktopSize | undefined
 
   for (let index = 0; index < count; index++) {
     const header = await readRectHeader(queue)
     onRect?.(header)
 
-    if (header.encoding === ENCODING.lastRect || header.encoding === ENCODING.desktopSize) continue
+    if (header.encoding === ENCODING.lastRect) continue
+
+    if (header.encoding === ENCODING.extendedDesktopSize) {
+      size = await readExtendedDesktopSize(queue, header)
+      continue
+    }
+
+    if (header.encoding === ENCODING.desktopSize) {
+      // The plain form carries only the new size and no screen ids or status.
+      // We ask for the extended form, so a server should prefer it, but the
+      // spec says to support both. Without ids we cannot send SetDesktopSize,
+      // so this is reported as a size change with no screens.
+      size = { width: header.width, height: header.height, reason: 0, status: 0, screens: [] }
+      continue
+    }
 
     if (header.encoding === ENCODING.cursor || header.encoding === ENCODING.cursorAlpha) {
       // A cursor pseudo-rect is followed by its own pixel rectangle, so it must
@@ -337,7 +448,38 @@ export async function readMessage(
     changed = (await applyRect(queue, header, target, zrle)) || changed
   }
 
+  if (size) return { kind: "desktopSize", size }
   return { kind: "rects", rects: count, changed }
+}
+
+/**
+ * Read the body of an ExtendedDesktopSize pseudo-rect.
+ *
+ * The rect's own x and y hold the reason and the status; width and height are
+ * the new framebuffer size. The screens follow, sixteen bytes each, and their
+ * ids must be kept so a later SetDesktopSize can name them.
+ */
+async function readExtendedDesktopSize(queue: ByteQueue, header: RectHeader): Promise<DesktopSize> {
+  const screenCount = await queue.takeU8()
+  await queue.take(3) // padding
+  const screens: Screen[] = []
+  for (let i = 0; i < screenCount; i++) {
+    screens.push({
+      id: await queue.takeU32(),
+      x: await queue.takeU16(),
+      y: await queue.takeU16(),
+      width: await queue.takeU16(),
+      height: await queue.takeU16(),
+      flags: await queue.takeU32(),
+    })
+  }
+  return {
+    width: header.width,
+    height: header.height,
+    reason: header.x,
+    status: header.y,
+    screens,
+  }
 }
 
 async function readRectHeader(queue: ByteQueue): Promise<RectHeader> {
