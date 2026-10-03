@@ -1,9 +1,16 @@
 import { ServerAuth } from "@/server/auth"
-import { parseCookies, sessionCookieHeader, signSession, verifySession, SESSION_COOKIE } from "@opencode-ai/server/shared/session-cookie"
+import {
+  parseCookies,
+  sessionCookieHeader,
+  signSession,
+  verifySession,
+  SESSION_COOKIE,
+} from "@opencode-ai/server/shared/session-cookie"
 import { Effect, Encoding, Layer, Option, Redacted } from "effect"
 import { HttpEffect, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import { HttpApiError, HttpApiMiddleware } from "effect/unstable/httpapi"
 import { hasPtyConnectTicketURL } from "@/server/shared/pty-ticket"
+import { hasBrowserConnectTicketURL } from "@/server/shared/browser-ticket"
 import { isPublicUIPath } from "@/server/shared/public-ui"
 export {
   Authorization as ServerAuthorization,
@@ -46,11 +53,7 @@ function emptyCredential(): Credential {
   }
 }
 
-function validateCredential<A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  credential: Credential,
-  config: ServerAuth.Info,
-) {
+function validateCredential<A, E, R>(effect: Effect.Effect<A, E, R>, credential: Credential, config: ServerAuth.Info) {
   return Effect.gen(function* () {
     if (!ServerAuth.required(config)) return yield* effect
     if (credential._tag === "cookie") {
@@ -102,9 +105,11 @@ function credentialFromRequest(request: HttpServerRequest.HttpServerRequest) {
 
 function credentialFromURL(url: URL, request: HttpServerRequest.HttpServerRequest) {
   const token = url.searchParams.get(AUTH_TOKEN_QUERY)
-  if (token) return decodeCredential(token).pipe(Effect.map((credential) => ({ ...credential, _tag: "token" as const })))
+  if (token)
+    return decodeCredential(token).pipe(Effect.map((credential) => ({ ...credential, _tag: "token" as const })))
   const match = /^Basic\s+(.+)$/i.exec(request.headers.authorization ?? "")
-  if (match) return decodeCredential(match[1]).pipe(Effect.map((credential) => ({ ...credential, _tag: "basic" as const })))
+  if (match)
+    return decodeCredential(match[1]).pipe(Effect.map((credential) => ({ ...credential, _tag: "basic" as const })))
   const cookie = parseCookies(request.headers.cookie).get(SESSION_COOKIE)
   if (cookie) return Effect.succeed({ _tag: "cookie" as const, value: cookie })
   return Effect.succeed(emptyCredential())
@@ -135,7 +140,7 @@ function validateRawCredential<A, E, R>(
     )
   if (credential._tag === "token" && Option.isSome(config.password)) {
     const password = config.password.value
-    return Effect.gen(function*() {
+    return Effect.gen(function* () {
       yield* HttpEffect.appendPreResponseHandler((_request, response) =>
         Effect.succeed(
           HttpServerResponse.setHeader(response, "set-cookie", sessionCookieHeader(signSession(password))),
@@ -173,6 +178,31 @@ export const authorizationLayer = Layer.effect(
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
         return yield* credentialFromRequest(request).pipe(
+          Effect.flatMap((credential) => validateCredential(effect, credential, config)),
+        )
+      }),
+    )
+  }),
+)
+
+export class BrowserConnectAuthorization extends HttpApiMiddleware.Service<BrowserConnectAuthorization>()(
+  "@opencode/ExperimentalHttpApiBrowserConnectAuthorization",
+  {
+    error: HttpApiError.UnauthorizedNoContent,
+  },
+) {}
+
+export const browserConnectAuthorizationLayer = Layer.effect(
+  BrowserConnectAuthorization,
+  Effect.gen(function* () {
+    const config = yield* ServerAuth.Config
+    if (!ServerAuth.required(config)) return BrowserConnectAuthorization.of((effect) => effect)
+    return BrowserConnectAuthorization.of((effect) =>
+      Effect.gen(function* () {
+        const request = yield* HttpServerRequest.HttpServerRequest
+        const url = new URL(request.url, "http://localhost")
+        if (hasBrowserConnectTicketURL(url)) return yield* effect
+        return yield* credentialFromURL(url, request).pipe(
           Effect.flatMap((credential) => validateCredential(effect, credential, config)),
         )
       }),

@@ -61,6 +61,7 @@ import { PermissionSaved } from "@opencode-ai/core/permission/saved"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProjectCopy } from "@opencode-ai/core/project/copy"
 import { PtyTicket } from "@opencode-ai/core/pty/ticket"
+import { BrowserTicket } from "@opencode-ai/core/browser/ticket"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { SessionV2 } from "@opencode-ai/core/session"
@@ -76,10 +77,12 @@ import { PublicApi } from "./public"
 import {
   authorizationLayer,
   authorizationRouterMiddleware,
+  browserConnectAuthorizationLayer,
   ptyConnectAuthorizationLayer,
   serverAuthorizationLayer,
 } from "./middleware/authorization"
 import { EventApi } from "./groups/event"
+import { BrowserConnectApi } from "./groups/browser"
 import { PtyConnectApi } from "./groups/pty"
 import { eventHandlers } from "./handlers/event"
 import { configHandlers } from "./handlers/config"
@@ -94,6 +97,7 @@ import { permissionHandlers } from "./handlers/permission"
 import { projectHandlers } from "./handlers/project"
 import { projectCopyHandlers } from "./handlers/project-copy"
 import { providerHandlers } from "./handlers/provider"
+import { browserConnectHandlers } from "./handlers/browser"
 import { ptyConnectHandlers, ptyHandlers } from "./handlers/pty"
 import { questionHandlers } from "./handlers/question"
 import { sessionHandlers } from "./handlers/session"
@@ -136,6 +140,7 @@ const cors = (corsOptions?: CorsOptions) =>
 const authOnlyRouterLayer = authorizationRouterMiddleware.layer.pipe(Layer.provide(ServerAuth.Config.layer))
 const httpApiAuthLayer = authorizationLayer.pipe(Layer.provide(ServerAuth.Config.layer))
 const ptyConnectHttpApiAuthLayer = ptyConnectAuthorizationLayer.pipe(Layer.provide(ServerAuth.Config.layer))
+const browserConnectHttpApiAuthLayer = browserConnectAuthorizationLayer.pipe(Layer.provide(ServerAuth.Config.layer))
 const serverHttpApiAuthLayer = serverAuthorizationLayer.pipe(Layer.provide(ServerAuth.Config.layer))
 const workspaceRoutingLive = workspaceRoutingLayer.pipe(Layer.provide(Socket.layerWebSocketConstructorGlobal))
 const rootApiRoutes = HttpApiBuilder.layer(RootHttpApi).pipe(
@@ -150,6 +155,12 @@ const eventApiRoutes = HttpApiBuilder.layer(EventApi).pipe(
 const ptyConnectApiRoutes = HttpApiBuilder.layer(PtyConnectApi).pipe(
   Layer.provide(ptyConnectHandlers),
   Layer.provide([ptyConnectHttpApiAuthLayer, workspaceRoutingLive, instanceContextLayer]),
+)
+// ADR-0003: the RFB relay for the human's framebuffer. Byte pipe, same shape
+// as the PTY route.
+const browserConnectApiRoutes = HttpApiBuilder.layer(BrowserConnectApi).pipe(
+  Layer.provide(browserConnectHandlers),
+  Layer.provide([browserConnectHttpApiAuthLayer, workspaceRoutingLive, instanceContextLayer]),
 )
 const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
   Layer.provide([
@@ -265,6 +276,7 @@ const app = LayerNode.group([
   ProjectV2.node,
   ProjectCopy.node,
   PtyTicket.node,
+  BrowserTicket.node,
 ])
 
 export function createRoutes(
@@ -276,6 +288,7 @@ export function createRoutes(
     rootApiRoutes,
     eventApiRoutes,
     ptyConnectApiRoutes,
+    browserConnectApiRoutes,
     instanceRoutes,
     serverRoutes,
     docRoute,

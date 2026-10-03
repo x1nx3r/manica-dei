@@ -66,6 +66,9 @@ export function serveUIEffect(
     // it there is nothing to serve — fail loudly instead of proxying a remote
     // we do not own.
     yield* Effect.logError("web UI bundle is not embedded in this build")
-    return HttpServerResponse.jsonUnsafe({ error: "web UI bundle is not embedded in this server build" }, { status: 503 })
+    return HttpServerResponse.jsonUnsafe(
+      { error: "web UI bundle is not embedded in this server build" },
+      { status: 503 },
+    )
   })
 }
