@@ -1,5 +1,30 @@
 # MANICA-CONTEXT.md — handoff to the Manica Dei agent
 
+> **CORRECTED 2026-10-03 (a working session revisited this document against
+> the current tree).** §2's central claim — "there is no cookie mechanism in
+> the server auth" — is stale. The mechanism it asks for is **shipped**:
+>
+> - issuance on query-auth: `packages/opencode/src/server/middleware/
+>   authorization.ts` (the `credential._tag === "token"` branch responds
+>   `set-cookie` with a signed session cookie),
+> - the cookie itself: `packages/server/src/shared/session-cookie.ts`
+>   (HMAC over the server password, `HttpOnly`, `SameSite=Lax`, host-only).
+>
+> The backend verifies it live — query-token → cookie → subresources is how
+> every fleet session has opened since it landed. Do not rebuild it.
+>
+> §2's second claim — "HTML-rewriting the assets wouldn't suffice either" —
+> is wrong as an impossibility statement: `cptr` (Open WebUI Computer) runs
+> a real application under exactly such a path proxy by rewriting URLs
+> server-side and patching `fetch`/`WebSocket` in-page. The corrected reason
+> path-proxying was rejected lives in manus-dei `docs/adr/018-session-subdomains.md`:
+> paths collapse N sessions into one browser origin, and a rewriting proxy
+> strips `set-cookie`, which this product's auth depends on. What survives of
+> §2 is this one sentence: keep base-URL construction centralized, and do
+> not preclude prefix-awareness later.
+>
+> §3 (the contract) and §4 (verification) stand.
+
 ## 1. What phase we're in
 
 **F0 is done and released** (`v0.1.0`): de-serviced server binary + embedded
