@@ -11,7 +11,7 @@ import {
   ENCODING,
   ProtocolError,
 } from "@opencode-ai/core/browser/rfb-protocol"
-import { createFramebuffer, ZrleStream } from "@opencode-ai/core/browser/rfb-decode"
+import { createFramebuffer, ZrleDecoder } from "@opencode-ai/core/browser/rfb-decode"
 
 // The wire layout, pinned against rfbproto.rst. Several of these encode a bug
 // that costs a whole session to find, because a malformed message makes the
@@ -186,7 +186,7 @@ describe("handshake", () => {
 
 describe("readMessage", () => {
   const target = () => createFramebuffer(4, 2)
-  const zrle = () => new ZrleStream()
+  const zrle = () => new ZrleDecoder()
 
   test("applies a Raw rect", async () => {
     const queue = new ByteQueue()
@@ -208,11 +208,14 @@ describe("readMessage", () => {
         0,
         0,
         0, // encoding raw
+        // Two 32bpp PIXELs, little-endian BGRX: red then green.
         0,
-        0,
-        255, // red
         0,
         255,
+        0, // red
+        0,
+        255,
+        0,
         0, // green
       ),
     )
@@ -260,18 +263,23 @@ describe("readMessage", () => {
         0,
         0,
         0, // encoding raw
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12, // 2x2 of three byte pixels
+        // 2x2 of 32bpp PIXELs, all black.
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
         // the real rect, a 2x1 raw at 0,0
         0,
         0,
@@ -289,7 +297,9 @@ describe("readMessage", () => {
         0,
         255,
         0,
+        0,
         255,
+        0,
         0,
       ),
     )

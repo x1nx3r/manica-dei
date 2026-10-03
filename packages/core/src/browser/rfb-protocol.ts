@@ -1,12 +1,20 @@
-import {
-  createFramebuffer,
-  decodeCopyRect,
-  decodeRaw,
-  decodeZrle,
-  PIXEL_FORMAT,
-  ZrleStream,
-  type Framebuffer,
-} from "./rfb-decode"
+import { createFramebuffer, decodeCopyRect, decodeRaw, ZrleDecoder, type Framebuffer } from "./rfb-decode"
+
+// The pixel format we negotiate. It belongs to the protocol rather than the
+// decoder, since it is what `SetPixelFormat` sends and what every encoding
+// interprets against.
+export const PIXEL_FORMAT = {
+  bitsPerPixel: 32,
+  depth: 24,
+  bigEndian: false,
+  trueColour: true,
+  redMax: 255,
+  greenMax: 255,
+  blueMax: 255,
+  redShift: 16,
+  greenShift: 8,
+  blueShift: 0,
+} as const
 
 // The RFB protocol: version exchange, security negotiation, and the messages
 // that carry a framebuffer.
@@ -283,7 +291,7 @@ export type Update =
 export async function readMessage(
   queue: ByteQueue,
   target: Framebuffer,
-  zrle: ZrleStream,
+  zrle: ZrleDecoder,
   onRect?: (rect: RectHeader) => void,
 ): Promise<Update> {
   const type = await queue.takeU8()
@@ -322,7 +330,7 @@ export async function readMessage(
       // A cursor pseudo-rect is followed by its own pixel rectangle, so it must
       // be consumed or the stream desynchronises.
       const nested = await readRectHeader(queue)
-      await skipRect(queue, nested, zrle)
+      await skipRect(queue, nested)
       continue
     }
 
@@ -342,9 +350,10 @@ async function readRectHeader(queue: ByteQueue): Promise<RectHeader> {
   }
 }
 
-async function skipRect(queue: ByteQueue, header: RectHeader, zrle: ZrleStream) {
+async function skipRect(queue: ByteQueue, header: RectHeader) {
   if (header.encoding === ENCODING.raw) {
-    await queue.take(header.width * header.height * 3)
+    // PIXELs, not CPIXELs: the full 32 bits we negotiate.
+    await queue.take(header.width * header.height * 4)
     return
   }
   if (header.encoding === ENCODING.zrle) {
@@ -364,10 +373,11 @@ async function applyRect(
   queue: ByteQueue,
   header: RectHeader,
   target: Framebuffer,
-  zrle: ZrleStream,
+  zrle: ZrleDecoder,
 ): Promise<boolean> {
   if (header.encoding === ENCODING.raw) {
-    const payload = await queue.take(header.width * header.height * 3)
+    // PIXELs, not CPIXELs: the full 32 bits we negotiate.
+    const payload = await queue.take(header.width * header.height * 4)
     decodeRaw(payload, header, target)
     return true
   }
@@ -381,26 +391,13 @@ async function applyRect(
   if (header.encoding === ENCODING.zrle) {
     const length = await queue.takeU32()
     const compressed = await queue.take(length)
-    // The inflated size is not carried on the wire, so the decoder is given the
-    // compressed bytes plus the pixel count it should end up with. ZrleStream
-    // reads until enough has arrived.
-    const inflated = await zrle.push(compressed, Math.max(1, estimateInflated(header)))
-    decodeZrle(inflated, header, target)
+    // The decoder pulls fields out of the one stream that spans the
+    // connection. It cannot be given a pre-inflated rectangle: the size is not
+    // derivable from the header, so it inflates exactly what each field needs.
+    zrle.begin(compressed)
+    zrle.decodeRect(header, target)
     return true
   }
 
   throw new ProtocolError(`unsupported encoding ${header.encoding}`)
-}
-
-/**
- * A lower bound on the inflated size of a ZRLE rect.
- *
- * Each tile needs at least its subencoding byte, so tile count is a safe floor
- * and avoids a read that never completes. The stream may return more, which the
- * decoder simply ignores.
- */
-function estimateInflated(header: RectHeader) {
-  const tilesAcross = Math.ceil(header.width / 64)
-  const tilesDown = Math.ceil(header.height / 64)
-  return tilesAcross * tilesDown
 }

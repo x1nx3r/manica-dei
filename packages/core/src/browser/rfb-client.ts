@@ -1,4 +1,4 @@
-import { createFramebuffer, ZrleStream, type Framebuffer } from "./rfb-decode"
+import { createFramebuffer, ZrleDecoder, type Framebuffer } from "./rfb-decode"
 import {
   ByteQueue,
   type Transport,
@@ -72,7 +72,7 @@ export async function start(transport: Transport, options: Options & { queue?: B
   // The queue is injectable so the transport that fills it can be built first,
   // which is what a socket needs.
   const queue = options.queue ?? new ByteQueue()
-  const zrle = new ZrleStream()
+  const zrle = new ZrleDecoder()
 
   let closed = false
   let failure: Error | undefined
@@ -219,6 +219,29 @@ export async function connect(options: {
       const socket = new WebSocket(socketUrl.toString())
       socket.binaryType = "arraybuffer"
 
+      // The message listener is attached before waiting for `open`. A WebSocket
+      // discards messages that arrive with no listener attached, and the server
+      // sends its version banner as soon as it accepts — which happens within
+      // the window we would otherwise be awaiting `open` in. Losing those 12
+      // bytes stalls the handshake forever, and the failure looks like a
+      // healthy connection that never produces anything.
+      //
+      // Every shape the browser can deliver is handled. Binary is expected, and
+      // text is decoded as latin-1 rather than dropped, because a relay that
+      // sends bytes as a text frame is a real possibility and losing them would
+      // be indistinguishable from the server sending nothing.
+      const pump = (data: unknown) => {
+        if (data instanceof ArrayBuffer) queue.push(new Uint8Array(data))
+        else if (data instanceof Uint8Array) queue.push(data)
+        else if (ArrayBuffer.isView(data)) queue.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
+        else if (typeof data === "string") {
+          const bytes = new Uint8Array(data.length)
+          for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 0xff
+          queue.push(bytes)
+        }
+      }
+      socket.addEventListener("message", (event: MessageEvent) => pump(event.data))
+
       // The relay starts the browser on demand, so the first attempt can take
       // as long as Chromium does to launch. Failing fast here would give up on
       // a cold session that is about to succeed.
@@ -234,14 +257,6 @@ export async function connect(options: {
         }
         socket.addEventListener("error", failed)
         socket.addEventListener("close", failed)
-      })
-
-      // Bytes from here on feed the queue rather than the protocol directly, so
-      // the loop can start before the handshake finishes.
-      socket.addEventListener("message", (event: MessageEvent) => {
-        const data = event.data
-        if (data instanceof ArrayBuffer) queue.push(new Uint8Array(data))
-        else if (data instanceof Uint8Array) queue.push(data)
       })
 
       return { socket, queue, transport: { write: (bytes) => socket.send(bytes) } }
