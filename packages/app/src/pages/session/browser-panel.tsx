@@ -179,13 +179,13 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
     })
   })
 
-  // Open whenever the pane is on screen and not connected, rather than once on
-  // mount. Closing tears the stream down, and a pane that only opened at mount
-  // could never come back: the element stays mounted while the stream is gone,
-  // so nothing would call open again. Driving it from the desired state makes
-  // close-then-reopen work however the parent chooses to mount and unmount.
+  // Open once, when the pane appears and nothing has connected yet. Reconnects
+  // after a drop are the provider's business: it retries with backoff and, when
+  // the attempts run out, offers `retry`. An effect that reopened on every
+  // "closed" would fight that scheduler and would also reopen the instant
+  // somebody closed the pane on purpose.
   createEffect(() => {
-    if (browser.state.status === "idle" || browser.state.status === "closed") void browser.open()
+    if (browser.state.status === "idle") void browser.open()
   })
 
   // The canvas is created after the connection opens, so the frame that was
@@ -301,8 +301,22 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
                 <span>
                   {status() === "failed"
                     ? (browser.state.error ?? language.t("browser.failed"))
-                    : language.t("browser.waiting")}
+                    : status() === "reconnecting"
+                      ? language.t("browser.reconnectingAttempt", { attempt: browser.state.attempt ?? 1 })
+                      : language.t("browser.waiting")}
                 </span>
+                {/* A terminal failure may still be temporary, so a person gets a
+                    control rather than only a message. Nothing automatic comes
+                    after the attempts are used up. */}
+                <Show when={status() === "failed"}>
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded border border-border-weak-base text-text-base hover:bg-surface-raised-base-hover"
+                    onClick={() => browser.retry()}
+                  >
+                    {language.t("browser.retry")}
+                  </button>
+                </Show>
               </div>
             }
           >

@@ -1233,5 +1233,8 @@ export const dict = {
   "browser.waiting": "Starting the browser...",
   "browser.failed": "The browser connection failed",
   "browser.closed": "Not connected",
+  "browser.reconnecting": "Reconnecting...",
+  "browser.reconnectingAttempt": "Reconnecting, attempt {{attempt}}...",
+  "browser.retry": "Try again",
   "browser.urlFailed": "Could not read the page: {{reason}}",
 } satisfies Partial<Record<Keys, string>>

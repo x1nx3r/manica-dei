@@ -3,6 +3,7 @@ import { createMemo, createSignal, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { start, type Cursor, type Interface as Client, type Framebuffer } from "@manica-dei/vnc"
 import { connect } from "@opencode-ai/core/browser/relay"
+import { nextDelay } from "./browser-retry"
 import { useSDK } from "./sdk"
 
 // ADR-0003: the human's window onto the session browser.
@@ -16,13 +17,19 @@ import { useSDK } from "./sdk"
 // otherwise mean two RFB streams against one display.
 
 export type State = {
-  status: "idle" | "connecting" | "open" | "closed" | "failed"
+  // "reconnecting" is not "failed": the stream dropped unexpectedly and another
+  // attempt is coming. The two look alike to a reader but only one is worth
+  // waiting for, so they are kept apart.
+  status: "idle" | "connecting" | "open" | "closed" | "reconnecting" | "failed"
   // The page the agent's browser is showing. Shown continuously in the pane,
   // because the ADR makes that the mitigation for an agent rendering something
   // that looks like ours. Sourced from the server, which owns the CDP
   // connection; RFB itself carries pixels and has no notion of a URL.
   url: string
   error?: string
+  // How many reconnects have been tried for the current drop. Shown so a person
+  // can tell a blip from a container that is gone.
+  attempt?: number
   // Why the URL could not be read, when the server gave a reason. Kept apart
   // from `error`, which is a connection failure: the stream can be perfectly
   // healthy while the page read is not.
@@ -60,12 +67,28 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
     let poll: ReturnType<typeof setInterval> | undefined
     const listeners = new Set<(framebuffer: Framebuffer) => void>()
 
+    // Reconnect policy. A dropped stream is usually a container restart or a
+    // Chromium crash, and both are worth retrying. A stream closed on purpose is
+    // not. The delays grow and the attempts are capped; the policy itself lives
+    // in `browser-retry` so it can be tested on its own.
+    let deliberate = false
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
+    let attempt = 0
+
     const stopPolling = () => {
       if (poll) clearInterval(poll)
       poll = undefined
     }
 
+    const stopRetrying = () => {
+      if (retryTimer) clearTimeout(retryTimer)
+      retryTimer = undefined
+    }
+
     const stop = () => {
+      deliberate = true
+      attempt = 0
+      stopRetrying()
       generation++
       stopPolling()
       client?.close()
@@ -76,8 +99,37 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       setCursor(undefined)
     }
 
+    /**
+     * Schedule another attempt after a drop.
+     *
+     * Returns whether one was scheduled. When the attempts are used up the
+     * caller falls back to a terminal failure, so the pane shows an error and a
+     * retry control rather than waiting on something that is not coming.
+     */
+    const scheduleRetry = (): boolean => {
+      const delay = nextDelay({ attempt, deliberate })
+      if (delay === undefined) return false
+      attempt += 1
+      stopRetrying()
+      setStore({ status: "reconnecting", attempt })
+      console.debug(`[browser] reconnecting in ${delay} ms, attempt ${attempt}`)
+      // The generation is captured so a timer that outlives the provider — or a
+      // deliberate close that happened while it was pending — does nothing.
+      const scheduled = generation
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined
+        if (deliberate || scheduled !== generation) return
+        // `open` refuses while a status says it is already trying, so the
+        // reconnect status is cleared first.
+        setStore({ status: "closed" })
+        void open()
+      }, delay)
+      return true
+    }
+
     const open = async () => {
-      if (store.status === "connecting" || store.status === "open") return
+      if (store.status === "connecting" || store.status === "open" || store.status === "reconnecting") return
+      deliberate = false
       const current = ++generation
       setStore({ status: "connecting", error: undefined, urlError: undefined })
 
@@ -118,7 +170,11 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
           onClose: (error) => {
             console.debug("[browser] closed", error?.message ?? "(clean)")
             if (current !== generation) return
-            setStore({ status: error ? "failed" : "closed", error: error?.message })
+            // A drop is retried, because it is usually the container
+            // restarting. When the attempts run out the state becomes
+            // "failed", which is terminal and carries the reason.
+            if (scheduleRetry()) return
+            setStore({ status: "failed", error: error?.message ?? "the connection closed" })
           },
           onCursor: (cursor) => {
             // The server sends the cursor shape when it changes, not when it
@@ -138,6 +194,9 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
           client.close()
           return
         }
+        // A successful open clears the retry budget, so a later drop starts
+        // fresh rather than inheriting a spent one.
+        attempt = 0
         setStore({ status: "open" })
         void refreshUrl()
         // The agent drives navigation over CDP, so there is no event to listen
@@ -146,6 +205,9 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       } catch (error) {
         console.debug("[browser] failed", error instanceof Error ? error.message : String(error))
         if (current !== generation) return
+        // Opening failed, which is the same situation as a drop: worth retrying
+        // with backoff, then terminal.
+        if (scheduleRetry()) return
         setStore({ status: "failed", error: error instanceof Error ? error.message : String(error) })
       }
     }
@@ -153,6 +215,24 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
     const close = () => {
       stop()
       setStore({ status: "closed" })
+    }
+
+    /**
+     * Try again now, after the automatic attempts are used up.
+     *
+     * A terminal failure is not always permanent — the container may have come
+     * back — so a person gets a control rather than only a message.
+     */
+    const retry = () => {
+      stopRetrying()
+      attempt = 0
+      // `stop` tears the old stream down and marks the teardown deliberate so
+      // the retry scheduler stays quiet. This call is not a deliberate stop, so
+      // the flag is cleared again before opening.
+      stop()
+      deliberate = false
+      setStore({ status: "closed", error: undefined, attempt: undefined })
+      void open()
     }
 
     /**
@@ -196,6 +276,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       state: store,
       open,
       close,
+      retry,
       subscribe,
       refreshUrl,
       /** Input goes straight to the display, so the agent sees the human act. */
