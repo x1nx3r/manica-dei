@@ -148,12 +148,20 @@ const layer = Layer.effect(
           "--disable-features=Translate",
           "--window-position=0,0",
           `--window-size=${GEOMETRY.width},${GEOMETRY.height}`,
-          // fd 3 and 4 are the CDP control pipe: we write 3, read 4.
+          // Chromium reads CDP on fd 3 and writes it on fd 4. From Chromium's
+          // components/devtools/devtools_pipe/devtools_pipe.h: kReadFD = 3,
+          // kWriteFD = 4, and content_switches.cc spells it "[in=3, out=4]".
+          // Messages are CBOR-enveloped JSON, see cdp-pipe.ts.
           "--remote-debugging-pipe",
           `--user-data-dir=/tmp/opencode-browser-${n}`,
           "about:blank",
         ],
         {
+          // Chromium reads fd 3 and writes fd 4, and Node hands the child a
+          // duplex channel for each "pipe" entry, so this ordering serves both
+          // directions. Verified rather than assumed: the child reads what we
+          // write on 3 and its own writes arrive back on 4. Getting it wrong
+          // yields a browser that starts and then silently never answers.
           stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
           env: { ...process.env, DISPLAY: `:${n}` },
         },
