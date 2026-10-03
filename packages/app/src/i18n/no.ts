@@ -1264,4 +1264,13 @@ export const dict = {
   "settings.general.row.pinchZoom.description": "Tillat knipebevegelser på styreflaten og Ctrl-rulling for å zoome",
   "settings.updates.action.downloading": "Laster ned...",
   "settings.updates.action.installing": "Installerer...",
+  "command.browser.toggle": "Toggle shared browser",
+  "browser.title": "Shared browser",
+  "browser.close": "Close the shared browser",
+  "browser.currentUrl": "Page shown in the shared browser",
+  "browser.noUrl": "No page open",
+  "browser.shared": "Shared with the agent",
+  "browser.waiting": "Starting the browser...",
+  "browser.failed": "The browser connection failed",
+  "browser.closed": "Not connected",
 } satisfies Partial<Record<Keys, string>>

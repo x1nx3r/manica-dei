@@ -1165,4 +1165,13 @@ export const dict = {
   "help.tabs.persistence": "Kun avaat sovelluksen uudelleen, välilehtesi ovat yhä avoinna.",
   "help.tabs.worktrees":
     "Uusi ulkoasu ei vielä tue Git-työpuita, mutta tuki on tulossa pian. Jos haluat jatkaa aiemman ulkoasun käyttöä, voit vaihtaa ulkoasua asetuksissa. Huomaa kuitenkin, että uudesta ulkoasusta tulee pysyvä muutaman viikon kuluttua.",
+  "command.browser.toggle": "Toggle shared browser",
+  "browser.title": "Shared browser",
+  "browser.close": "Close the shared browser",
+  "browser.currentUrl": "Page shown in the shared browser",
+  "browser.noUrl": "No page open",
+  "browser.shared": "Shared with the agent",
+  "browser.waiting": "Starting the browser...",
+  "browser.failed": "The browser connection failed",
+  "browser.closed": "Not connected",
 }

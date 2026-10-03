@@ -1178,4 +1178,13 @@ export const dict: Record<string, string> = {
   "workspace.reset.archived.many": "{{count}} ལཱ་ཡུན་ཚུ་ཡིག་མཛོད་ནང་བཞག་འོང་།",
   "workspace.reset.note": "འདི་གིས་ སྔོན་སྒྲིག་ཡན་ལག་མཐུན་སྒྲིག་འབད་ནི་ལུ་ ལཱ་གི་ས་སྒོ་འདི་སླར་སྒྲིག་འབད་འོང་།",
   "dialog.usageExceeded.dontShowAgain": "ལོག་སྟེ་མ་སྟོན།",
+  "command.browser.toggle": "Toggle shared browser",
+  "browser.title": "Shared browser",
+  "browser.close": "Close the shared browser",
+  "browser.currentUrl": "Page shown in the shared browser",
+  "browser.noUrl": "No page open",
+  "browser.shared": "Shared with the agent",
+  "browser.waiting": "Starting the browser...",
+  "browser.failed": "The browser connection failed",
+  "browser.closed": "Not connected",
 }

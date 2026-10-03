@@ -2,6 +2,7 @@ import * as InstanceState from "@/effect/instance-state"
 import { WorkspaceRef } from "@/effect/instance-ref"
 import { registerDisposer } from "@/effect/instance-registry"
 import { Browser } from "@opencode-ai/core/browser"
+import { connectPage, currentUrl } from "@opencode-ai/core/browser/cdp-session"
 import { BrowserTicket } from "@opencode-ai/core/browser/ticket"
 import { LocationServiceMap, locationServiceMapLayer } from "@opencode-ai/core/location-services"
 import { Location } from "@opencode-ai/core/location"
@@ -41,6 +42,27 @@ export const browserConnectHandlers = HttpApiBuilder.group(BrowserConnectApi, "b
     })
 
     return handlers
+      .handle("url", () =>
+        Effect.gen(function* () {
+          const endpoint = yield* browser(Browser.Service.use((service) => service.endpoint)).pipe(
+            Effect.catch(() => Effect.succeed(undefined)),
+          )
+          if (!endpoint) return { url: "" }
+          // Page commands live on the page's own socket, so a page connection
+          // is how the location is read.
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const page = await connectPage(endpoint, { timeoutMs: 1000 })
+              try {
+                return { url: await currentUrl(page) }
+              } finally {
+                page.close()
+              }
+            },
+            catch: () => "unreachable" as const,
+          }).pipe(Effect.catch(() => Effect.succeed({ url: "" })))
+        }),
+      )
       .handle("connectToken", () =>
         Effect.gen(function* () {
           const tickets = yield* BrowserTicket.Service

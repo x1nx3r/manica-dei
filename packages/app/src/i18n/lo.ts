@@ -1145,4 +1145,13 @@ export const dict = {
   "workspace.reset.archived.many": "ເຊດຊັນ {{count}} ຈະຖືກເກັບໄວ້.",
   "workspace.reset.note": "ນີ້ຈະຣີເຊັດພື້ນທີ່ເຮັດວຽກໃຫ້ກົງກັບສາຂາເລີ່ມຕົ້ນ.",
   "dialog.usageExceeded.dontShowAgain": "ຢ່າສະແດງອີກ",
+  "command.browser.toggle": "Toggle shared browser",
+  "browser.title": "Shared browser",
+  "browser.close": "Close the shared browser",
+  "browser.currentUrl": "Page shown in the shared browser",
+  "browser.noUrl": "No page open",
+  "browser.shared": "Shared with the agent",
+  "browser.waiting": "Starting the browser...",
+  "browser.failed": "The browser connection failed",
+  "browser.closed": "Not connected",
 }

@@ -1161,4 +1161,13 @@ export const dict = {
   "workspace.reset.archived.many": "{{count}} сессия архив карда мешаванд.",
   "workspace.reset.note": "Ин фазои кориро барои мувофиқ кардани филиали пешфарз барқарор мекунад.",
   "dialog.usageExceeded.dontShowAgain": "Дигар нишон надиҳед",
+  "command.browser.toggle": "Toggle shared browser",
+  "browser.title": "Shared browser",
+  "browser.close": "Close the shared browser",
+  "browser.currentUrl": "Page shown in the shared browser",
+  "browser.noUrl": "No page open",
+  "browser.shared": "Shared with the agent",
+  "browser.waiting": "Starting the browser...",
+  "browser.failed": "The browser connection failed",
+  "browser.closed": "Not connected",
 }

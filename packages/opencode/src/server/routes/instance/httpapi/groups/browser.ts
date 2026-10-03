@@ -19,7 +19,13 @@ const root = "/browser"
 export const BrowserPaths = {
   connectToken: `${root}/connect-token`,
   connect: `${root}/connect`,
+  url: `${root}/url`,
 } as const
+
+export const UrlState = Schema.Struct({
+  // The page the agent's browser is showing. Empty while nothing is open.
+  url: Schema.String,
+})
 
 export const CursorQuery = Schema.Struct({
   ...WorkspaceRoutingQueryFields,
@@ -27,6 +33,23 @@ export const CursorQuery = Schema.Struct({
 
 export const BrowserApi = HttpApi.make("browser").add(
   HttpApiGroup.make("browser")
+    .add(
+      // The page URL lives in the agent's Chromium, reachable only over CDP,
+      // and RFB carries pixels with no notion of a URL. The server owns that
+      // connection, so it is the one that can answer this. The pane shows it
+      // continuously, which the ADR makes the mitigation for an agent
+      // rendering a convincing login page inside our own interface.
+      HttpApiEndpoint.get("url", BrowserPaths.url, {
+        query: CursorQuery,
+        success: described(UrlState, "The page the browser is showing"),
+      }).annotateMerge(
+        OpenApi.annotations({
+          identifier: "browser.url",
+          summary: "Read the session browser page URL",
+          description: "The URL the shared browser is currently showing, or empty when it is not running.",
+        }),
+      ),
+    )
     .add(
       HttpApiEndpoint.post("connectToken", BrowserPaths.connectToken, {
         success: described(ConnectTokenSchema, "WebSocket connect token"),

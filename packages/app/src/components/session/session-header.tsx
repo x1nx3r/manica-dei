@@ -217,6 +217,12 @@ export function SessionHeader() {
     focusTerminalById(id)
   }
 
+  // The shared browser pane. Opening it is enough: the transport starts the
+  // browser on demand, so there is nothing to wait for here.
+  const toggleBrowser = () => {
+    view().browser.toggle()
+  }
+
   const [prefs, setPrefs] = persisted(Persist.global("open.app"), createStore({ app: "finder" as OpenApp }))
   const [menu, setMenu] = createStore({ open: false })
   const [openRequest, setOpenRequest] = createStore({
@@ -458,6 +464,22 @@ export function SessionHeader() {
                         aria-controls="terminal-panel"
                       >
                         <Icon size="small" name={view().terminal.opened() ? "terminal-active" : "terminal"} />
+                      </Button>
+                    </TooltipKeybind>
+
+                    <TooltipKeybind
+                      title={language.t("command.browser.toggle")}
+                      keybind={command.keybind("browser.toggle")}
+                    >
+                      <Button
+                        variant="ghost"
+                        class="group/browser-toggle titlebar-icon w-8 h-6 p-0 box-border shrink-0"
+                        onClick={toggleBrowser}
+                        aria-label={language.t("command.browser.toggle")}
+                        aria-expanded={view().browser.opened()}
+                        aria-controls="browser-panel"
+                      >
+                        <Icon size="small" name="window-cursor" />
                       </Button>
                     </TooltipKeybind>
 
