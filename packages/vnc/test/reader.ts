@@ -1,11 +1,13 @@
 import net from "node:net"
 
 // A minimal RFB reader for tests: enough of the protocol to fetch one
-// framebuffer and inspect its pixels. ADR-0003 chose RFB, so the tests need to
-// look at what is actually on the display.
+// framebuffer and inspect its pixels. A caller that has a live display needs to
+// look at what is actually on it.
 //
 // This is test infrastructure, not the product client. It reads Raw rectangles
-// only, opens no security, and never writes input.
+// only, opens no security, and never writes input. It is deliberately a
+// separate, simpler code path from `src/`, so that a bug in the client is not
+// shared by the thing used to check the client.
 
 const RAW = 0
 

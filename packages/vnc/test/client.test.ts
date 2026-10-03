@@ -1,99 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { start, type Transport } from "@opencode-ai/core/browser/rfb-client"
-import { ByteQueue } from "@opencode-ai/core/browser/rfb-protocol"
-import { createFramebuffer } from "@opencode-ai/core/browser/rfb-decode"
-import type { Framebuffer } from "@opencode-ai/core/browser/rfb-decode"
+import { start } from "../src/client"
+import { ByteQueue } from "../src/protocol"
+import type { Framebuffer } from "../src/decode"
+import { bell, fakeServer, rawUpdate } from "./fake-server"
 
 // The client loop, against a fake server.
 //
-// The two behaviours worth pinning are the ones naive clients get wrong:
-// outstanding requests must not pile up, and a frame must only be announced
-// when pixels actually changed. Both are asserted here rather than by
-// inspection.
-
-const encoder = new TextEncoder()
-
-// The client owns the ByteQueue that feeds its protocol reader, so the fake
-// server cannot push into it directly. Instead the transport captures the queue
-// the client constructs by observing the handshake, and a small indirection
-// lets the test deliver bytes the way a socket would.
-function fakeServer(script: Array<Uint8Array>) {
-  const written: Uint8Array[] = []
-  let push: ((chunk: Uint8Array) => void) | undefined
-
-  const transport: Transport = {
-    write: (bytes: Uint8Array) => {
-      written.push(bytes)
-      // A request is what prompts the scripted answer, matching a real server
-      // that only sends updates in reply.
-      if (bytes[0] === 3) {
-        const next = script.shift()
-        if (next) push?.(next)
-      }
-    },
-  }
-
-  const handshakeBytes = [
-    encoder.encode("RFB 003.008\n"),
-    Uint8Array.from([1]),
-    Uint8Array.from([1]),
-    Uint8Array.from([0, 0, 0, 0]),
-    serverInit(4, 2),
-  ]
-
-  return {
-    transport,
-    written,
-    // The client's queue is handed in, so the server pushes into it directly,
-    // the way a socket delivers bytes.
-    // Queue the handshake before start() reads it, or start() blocks forever.
-    begin(queue: { push: (chunk: Uint8Array) => void }) {
-      push = (chunk) => queue.push(chunk)
-      for (const chunk of handshakeBytes) push(chunk)
-    },
-  }
-}
-
-function serverInit(width: number, height: number) {
-  const out = new Uint8Array(24)
-  out[0] = (width >> 8) & 0xff
-  out[1] = width & 0xff
-  out[2] = (height >> 8) & 0xff
-  out[3] = height & 0xff
-  return out
-}
-
-/** An update carrying one Raw rectangle of the given width and height. */
-function rawUpdate(width: number, height: number, rgb: [number, number, number]) {
-  const pixels = new Uint8Array(width * height * 3)
-  for (let i = 0; i < width * height; i++) {
-    pixels[i * 3] = rgb[2]
-    pixels[i * 3 + 1] = rgb[1]
-    pixels[i * 3 + 2] = rgb[0]
-  }
-  const header = Uint8Array.from([
-    0,
-    0,
-    0,
-    1,
-    0,
-    0,
-    0,
-    0,
-    (width >> 8) & 0xff,
-    width & 0xff,
-    (height >> 8) & 0xff,
-    height & 0xff,
-    0,
-    0,
-    0,
-    0,
-  ])
-  return new Uint8Array([...header, ...pixels])
-}
-
-/** A bell, which must never produce a frame. */
-const bell = Uint8Array.from([2])
+// The two behaviours worth pinning are the ones naive clients get wrong: a
+// still page must still be asked about, and a frame must only be announced when
+// pixels actually changed. Both are asserted here rather than by inspection.
 
 describe("rfb client", () => {
   test("completes the handshake and exposes a framebuffer of the server size", async () => {
@@ -101,7 +16,6 @@ describe("rfb client", () => {
     const queue = new ByteQueue()
     server.begin(queue)
     const client = await start(server.transport, { queue })
-    server.begin(queue)
     // start() resolves on handshake, which the fake delivers synchronously.
     expect(client.init.width).toBe(4)
     expect(client.init.height).toBe(2)
@@ -115,7 +29,6 @@ describe("rfb client", () => {
     const queue = new ByteQueue()
     server.begin(queue)
     const client = await start(server.transport, { queue, onFrame: (framebuffer) => frames.push(framebuffer) })
-    server.begin(queue)
     // start() issues the first request, and the scripted update answers it.
     await Bun.sleep(30)
     expect(frames.length).toBeGreaterThan(0)

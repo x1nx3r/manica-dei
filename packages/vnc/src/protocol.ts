@@ -1,4 +1,4 @@
-import { createFramebuffer, decodeCopyRect, decodeRaw, ZrleDecoder, type Framebuffer } from "./rfb-decode"
+import { createFramebuffer, decodeCopyRect, decodeRaw, ZrleDecoder, type Framebuffer } from "./decode"
 
 // The pixel format we negotiate. It belongs to the protocol rather than the
 // decoder, since it is what `SetPixelFormat` sends and what every encoding

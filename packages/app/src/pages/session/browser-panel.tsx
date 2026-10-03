@@ -7,7 +7,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 
 import { useBrowser } from "@/context/browser"
 import { useLanguage } from "@/context/language"
-import type { Framebuffer } from "@opencode-ai/core/browser/rfb-decode"
+import type { Framebuffer } from "@manica-dei/vnc"
 import { toKeysym } from "./keysym"
 
 // ADR-0003: the human's window onto the session browser.

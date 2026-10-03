@@ -16,7 +16,7 @@
 // `ref/ZRLE-REFERENCE.md`. That code is MPL-2.0 and is not copied; the layout
 // it demonstrates is in the RFB specification, which is what this follows.
 
-import { Inflator, InflateError } from "./rfb-inflate"
+import { Inflator, InflateError } from "./inflate"
 
 const TILE = 64
 const BYTES_PER_CPIXEL = 3

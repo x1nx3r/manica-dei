@@ -1,11 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import {
-  createFramebuffer,
-  decodeCopyRect,
-  decodeRaw,
-  ZrleDecoder,
-  type Rect,
-} from "@opencode-ai/core/browser/rfb-decode"
+import { createFramebuffer, decodeCopyRect, decodeRaw, ZrleDecoder, type Rect } from "../src/decode"
 
 // ZRLE and the simple encodings, pinned against the RFB specification.
 //

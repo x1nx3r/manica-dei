@@ -1,8 +1,8 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createMemo, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
-import { connect, start, type Interface as Client } from "@opencode-ai/core/browser/rfb-client"
-import { type Framebuffer } from "@opencode-ai/core/browser/rfb-decode"
+import { start, type Interface as Client, type Framebuffer } from "@manica-dei/vnc"
+import { connect } from "@opencode-ai/core/browser/relay"
 import { useSDK } from "./sdk"
 
 // ADR-0003: the human's window onto the session browser.

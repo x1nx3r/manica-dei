@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Browser } from "@opencode-ai/core/browser"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { makeRuntime } from "@opencode-ai/core/effect/runtime"
-import { readFramebuffer, type Framebuffer } from "./rfb-reader"
+import { readFramebuffer, type Framebuffer } from "@manica-dei/vnc/test/reader"
 
 // ADR-0003: the session browser lifecycle. Xvnc is the display server and the
 // RFB server in one process, and Chromium renders into it headfully.

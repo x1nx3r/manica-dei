@@ -1,4 +1,4 @@
-import { createFramebuffer, ZrleDecoder, type Framebuffer } from "./rfb-decode"
+import { createFramebuffer, ZrleDecoder, type Framebuffer } from "./decode"
 import {
   ByteQueue,
   type Transport,
@@ -8,11 +8,11 @@ import {
   handshake,
   readMessage,
   type ServerInit,
-} from "./rfb-protocol"
+} from "./protocol"
 
 export type { Transport }
 
-// The RFB client: the human's window onto the session browser.
+// The RFB client: connect to a server, receive updates, send input.
 //
 // Assembly rather than protocol work. Transport carries bytes, the protocol
 // layer frames them, the decoder turns them into pixels, and this drives the
@@ -20,10 +20,11 @@ export type { Transport }
 //
 // Two things it must get right and that a naive loop gets wrong:
 //
-// - A FramebufferUpdateRequest is not answered one for one. An update may
-//   satisfy several requests, so outstanding requests are tracked and only
-//   one is sent when the previous update has been consumed. Otherwise the
-//   server queues a backlog and latency grows without bound.
+// - FramebufferUpdateRequest is not answered one for one, and an incremental
+//   request may be held indefinitely until the screen changes. The client
+//   therefore keeps asking on a timer rather than waiting for an answer, which
+//   is what keeps a static page from staying dark, and bounds how many
+//   requests it leaves outstanding so it does not hog the network.
 // - A redraw is only announced when pixels actually changed. A bell or a
 //   skipped pseudo-rect must not schedule a frame.
 
@@ -188,88 +189,4 @@ export function webSocketTransport(socket: WebSocket, queue: ByteQueue): Transpo
   return {
     write: (bytes: Uint8Array) => socket.send(bytes),
   }
-}
-
-/**
- * Fetch a ticket from the session server and open the relay.
- *
- * The ticket authorises the upgrade, so the WebSocket carries it in the query
- * string rather than credentials.
- */
-export async function connect(options: {
-  url: string
-  directory: string
-  maxAttempts?: number
-}): Promise<{ socket: WebSocket; queue: ByteQueue; transport: Transport }> {
-  const attempts = options.maxAttempts ?? 5
-  let lastError: Error | undefined
-
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    try {
-      const response = await fetch(`${options.url}/browser/connect-token`, {
-        method: "POST",
-        headers: { "x-opencode-directory": options.directory },
-      })
-      if (!response.ok) throw new RfbError(`ticket request failed with ${response.status}`)
-      const { ticket } = (await response.json()) as { ticket: string }
-
-      const socketUrl = new URL(options.url)
-      socketUrl.protocol = socketUrl.protocol === "https:" ? "wss:" : "ws:"
-      socketUrl.pathname = `${socketUrl.pathname.replace(/\/$/, "")}/browser/connect`
-      socketUrl.searchParams.set("ticket", ticket)
-      socketUrl.searchParams.set("directory", options.directory)
-
-      const queue = new ByteQueue()
-      const socket = new WebSocket(socketUrl.toString())
-      socket.binaryType = "arraybuffer"
-
-      // The message listener is attached before waiting for `open`. A WebSocket
-      // discards messages that arrive with no listener attached, and the server
-      // sends its version banner as soon as it accepts — which happens within
-      // the window we would otherwise be awaiting `open` in. Losing those 12
-      // bytes stalls the handshake forever, and the failure looks like a
-      // healthy connection that never produces anything.
-      //
-      // Every shape the browser can deliver is handled. Binary is expected, and
-      // text is decoded as latin-1 rather than dropped, because a relay that
-      // sends bytes as a text frame is a real possibility and losing them would
-      // be indistinguishable from the server sending nothing.
-      const pump = (data: unknown) => {
-        if (data instanceof ArrayBuffer) queue.push(new Uint8Array(data))
-        else if (data instanceof Uint8Array) queue.push(data)
-        else if (ArrayBuffer.isView(data)) queue.push(new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
-        else if (typeof data === "string") {
-          const bytes = new Uint8Array(data.length)
-          for (let i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i) & 0xff
-          queue.push(bytes)
-        }
-      }
-      socket.addEventListener("message", (event: MessageEvent) => pump(event.data))
-
-      // The relay starts the browser on demand, so the first attempt can take
-      // as long as Chromium does to launch. Failing fast here would give up on
-      // a cold session that is about to succeed.
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new RfbError("the relay did not open in time")), 30_000)
-        socket.addEventListener("open", () => {
-          clearTimeout(timer)
-          resolve()
-        })
-        const failed = (event: Event) => {
-          clearTimeout(timer)
-          reject(new RfbError(`the relay refused the connection (${String((event as CloseEvent).code ?? "")})`))
-        }
-        socket.addEventListener("error", failed)
-        socket.addEventListener("close", failed)
-      })
-
-      return { socket, queue, transport: { write: (bytes) => socket.send(bytes) } }
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error))
-      // A refused upgrade is worth retrying once the browser finishes starting.
-      if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 500))
-    }
-  }
-
-  throw lastError ?? new RfbError("could not open the relay")
 }

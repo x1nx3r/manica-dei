@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@manica-dei/vnc",
+  "version": "0.2.6",
+  "description": "A small RFB (VNC) client: connect, receive framebuffer updates, send input",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/x1nx3r/manica-dei.git",
+    "directory": "packages/vnc"
+  },
+  "homepage": "https://github.com/x1nx3r/manica-dei/tree/main/packages/vnc",
+  "keywords": [
+    "rfb",
+    "vnc",
+    "zrle",
+    "remote framebuffer"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsgo --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./test/reader": "./test/reader.ts"
+  },
+  "dependencies": {
+    "pako": "catalog:"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  }
+}

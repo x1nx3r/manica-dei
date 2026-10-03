@@ -10,8 +10,8 @@ import {
   readMessage,
   ENCODING,
   ProtocolError,
-} from "@opencode-ai/core/browser/rfb-protocol"
-import { createFramebuffer, ZrleDecoder } from "@opencode-ai/core/browser/rfb-decode"
+} from "../src/protocol"
+import { createFramebuffer, ZrleDecoder } from "../src/decode"
 
 // The wire layout, pinned against rfbproto.rst. Several of these encode a bug
 // that costs a whole session to find, because a malformed message makes the
