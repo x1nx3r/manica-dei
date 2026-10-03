@@ -218,14 +218,6 @@ export function SessionHeader() {
     focusTerminalById(id)
   }
 
-  // The shared browser is a tab in the side panel, not a panel of its own, so
-  // this opens and focuses the tab, and closing is the tab's own control. It is
-  // idempotent: opening an already open tab focuses it.
-  // The transport starts the browser on demand, so there is nothing to wait for.
-  const toggleBrowser = () => {
-    tabs().open(SESSION_BROWSER_TAB)
-  }
-
   const [prefs, setPrefs] = persisted(Persist.global("open.app"), createStore({ app: "finder" as OpenApp }))
   const [menu, setMenu] = createStore({ open: false })
   const [openRequest, setOpenRequest] = createStore({
@@ -251,6 +243,13 @@ export function SessionHeader() {
     reviewVisible: isDesktop(),
     reviewOpened: view().reviewPanel.opened(),
     onReviewToggle: () => view().reviewPanel.toggle(),
+    // The shared browser is a tab in the side panel, so this is labelled as a
+    // tab opener rather than a panel toggle, and it has no opened state of its
+    // own to reflect.
+    browserLabel: language.t("command.browser.toggle"),
+    browserKeybind: command.keybindParts("browser.toggle"),
+    browserVisible: isDesktop(),
+    onBrowserToggle: () => tabs().open(SESSION_BROWSER_TAB),
   }))
 
   const selectApp = (app: OpenApp) => {
@@ -470,21 +469,6 @@ export function SessionHeader() {
                       </Button>
                     </TooltipKeybind>
 
-                    <TooltipKeybind
-                      title={language.t("command.browser.toggle")}
-                      keybind={command.keybind("browser.toggle")}
-                    >
-                      <Button
-                        variant="ghost"
-                        class="group/browser-toggle titlebar-icon w-8 h-6 p-0 box-border shrink-0"
-                        onClick={toggleBrowser}
-                        aria-label={language.t("command.browser.toggle")}
-                        aria-controls="session-side-panel-browser-tabpanel"
-                      >
-                        <Icon size="small" name="window-cursor" />
-                      </Button>
-                    </TooltipKeybind>
-
                     <div class="hidden md:flex items-center gap-1 shrink-0">
                       <TooltipKeybind
                         title={language.t("command.review.toggle")}
@@ -542,6 +526,10 @@ export function SessionHeader() {
 
 type SessionHeaderV2ActionsState = {
   statusVisible: boolean
+  browserLabel: string
+  browserKeybind: string[]
+  browserVisible: boolean
+  onBrowserToggle: () => void
   statusLabel: string
   reviewLabel: string
   reviewKeybind: string[]
@@ -559,6 +547,31 @@ function SessionHeaderV2Actions(props: { state: SessionHeaderV2ActionsState }) {
         <Tooltip placement="bottom" value={props.state.statusLabel}>
           <StatusPopoverV2 />
         </Tooltip>
+      </Show>
+      <Show when={props.state.browserVisible}>
+        <TooltipV2
+          class="shrink-0"
+          placement="bottom"
+          value={
+            <>
+              {props.state.browserLabel}
+              <Show when={props.state.browserKeybind.length > 0}>
+                <KeybindV2 keys={props.state.browserKeybind} variant="neutral" />
+              </Show>
+            </>
+          }
+        >
+          <IconButtonV2
+            type="button"
+            variant="ghost-muted"
+            size="large"
+            class="!w-9 shrink-0"
+            onClick={props.state.onBrowserToggle}
+            aria-label={props.state.browserLabel}
+            aria-controls="session-side-panel-browser-tabpanel"
+            icon={<IconV2 name="window" />}
+          />
+        </TooltipV2>
       </Show>
       <Show when={props.state.reviewVisible}>
         <TooltipV2
