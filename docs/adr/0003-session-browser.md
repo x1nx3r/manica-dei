@@ -24,15 +24,30 @@ different feature.
 
 ### The constraint that decides the architecture
 
-**The human's browser is outside the container.** deusd publishes exactly
-one port, the agent's, on the container's loopback. The agent's Chromium
-runs inside the container and the human's browser runs on the human's
-machine, so the two cannot be the same process.
+**The human is not in the container.** Their eyes, keyboard, mouse, GPU,
+and window manager are on their machine, and cannot be anywhere else. So a
+page rendered inside the container has to reach them somehow, and
+**something must cross the container boundary** to carry it.
 
-That leaves one way to satisfy the goal: **the instance is shared by
-streaming its output**, and both parties send input to it. Everything else
-in this ADR follows from that sentence, including the parts that are
-compromises.
+That fixes what may vary. deusd publishes exactly one port — the agent's —
+on the container's loopback, which is why the human's view cannot be
+pre-rendered anywhere else and simply shown.
+
+A browser _can_ and does live inside the container. `Xvnc` plus a headful
+Chromium is that browser, and it is what the human is watching. What may
+not live in the container is the human. So the design is a choice among the
+things that could cross the boundary and carry the rendered page to the
+human's machine:
+
+| What crosses           | Name                       | Status                               |
+| ---------------------- | -------------------------- | ------------------------------------ |
+| ZRLE damage rectangles | RFB over `Xvnc`            | **measured, adopted**                |
+| JPEG frames            | CDP `Page.startScreencast` | measured, viable, slower             |
+| H.264 via `ffmpeg`     | encoded video              | measured, viable, slower             |
+| DOM through the iframe | the prior proxy            | deferred, on `scratch/preview-proxy` |
+
+Everything else in this ADR follows from that choice and from the port
+rule, including the parts that are compromises.
 
 ### Prior art, including what does not work
 

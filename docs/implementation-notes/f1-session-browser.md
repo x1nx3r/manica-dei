@@ -35,12 +35,15 @@ has not started.
 
 ### But the constraint that decided everything came from the recon
 
-The human's browser is outside the container and the agent's Chromium is
-inside it. deusd publishes one port, on the container's loopback. So the
-instance is shared by **streaming its output**, or not shared at all. That
-sentence eliminates whole classes of idea on sight: a local renderer, an
-embedded client-side engine, any two-browser design. All three were
-pursued before it was stated.
+**The human is not in the container.** Their eyes, keyboard, GPU, and
+window manager are on their machine, so a page rendered inside the
+container has to reach them, and **something must cross the boundary**.
+deusd publishes one port, on the container's loopback. `Xvnc` plus a
+headful Chromium _is_ the browser they are watching, so what varies is only
+what carries the rendered page across. That sentence eliminates whole
+classes of idea on sight: a local renderer, an embedded client-side
+engine, any two-browser design. All three were pursued before it was
+stated.
 
 ## 2. Where the clever paths went to die
 

@@ -59,11 +59,13 @@ dependency, no sequencing against its roadmap.
    together. Either hands the other a URL, a page, or a decision, and the
    other picks it up. One Chromium per session in the container, driven by
    both parties, streamed to the human.
-   - The human's browser is outside the container and the agent's Chromium
-     is inside it, so the instance is shared by **streaming its output**.
-     That is the constraint the whole design follows from, and it is why a
-     local renderer, an embedded client-side engine, or a two-browser design
-     cannot serve this goal.
+   - The **human is not in the container** — eyes, keyboard, GPU, and window
+     manager are on their machine, so a page rendered inside the container
+     has to reach them and **something must cross the boundary**. `Xvnc`
+     plus a headful Chromium is the browser they are watching, and that is
+     the constraint the design follows from: it is why a local renderer,
+     an embedded client-side engine, or a two-browser design cannot serve
+     this goal.
    - The server owns the lifecycle: launch, restart, teardown. It launches
      headful on `Xvnc`, which serves RFB from its own framebuffer and is
      therefore both the display server and the server. The container gains
