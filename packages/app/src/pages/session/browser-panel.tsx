@@ -1,4 +1,5 @@
-import { Show, createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { createStore } from "solid-js/store"
 
 import { IconButtonV2 } from "@opencode-ai/ui/v2/icon-button-v2"
 import { TooltipV2 } from "@opencode-ai/ui/v2/tooltip-v2"
@@ -27,6 +28,31 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
 
   let canvas: HTMLCanvasElement | undefined
   let container: HTMLDivElement | undefined
+
+  // The container's size and the frame's size, both reactive, so the canvas can
+  // be fitted to the container. A canvas has no intrinsic layout, so the fit is
+  // computed here rather than left to CSS.
+  const [box, setBox] = createStore({ width: 0, height: 0 })
+  const [frameSize, setFrameSize] = createSignal<{ width: number; height: number } | undefined>(undefined)
+
+  /**
+   * The largest box that fits the container at the framebuffer's aspect ratio,
+   * centred by the transform in the style below.
+   *
+   * Zero until a frame has been drawn and the container measured, which
+   * collapses the canvas rather than stretching it, so the picture is never
+   * distorted while a size is still unknown.
+   */
+  const fit = createMemo(() => {
+    const frame = frameSize()
+    if (!frame || box.width === 0 || box.height === 0) return { width: "0px", height: "0px" }
+    const scale = Math.min(box.width / frame.width, box.height / frame.height)
+    return {
+      width: `${Math.max(1, Math.floor(frame.width * scale))}px`,
+      height: `${Math.max(1, Math.floor(frame.height * scale))}px`,
+    }
+  })
+
   // The last frame, held so it can be drawn when the canvas appears. The canvas
   // lives inside a Show on the connection status, so the first replayed frame
   // arrives before the element exists and would otherwise be lost. A static
@@ -36,6 +62,11 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
 
   const draw = (framebuffer: Framebuffer) => {
     pending = framebuffer
+    setFrameSize((current) =>
+      current?.width === framebuffer.width && current.height === framebuffer.height
+        ? current
+        : { width: framebuffer.width, height: framebuffer.height },
+    )
     if (!canvas) return
     if (canvas.width !== framebuffer.width || canvas.height !== framebuffer.height) {
       canvas.width = framebuffer.width
@@ -50,9 +81,26 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
   onMount(() => {
     const unsubscribe = browser.subscribe(draw)
     onCleanup(unsubscribe)
-    // Open when the pane appears, since the transport starts the browser on
-    // demand and there is nothing to wait for.
-    void browser.open()
+
+    // Track the container so the fit follows a resize, a panel drag, or the
+    // window changing.
+    if (typeof ResizeObserver !== "undefined" && container) {
+      const observer = new ResizeObserver((entries) => {
+        const rect = entries[0]?.contentRect
+        if (rect) setBox({ width: rect.width, height: rect.height })
+      })
+      observer.observe(container)
+      onCleanup(() => observer.disconnect())
+    }
+  })
+
+  // Open whenever the pane is on screen and not connected, rather than once on
+  // mount. Closing tears the stream down, and a pane that only opened at mount
+  // could never come back: the element stays mounted while the stream is gone,
+  // so nothing would call open again. Driving it from the desired state makes
+  // close-then-reopen work however the parent chooses to mount and unmount.
+  createEffect(() => {
+    if (browser.state.status === "idle" || browser.state.status === "closed") void browser.open()
   })
 
   // The canvas is created after the connection opens, so the frame that was
@@ -175,7 +223,22 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
           >
             <canvas
               ref={canvas}
-              class="absolute inset-0 h-full w-full object-contain outline-none"
+              // The canvas keeps the framebuffer's own pixel size, which the
+              // draw code sets, and is scaled by CSS. `object-contain` does
+              // nothing on a canvas, so the fit is done explicitly: the element
+              // is sized to the largest box with the framebuffer's aspect
+              // ratio, centred. That keeps the picture undistorted and makes the
+              // pointer mapping below a single ratio against a rect that is
+              // exactly the image.
+              class="absolute outline-none"
+              style={{
+                width: fit().width,
+                height: fit().height,
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                "image-rendering": "auto",
+              }}
               tabindex={0}
               onMouseMove={(event) => pointer(event, 0)}
               onMouseDown={(event) => {
