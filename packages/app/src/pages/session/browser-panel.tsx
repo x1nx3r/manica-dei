@@ -27,10 +27,15 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
 
   let canvas: HTMLCanvasElement | undefined
   let container: HTMLDivElement | undefined
+  // The last frame, held so it can be drawn when the canvas appears. The canvas
+  // lives inside a Show on the connection status, so the first replayed frame
+  // arrives before the element exists and would otherwise be lost. A static
+  // page then never redraws, which is exactly what a blank about:blank looks
+  // like.
+  let pending: Framebuffer | undefined
 
-  // The framebuffer is drawn at its own size and scaled by CSS, so the canvas
-  // never resizes with the panel. That keeps pointer maths to one ratio.
   const draw = (framebuffer: Framebuffer) => {
+    pending = framebuffer
     if (!canvas) return
     if (canvas.width !== framebuffer.width || canvas.height !== framebuffer.height) {
       canvas.width = framebuffer.width
@@ -50,7 +55,16 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
     void browser.open()
   })
 
-  // Repaint if the subscription delivered nothing yet but the state is open.
+  // The canvas is created after the connection opens, so the frame that was
+  // replayed on subscribe is drawn here once the element exists.
+  createEffect(() => {
+    if (browser.state.status !== "open") return
+    const frame = pending
+    if (frame) queueMicrotask(() => draw(frame))
+  })
+
+  // The URL is polled because the agent drives navigation over CDP and there is
+  // no event here when it moves.
   createEffect(() => {
     if (browser.state.status === "open") void browser.refreshUrl()
   })
