@@ -275,18 +275,20 @@ export function decodeZrle(inflated: Uint8Array, rect: Rect, target: Framebuffer
  * dependency rule intact.
  */
 export class ZrleStream {
+  // The writer's type differs between this package's tsconfig and the
+  // opencode one, so it is inferred. The reader is named, because inferring it
+  // resolves to a wider type that loses the read() signature.
   private readonly writer: WritableStreamDefaultWriter<Uint8Array>
-  // Bun's DOM lib declares an extra readMany on this reader, so tsgo wants a
-  // narrower type than getReader() returns. oxlint reads the other lib and
-  // calls the assertion unnecessary. tsgo is the one that gates the build.
   private readonly reader: ReadableStreamDefaultReader<Uint8Array>
   private queue: Promise<void> = Promise.resolve()
 
   constructor() {
     // "deflate" is zlib wrapping, which is what RFB specifies.
     const stream = new DecompressionStream("deflate")
-    this.writer = stream.writable.getWriter()
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    // The two tsconfigs in this repo resolve these getters differently, so each
+    // is narrowed with the cast that the other side accepts. Both are standard
+    // shapes; only the lib declarations disagree.
+    this.writer = stream.writable.getWriter() as WritableStreamDefaultWriter<Uint8Array>
     this.reader = stream.readable.getReader() as ReadableStreamDefaultReader<Uint8Array>
   }
 

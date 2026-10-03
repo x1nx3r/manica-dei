@@ -187,7 +187,7 @@ export async function connect(options: {
   url: string
   directory: string
   maxAttempts?: number
-}): Promise<{ socket: WebSocket; queue: ByteQueue }> {
+}): Promise<{ socket: WebSocket; queue: ByteQueue; transport: Transport }> {
   const attempts = options.maxAttempts ?? 5
   let lastError: Error | undefined
 
@@ -235,7 +235,7 @@ export async function connect(options: {
         else if (data instanceof Uint8Array) queue.push(data)
       })
 
-      return { socket, queue }
+      return { socket, queue, transport: { write: (bytes) => socket.send(bytes) } }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))
       // A refused upgrade is worth retrying once the browser finishes starting.
