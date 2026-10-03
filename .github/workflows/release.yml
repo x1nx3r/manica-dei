@@ -35,6 +35,21 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
 
+      # Stamp every package to the release version before building. The
+      # settings footer (the UI) reads packages/app's package.json at bundle
+      # time, the server binary reads packages/opencode's — one release, one
+      # version, everywhere. Without this step the two drift apart on
+      # releases that forget a manual bump (found live: v0.2.2's binary said
+      # 0.2.2 while the UI footer said 0.2.0).
+      - name: Stamp package versions to the release version
+        run: |
+          VERSION="${VERSION#v}"
+          for PKG in packages/app packages/core packages/opencode; do
+            bun -e "const p=require('./$PKG/package.json'); p.version='$VERSION'; \
+              require('fs').writeFileSync('./$PKG/package.json', JSON.stringify(p,null,2)+'\n')"
+          done
+          grep -r '"version"' packages/*/package.json | head -3
+
       - name: Build linux-x64 server binary (web UI embedded)
         env:
           OPENCODE_CHANNEL: latest
