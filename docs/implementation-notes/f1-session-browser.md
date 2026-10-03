@@ -155,6 +155,44 @@ to the latency. Any future spike reports all three, or it reports nothing.
 | `707bfc959` | the video transport spike results                                |
 | `a9f5fbf24` | the session browser lifecycle service + guarded integration test |
 
+## 6a. RFB has three ways to hang up on you
+
+Writing the test-only framebuffer reader cost three protocol bugs. All were
+framing, and all made **Xvnc close the connection with no client-side
+error**:
+
+- **The pixel format is 16 bytes, and `red-max`, `green-max`, and `blue-max`
+  are two bytes each.** Writing one byte each makes the message 13 bytes
+  instead of 16, so every later message is misaligned.
+- **Those three max fields use protocol byte order, which is big-endian**,
+  even when the pixel format declares little-endian pixel data. `255` is
+  `00 FF`. Getting this backwards yields a correctly sized 16-byte format
+  that the server rejects as invalid.
+- **`FramebufferUpdateRequest` is `type, incremental, x, y, width, height`.**
+  Writing width and height at offsets 4 and 6 puts them in the x and y
+  slots, and the request becomes a zero-sized region.
+
+The server's own log named the second one (`closing ... invalid pixel
+format`) and nothing else did. **A malformed RFB message is a silent close,
+so read the server's log rather than guessing.** Two of the three were
+found only after stopping to look.
+
+## 6b. The port answers before the browser paints
+
+`ensure()` resolves when the RFB port accepts, which is when `Xvnc` starts.
+Chromium is spawned after that. So a client reading immediately sees a
+**black screen**, and the paint assertion failed for that reason rather
+than because anything was broken.
+
+Paint appeared about **1.1 s** after the port came up. Tests poll for it, and
+anything else reading a framebuffer has to do the same. The original smoke
+test hid this by checking the banner and treating it as proof of pixels.
+
+Sampling was wrong in the first cut too. A stride of `total / 200` aliased
+past the rendered region and reported a blank screen that in fact held
+**832,254 white pixels**. Count every pixel, or report nothing, which is the
+same lesson as §5 arriving from a different direction.
+
 ## 7. What has not started
 
 The **RFB client** for the human. That is the largest remaining piece: a
