@@ -76,7 +76,9 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       setStore({ status: "connecting", error: undefined, urlError: undefined })
 
       try {
+        console.debug("[browser] requesting a relay for", directory())
         const opened = await connect({ url: baseUrl(), directory: directory() })
+        console.debug("[browser] relay open, starting RFB")
         if (current !== generation) {
           opened.socket.close()
           return
@@ -86,10 +88,12 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
         client = await start(opened.transport, {
           queue: opened.queue,
           onFrame: (framebuffer) => {
+            console.debug("[browser] frame", framebuffer.width, "x", framebuffer.height, "listeners", listeners.size)
             latest = framebuffer
             for (const listener of listeners) listener(framebuffer)
           },
           onClose: (error) => {
+            console.debug("[browser] closed", error?.message ?? "(clean)")
             if (current !== generation) return
             setStore({ status: error ? "failed" : "closed", error: error?.message })
           },
@@ -110,6 +114,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
         // for here. A poll is cheaper than a channel for one consumer.
         poll = setInterval(() => void refreshUrl(), 1000)
       } catch (error) {
+        console.debug("[browser] failed", error instanceof Error ? error.message : String(error))
         if (current !== generation) return
         setStore({ status: "failed", error: error instanceof Error ? error.message : String(error) })
       }

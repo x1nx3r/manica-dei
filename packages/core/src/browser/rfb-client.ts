@@ -90,13 +90,21 @@ export async function start(transport: Transport, options: Options & { queue?: B
     options.onClose?.(error)
   }
 
+  // The first request asks for the whole framebuffer, and every request after
+  // that asks for changes. RFB tracks what the client already holds: an
+  // incremental request reports only differences, so asking incrementally
+  // before receiving anything asks for the difference from nothing and the
+  // server stays silent. The spec is explicit — a client that "has lost the
+  // contents" asks with incremental set to zero to get the entire area.
+  let received = false
+
   const request = () => {
     if (closed) return
     // One outstanding request at a time. A second would add server side backlog
     // without making frames arrive sooner.
     if (pendingRequest) return
     pendingRequest = true
-    transport.write(encodeFramebufferUpdateRequest(init.width, init.height, true))
+    transport.write(encodeFramebufferUpdateRequest(init.width, init.height, received))
   }
 
   const scheduleIdleRequest = () => {
@@ -126,6 +134,7 @@ export async function start(transport: Transport, options: Options & { queue?: B
         if (update.kind === "bell" || update.kind === "colourMap") continue
 
         pendingRequest = false
+        received = true
         if (update.changed) options.onFrame?.(framebuffer)
         // Ask again, and keep the idle wake alive.
         request()
