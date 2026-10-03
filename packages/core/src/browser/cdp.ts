@@ -1,13 +1,12 @@
-import type { Readable, Writable } from "node:stream"
-import { decodeAll, encodeMessage } from "./cdp-pipe"
+import type { Interface as Session } from "./cdp-session"
 
-// A CDP client over the remote debugging pipe. Framing lives in cdp-pipe.ts and
-// is proven against a live browser in the tests.
+// A CDP client over a WebSocket. The transport is chosen by Chromium's own
+// `DevToolsActivePort`, see endpoint.ts for why this replaced the debugging
+// pipe.
 //
-// Deliberately transport-only: it sends method calls, correlates replies by id,
-// and hands events to a listener. Naming, policy, and which methods the agent
-// may reach belong to the caller, the same way the ADR keeps CDP method names
-// on the server side and out of the model's reach.
+// Transport-only on purpose: it sends calls, correlates replies by id, and
+// hands events to a listener. Naming, policy, and which methods the agent may
+// reach belong to the tool layer, so CDP method names never reach the model.
 
 export type Message = {
   id?: number
@@ -31,33 +30,32 @@ export class CdpError extends Error {
 
 export class ClosedError extends Error {
   constructor() {
-    super("cdp: the pipe closed")
+    super("cdp: the connection closed")
     this.name = "ClosedError"
   }
 }
 
 export type Options = {
-  // Called for every server-initiated message. Errors thrown here must not
-  // escape into the read loop.
+  // Called for every server-initiated message. Throwing here must not take down
+  // the read loop, so it is isolated.
   onEvent?: (message: Message) => void
-  // Called once when the pipe ends, for any reason.
+  // Called once when the socket ends, with a reason when there was one.
   onClose?: (error?: Error) => void
+  // Injectable for tests. Defaults to the global WebSocket.
+  socketFactory?: (url: string) => WebSocketLike
 }
 
-export interface Interface {
-  readonly send: (method: string, params?: Record<string, unknown>) => Promise<unknown>
-  readonly close: () => void
-  readonly closed: () => boolean
+export interface WebSocketLike {
+  send(data: string): void
+  close(): void
+  addEventListener(type: string, listener: (event: { data?: unknown }) => void): void
 }
-
-export type Client = Interface
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
 }
 
-// The payload arrives over a pipe, so narrow it rather than assert. A frame
-// that is not a CDP message is a protocol error, not a crash.
+// Narrow rather than assert: the frame arrives off a socket.
 function asMessage(value: unknown): Message {
   if (!isRecord(value)) throw new Error("cdp: message was not an object")
   const message: Message = {}
@@ -82,61 +80,68 @@ function asMessage(value: unknown): Message {
   return message
 }
 
-export function make(toChromium: Writable, fromChromium: Readable, options: Options = {}): Interface {
-  let buffer: Buffer = Buffer.alloc(0)
-  let nextId = 1
+export interface Interface {
+  readonly send: (method: string, params?: Record<string, unknown>) => Promise<unknown>
+  readonly close: () => void
+  readonly closed: () => boolean
+}
+
+export type Client = Interface
+
+export async function connect(url: string, options: Options = {}): Promise<Interface> {
+  const factory = options.socketFactory ?? ((target: string) => new WebSocket(target) as unknown as WebSocketLike)
+  const socket = factory(url)
+
   let closed = false
   let failure: Error | undefined
+  let nextId = 1
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>()
 
   const settle = (error?: Error) => {
     if (closed) return
     closed = true
     failure = error
-    for (const waiter of pending.values()) {
-      waiter.reject(error ?? new ClosedError())
-    }
+    for (const waiter of pending.values()) waiter.reject(error ?? new ClosedError())
     pending.clear()
     options.onClose?.(error)
   }
 
-  fromChromium.on("data", (chunk: Buffer) => {
+  await new Promise<void>((resolve, reject) => {
+    socket.addEventListener("open", () => resolve())
+    socket.addEventListener("error", (event) =>
+      reject(new Error(`cdp: socket error ${JSON.stringify(event?.data ?? "")}`)),
+    )
+  }).catch((error) => {
+    settle(error instanceof Error ? error : new Error(String(error)))
+    throw error
+  })
+
+  socket.addEventListener("message", (event) => {
     if (closed) return
-    buffer = Buffer.concat([buffer, chunk])
-    let payloads: string[]
+    let message: Message
     try {
-      const decoded = decodeAll(buffer)
-      payloads = decoded.payloads
-      buffer = decoded.rest
+      const data = typeof event.data === "string" ? event.data : String(event.data)
+      message = asMessage(JSON.parse(data))
     } catch (error) {
       settle(error instanceof Error ? error : new Error(String(error)))
       return
     }
-    for (const payload of payloads) {
-      let message: Message
-      try {
-        message = asMessage(JSON.parse(payload))
-      } catch (error) {
-        settle(error instanceof Error ? error : new Error(String(error)))
-        return
-      }
-      if (message.id !== undefined && pending.has(message.id)) {
-        const waiter = pending.get(message.id)!
-        pending.delete(message.id)
-        if (message.error) waiter.reject(new CdpError(message.error.code, message.error.message, message.error.data))
-        else waiter.resolve(message.result)
-        continue
-      }
-      // Server-initiated events must never take down the read loop.
-      try {
-        options.onEvent?.(message)
-      } catch {}
+
+    if (message.id !== undefined && pending.has(message.id)) {
+      const waiter = pending.get(message.id)!
+      pending.delete(message.id)
+      if (message.error) waiter.reject(new CdpError(message.error.code, message.error.message, message.error.data))
+      else waiter.resolve(message.result)
+      return
     }
+
+    try {
+      options.onEvent?.(message)
+    } catch {}
   })
 
-  fromChromium.on("error", (error: Error) => settle(error))
-  fromChromium.on("end", () => settle())
-  fromChromium.on("close", () => settle())
+  socket.addEventListener("close", () => settle())
+  socket.addEventListener("error", () => settle(failure))
 
   return {
     send(method, params = {}) {
@@ -145,7 +150,7 @@ export function make(toChromium: Writable, fromChromium: Readable, options: Opti
       return new Promise<unknown>((resolve, reject) => {
         pending.set(id, { resolve, reject })
         try {
-          toChromium.write(encodeMessage(JSON.stringify({ id, method, params })))
+          socket.send(JSON.stringify({ id, method, params }))
         } catch (error) {
           pending.delete(id)
           reject(error instanceof Error ? error : new Error(String(error)))
@@ -154,7 +159,12 @@ export function make(toChromium: Writable, fromChromium: Readable, options: Opti
     },
     close() {
       settle()
+      try {
+        socket.close()
+      } catch {}
     },
     closed: () => closed,
   }
 }
+
+export type { Session }

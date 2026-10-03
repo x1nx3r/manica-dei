@@ -1,11 +1,11 @@
 export * as Browser from "./browser"
 
 import { spawn, type ChildProcess } from "child_process"
-import { Readable, Writable } from "node:stream"
 import { Context, Effect, Layer, Schema, Types } from "effect"
 import net from "node:net"
 import { makeLocationNode } from "../effect/app-node"
 import * as Cdp from "./cdp"
+import { readEndpoint, type Endpoint } from "./endpoint"
 
 // ADR-0003: one Chromium per session, headful on Xvnc. The agent drives it
 // over CDP and the human watches it over RFB. Xvnc is the display server and
@@ -27,6 +27,8 @@ export const Info = Schema.Struct({
   display: Schema.Number,
   rfbPort: Schema.Number,
   pid: Schema.Number,
+  // The loopback port Chromium chose for CDP. Container-local, never published.
+  cdpPort: Schema.Number,
 })
 export type Info = Types.DeepMutable<typeof Info.Type>
 
@@ -39,10 +41,11 @@ export interface Interface {
   readonly get: Effect.Effect<Info | undefined>
   // Idempotent start. Verifies the RFB port answers before resolving.
   readonly ensure: Effect.Effect<Info, LaunchError>
-  // The CDP client for the running browser, or undefined while it is not up.
-  // Starting the browser is a separate step, so a caller that needs to talk to
-  // it can ensure() first and decide what a failure means.
+  // The browser-scope CDP client, or undefined while it is not up. Browser
+  // domains only: page work connects to a page target through the endpoint.
   readonly cdp: Effect.Effect<Cdp.Interface | undefined>
+  // The debugging endpoint, so a caller can open a page connection of its own.
+  readonly endpoint: Effect.Effect<Endpoint | undefined>
   // Stop the browser and the display server. Safe when already down.
   readonly stop: Effect.Effect<void>
 }
@@ -54,6 +57,8 @@ type Active = {
   chrome: ChildProcess
   xvnc: ChildProcess
   cdp: Cdp.Interface
+  endpoint: Endpoint
+  profile: string
 }
 
 function probeRfb(port: number): Promise<boolean> {
@@ -144,6 +149,7 @@ const layer = Layer.effect(
         teardown()
         return yield* new LaunchError({ message: `RFB port ${rfbPort} never answered` })
       }
+      const profile = `/tmp/opencode-browser-${n}`
       const chrome = spawn(
         "chromium",
         [
@@ -155,47 +161,61 @@ const layer = Layer.effect(
           "--disable-features=Translate",
           "--window-position=0,0",
           `--window-size=${GEOMETRY.width},${GEOMETRY.height}`,
-          // Chromium reads CDP on fd 3 and writes it on fd 4. From Chromium's
-          // components/devtools/devtools_pipe/devtools_pipe.h: kReadFD = 3,
-          // kWriteFD = 4, and content_switches.cc spells it "[in=3, out=4]".
-          // Messages are CBOR-enveloped JSON, see cdp-pipe.ts.
-          "--remote-debugging-pipe",
-          `--user-data-dir=/tmp/opencode-browser-${n}`,
+          // Chromium picks the port and publishes it, with the browser path, in
+          // DevToolsActivePort inside the profile we own. The listener is
+          // container loopback and deusd never publishes it. See endpoint.ts
+          // for why this replaced --remote-debugging-pipe.
+          "--remote-debugging-port=0",
+          `--user-data-dir=${profile}`,
           "about:blank",
         ],
-        {
-          // Chromium reads fd 3 and writes fd 4, and Node hands the child a
-          // duplex channel for each "pipe" entry, so this ordering serves both
-          // directions. Verified rather than assumed: the child reads what we
-          // write on 3 and its own writes arrive back on 4. Getting it wrong
-          // yields a browser that starts and then silently never answers.
-          stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
-          env: { ...process.env, DISPLAY: `:${n}` },
-        },
+        { stdio: ["ignore", "ignore", "ignore"], env: { ...process.env, DISPLAY: `:${n}` } },
       )
       if (!chrome.pid) {
         teardown()
         return yield* new LaunchError({ message: "chromium did not spawn" })
       }
-      // stdio entries are typed as the base Stream, so narrow to the Node
-      // stream types the client needs.
-      const toChromium = chrome.stdio[3]
-      const fromChromium = chrome.stdio[4]
-      if (!(toChromium instanceof Writable) || !(fromChromium instanceof Readable)) {
-        teardown()
-        return yield* new LaunchError({ message: "chromium did not expose the debugging pipe" })
+
+      // Wait for the endpoint, then open one connection at browser scope. All
+      // page work attaches to a target from there.
+      const endpoint = yield* Effect.tryPromise({
+        try: () => readEndpoint(profile),
+        catch: (error) => new LaunchError({ message: `chromium never published an endpoint: ${String(error)}` }),
+      }).pipe(
+        Effect.catchTag("Browser.LaunchError", (error) => {
+          teardown()
+          return Effect.fail(error)
+        }),
+      )
+      const cdp = yield* Effect.tryPromise({
+        try: () =>
+          Cdp.connect(endpoint.browserUrl, {
+            // A closed socket means the browser is gone, so drop state and let
+            // the next ensure() relaunch rather than leaving a dead client.
+            onClose: () => {
+              if (active?.chrome === chrome) {
+                kill(xvnc)
+                active = undefined
+              }
+            },
+          }),
+        catch: (error) =>
+          new LaunchError({ message: `unable to reach chromium at ${endpoint.browserUrl}: ${String(error)}` }),
+      }).pipe(
+        Effect.catchTag("Browser.LaunchError", (error) => {
+          teardown()
+          return Effect.fail(error)
+        }),
+      )
+
+      active = {
+        info: { display: n, rfbPort, pid: chrome.pid, cdpPort: endpoint.port },
+        chrome,
+        xvnc,
+        cdp,
+        endpoint,
+        profile,
       }
-      const cdp = Cdp.make(toChromium, fromChromium, {
-        // A pipe that ends means the browser is gone, so drop state and let the
-        // next ensure() relaunch rather than leaving a dead client behind.
-        onClose: () => {
-          if (active?.chrome === chrome) {
-            kill(xvnc)
-            active = undefined
-          }
-        },
-      })
-      active = { info: { display: n, rfbPort, pid: chrome.pid }, chrome, xvnc, cdp }
       watch(chrome, xvnc)
       return active.info
     })
@@ -216,11 +236,16 @@ const layer = Layer.effect(
       return active.cdp
     })
 
+    const endpoint: Effect.Effect<Endpoint | undefined> = Effect.gen(function* () {
+      if (!active || active.chrome.exitCode !== null) return undefined
+      return active.endpoint
+    })
+
     const stop: Effect.Effect<void> = Effect.gen(function* () {
       yield* Effect.sync(teardown)
     })
 
-    return Service.of({ get, ensure, cdp, stop })
+    return Service.of({ get, ensure, cdp, endpoint, stop })
   }),
 )
 

@@ -110,13 +110,12 @@ inferred. Two findings from that spike still stand:
 - `libx264 -f h264` emits start-code-prefixed Annex-B, and `VideoDecoder`
   needs AVCC plus an `avcC` description from the SPS and PPS NALs. About
   sixty lines, mandatory, and **the documentation does not mention it**.
-
-**Framebuffer** (`Xvnc` serving RFB, Chromium on X11, **ZRLE**): keys to
-visible pixels **14.4 ms median against 31.2 ms**, consistent across four
-runs, because RFB has **no vsync anywhere**. Volume with ZRLE: keypress
-**2.0 KB**, scroll **25.4 KB**, against **34.6 KB** and **1.64 MB** for
-Raw. **Two processes instead of three and one dependency fewer**, since
-`Xvnc` is both the display server and the server.
+  **Framebuffer** (`Xvnc` serving RFB, Chromium on X11, **ZRLE**): keys to
+  visible pixels **14.4 ms median against 31.2 ms**, consistent across four
+  runs, because RFB has **no vsync anywhere**. Volume with ZRLE: keypress
+  **2.0 KB**, scroll **25.4 KB**, against **34.6 KB** and **1.64 MB** for
+  Raw. **Two processes instead of three and one dependency fewer**, since
+  `Xvnc` is both the display server and the server.
 
 The rug-pull there was `Xvnc` never emitting `CopyRect`: it sent zero of
 them and full-screen rectangles instead — a property of this server, **not
@@ -193,7 +192,59 @@ past the rendered region and reported a blank screen that in fact held
 **832,254 white pixels**. Count every pixel, or report nothing, which is the
 same lesson as §5 arriving from a different direction.
 
-## 7. What has not started
+## 7. The debugging pipe was the wrong call
+
+Worth its own section, because the reasoning that chose it was sound and the
+premise was false, which is the failure mode this whole session keeps
+producing.
+
+The pipe avoids three real things: a port race, a loopback listener, and a
+token file to protect. It also **cannot reach a page**. Over the pipe on
+Chromium 154:
+
+- `Page.enable`, `Page.navigate`, `Runtime.evaluate`, `DOM.enable` all
+  answer `-32601 "wasn't found"`, at browser scope and on every attached
+  session.
+- `Schema.getDomains` is unavailable, so those domains are not disabled,
+  they are absent.
+- `Target.getTargetInfo` on a session from `Target.attachToTarget` reports
+  `type: "browser"`, with a UUID rather than the page's hex id.
+- `Target.setAutoAttach` with `flatten` does emit `Target.attachedToTarget`
+  naming `type: "page"`, and calls routed with those session ids fail the
+  same way.
+
+Chromium's source says why: `devtools_pipe_handler.cc` attaches its client
+to `browser_target_`, so the pipe is a browser endpoint with no page
+domains. The wire format was never the problem, and `Browser.getVersion`
+round tripped fine throughout. **Correct framing is necessary and not
+sufficient**, which is exactly the thing that makes this class of bug
+expensive.
+
+Replaced with `--remote-debugging-port=0`: Chromium picks a free port and
+writes it to `DevToolsActivePort` in the profile directory, so there is no
+race. The loopback listener is container-local and never published, and the
+only party in the container who can reach it is the agent, who has a shell.
+
+## 8. The pattern worth fixing
+
+Four protocol failures this session, all one shape:
+
+| What             | How it failed                                                  |
+| ---------------- | -------------------------------------------------------------- |
+| Video Annex-B    | guessed, then found the conversion by testing                  |
+| RFB pixel format | Xvnc said "invalid pixel format" and two more guesses followed |
+| CDP framing      | NUL was right, CBOR wrong, undelimited wrong                   |
+| CDP transport    | reasoned from a true observation to a false conclusion         |
+
+Every one was **sound reasoning from an unchecked premise**, and every one
+had the answer available earlier than it was found: an error message on
+screen, or a source file that would have taken a minute to read.
+
+**The rule that generalises:** when a protocol misbehaves, read the
+implementation or the error text before forming a second hypothesis. The
+first attempt can be reasoning. The second must be evidence.
+
+## 9. What has not started
 
 The **RFB client** for the human. That is the largest remaining piece: a
 display protocol in the browser, with framebuffer upkeep, scaling, input
@@ -202,8 +253,8 @@ one ourselves and avoid noVNC's MPL-2.0 terms.
 
 Two run-order facts from the spike worth carrying into it:
 
-- The display must exist before Chromium renders into it, or Youtube-size
-  delays show up later as blank frames, and that is worth an explicit pixel
-  check rather than a process-exists call.
+- The display must exist before Chromium renders into it, and `ensure()`
+  resolving does not mean the browser has painted. Poll for paint, as the
+  integration test does.
 - `Xvnc` never emitted `CopyRect` here. Whether that is the app's scroll
   path or this server's choice is unjudged.

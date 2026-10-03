@@ -119,10 +119,20 @@ the instance.
 measured decision and it replaced an earlier H.264 design. See Spike
 results.
 
-Launch uses `--remote-debugging-pipe` rather than a port. A pipe has no port
-race, no loopback listener, and no token file to protect. Measured: Chromium
-binds its debugging port to container loopback even with
-`--remote-debugging-address=0.0.0.0`, so a published port cannot reach it.
+**CDP reaches the agent over a loopback debugging port on an ephemeral
+port.** Launch uses `--remote-debugging-port=0`, so Chromium picks a free
+port and writes it, with the browser path, to `DevToolsActivePort` inside
+the private per-session `--user-data-dir`. We read the port rather than
+choosing it, so there is no race.
+
+The port stays on container loopback and is not published: deusd publishes
+only the agent port. The only party inside the container that can reach it
+is the agent, which already has a shell.
+
+**This replaces an earlier `--remote-debugging-pipe` decision.** See
+"Corrected: the debugging pipe" in Spike results for why the pipe was
+wrong, because the reasoning that chose it was sound and the premise was
+false.
 
 ### The human's surface is a framebuffer, and their input goes through X11
 
@@ -254,16 +264,55 @@ rather than measured.
 
 Two findings from it survive into the adopted design:
 
-- **The port decision is justified by evidence.** Chromium binds its
-  debugging port to loopback _inside_ the container even with
-  `--remote-debugging-address=0.0.0.0`, so a published port cannot reach
-  it. `--remote-debugging-pipe` is the only workable form when the server
-  owns the process.
+- **Chromium binds its debugging endpoint to container loopback**, even with
+  `--remote-debugging-address=0.0.0.0`, so it is never published. This much
+  was measured and is true. What was **not** tested at the time is whether
+  the pipe can reach a page, and it cannot. See the correction below.
 - **The Annex-B conversion was real client work.** `libx264 -f h264` emits
   start-code-prefixed Annex-B and `VideoDecoder` needs AVCC plus an `avcC`
   description. It is about sixty lines and nothing in the documentation
   says so. **The adopted transport does not need it**, which is one of the
   reasons it won.
+
+### Corrected: the debugging pipe
+
+An earlier revision of this ADR chose `--remote-debugging-pipe`, on the
+grounds that it avoids a port race, a loopback listener, and a token file.
+Those grounds are real, and the decision was wrong anyway, because the pipe
+**cannot reach a page**.
+
+Measured against Chromium 154, over the pipe:
+
+- `Page.enable`, `Page.navigate`, `Runtime.evaluate`, and `DOM.enable` all
+  answer `-32601, "wasn't found"`, at browser scope and on every attached
+  session alike.
+- `Schema.getDomains` is unavailable, so the page domains are not merely
+  disabled, they are absent.
+- `Target.getTargetInfo` on a session taken from `Target.attachToTarget`
+  reports `type: "browser"`, with a UUID target id rather than the page's
+  id.
+- `Target.setAutoAttach` with `flatten` does emit `Target.attachedToTarget`
+  events naming `type: "page"`, and calls routed with those session ids
+  still fail identically.
+
+Chromium's own source explains it. `devtools_pipe_handler.cc` connects its
+client to `browser_target_`, so the pipe is a **browser-level** endpoint
+with no page domains. It is built for embedders that spawn Chromium as a
+child and drive pages through it, not for page automation over a single
+flat session.
+
+The framing was never the problem. The wire format is bare JSON with a NUL
+terminator (`PipeWriterASCIIZ`), `chrome-remote-interface` builds exactly
+the `{method, params, sessionId}` shape used here, and a live
+`Browser.getVersion` round trip succeeds. Getting the framing right was
+necessary and not sufficient.
+
+**What replaced it**: `--remote-debugging-port=0`. Chromium chooses a free
+port and writes it to `DevToolsActivePort` in the profile directory, so
+there is no race to lose. The three original objections are answered rather
+than dismissed: the port is ephemeral and read back, the file lives in the
+private per-session `--user-data-dir`, and the listener is container
+loopback which deusd never publishes.
 
 The rest of that work is discarded. Its quality presets, its `zerolatency`
 encoder settings, and its client decode path are not built.

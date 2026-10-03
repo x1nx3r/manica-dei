@@ -96,9 +96,16 @@ dependency, no sequencing against its roadmap.
      two frame intervals at 60 fps — and RFB has no vsync. Volume with ZRLE:
      keypress **2.0 KB**, scroll **25.4 KB**, against 34.6 KB and 1.64 MB
      for Raw.
-   - Chromium binds its debugging port to container-loopback even with
-     `--remote-debugging-address`, so `--remote-debugging-pipe` is the only
-     workable form. That finding survived from the video spike.
+   - **CDP reaches the agent over a loopback port.** Launch uses
+     `--remote-debugging-port=0`, so Chromium picks the port and writes it to
+     `DevToolsActivePort` in the private per-session `--user-data-dir`. No
+     race, and the listener is container loopback that deusd never publishes.
+   - **Corrected: `--remote-debugging-pipe` does not work.** Measured on
+     Chromium 154: `Page`, `Runtime`, and `DOM` are absent, every call answers
+     `-32601`, and a session from `Target.attachToTarget` reports
+     `type: "browser"`. Chromium attaches the pipe to `browser_target_`, so it
+     is a browser-level endpoint with no page domains. The framing was correct
+     throughout, which is what made this expensive.
    - **One gap:** scroll latency under ZRLE is unmeasured. With Raw it was
      48.3 ms against video's 33.3 ms, so it is the one case where video
      might still win. The fix is a two-line probe change and it does not
@@ -112,7 +119,7 @@ dependency, no sequencing against its roadmap.
 7. **Trail and spend.** Both are native server data — message history and
    per-session cost/tokens are already in the session objects. Surface
    them in the UI (the timeline exists; add a usage/cost view). Cross-
-   *session* audit stays manus-dei's job (its registry harvests `/event`),
+   _session_ audit stays manus-dei's job (its registry harvests `/event`),
    and fleet-level budgets are its Phase 4 — this repo only guarantees the
    documented API those features read.
 8. **Identity context + system-prompt stance** (manus-dei ADR-015). deusd
@@ -149,7 +156,7 @@ dependency, no sequencing against its roadmap.
 
 ## Principles
 
-- The fork never learns manus-dei exists at the *code* level: the seam is
+- The fork never learns manus-dei exists at the _code_ level: the seam is
   opencode's documented HTTP/SSE/WS API, and manus-aware features talk to
   deusd the same way any client would.
 - Keep upstream's per-package engineering guides intact

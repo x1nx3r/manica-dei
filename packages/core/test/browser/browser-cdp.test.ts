@@ -26,8 +26,9 @@ describe.skipIf(skip)("browser cdp", () => {
       const version = (await client!.send("Browser.getVersion")) as { product: string }
       expect(version.product).toContain("Chrome/")
 
-      // A page-scoped call needs a session, which is the next layer up. Prove
-      // the flat call works and that the client survives it.
+      // The endpoint is what page work needs, and it names a loopback port.
+      const endpoint = await runtime.runPromise((s) => s.endpoint)
+      expect(endpoint?.port).toBeGreaterThan(0)
       expect(client!.closed()).toBe(false)
     } finally {
       try {
