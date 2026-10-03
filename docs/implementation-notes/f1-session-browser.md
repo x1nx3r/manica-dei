@@ -148,11 +148,19 @@ to the latency. Any future spike reports all three, or it reports nothing.
 
 ## 6. What landed
 
-| Commit      | Content                                                          |
-| ----------- | ---------------------------------------------------------------- |
-| `2b0dcc7ac` | ADR-0003: the session browser, one instance both parties drive   |
-| `707bfc959` | the video transport spike results                                |
-| `a9f5fbf24` | the session browser lifecycle service + guarded integration test |
+| Commit      | Content                                                                  |
+| ----------- | ------------------------------------------------------------------------ |
+| `2b0dcc7ac` | ADR-0003: the session browser, one instance both parties drive           |
+| `707bfc959` | the video transport spike results                                        |
+| `a9f5fbf24` | the session browser lifecycle service + guarded integration test         |
+| `bb353729a` | registered the browser node; proved the display paints, not just answers |
+| `b8c6c7c5f` | pages over the debugging port; the agent's seven tools                   |
+| `340d13217` | the RFB relay, started on demand from either side                        |
+| `144fbf777` | ZRLE and the simple rectangle decoders                                   |
+| `e3000e376` | the RFB protocol layer                                                   |
+| `74392ffa4` | the RFB client loop                                                      |
+| `78c07b952` | release 0.2.1                                                            |
+| `4a2744bdc` | the relay and the client, proven against a real server                   |
 
 ## 6a. RFB has three ways to hang up on you
 
@@ -244,17 +252,85 @@ screen, or a source file that would have taken a minute to read.
 implementation or the error text before forming a second hypothesis. The
 first attempt can be reasoning. The second must be evidence.
 
-## 9. What has not started
+## 9. The RFB client, and what proving it cost
 
-The **RFB client** for the human. That is the largest remaining piece: a
-display protocol in the browser, with framebuffer upkeep, scaling, input
-mapping, and reconnect. RFB is a published specification, so we can write
-one ourselves and avoid noVNC's MPL-2.0 terms.
+The client is built: decoder, protocol, and loop, in
+`packages/core/src/browser/`. Forty seven tests. Written against
+`rfbproto.rst` rather than from memory, which was the point of the rule
+above, and it paid for itself immediately — four spec details are each a
+bug if guessed:
 
-Two run-order facts from the spike worth carrying into it:
+- **CPIXEL is three bytes**, not four, for 32bpp true colour at depth 24
+  with every intensity in the low three bytes.
+- **Packed palette bit fields are big-endian**, so the most significant bits
+  are the leftmost pixels in a row.
+- **One zlib stream spans the connection**, so rectangles inflate strictly
+  in order and must never be decoded out of step.
+- **Palette RLE starts at 130.** 129 is explicitly unused, which the
+  specification states, and an early fixture of mine used 129 and failed.
+
+Two more traps are pinned by tests rather than prose:
+
+- **The cursor pseudo-encoding is followed by its own pixel rectangle.** A
+  reader that treats the pseudo rect as payload-less desynchronises every
+  later read. This one was predicted in the ADR and is now a failing test
+  if it regresses.
+- **A rect header is `x, y, width, height, encoding`.** A fixture with those
+  in the wrong slots read back as `x=256, width=257`, which is precisely how
+  a desynchronised stream presents itself.
+
+The two behaviours a naive loop gets wrong are also tested: an update
+request is not answered one for one, so only one is outstanding at a time,
+and a redraw is announced only when pixels actually changed.
+
+No new dependency: `DecompressionStream("deflate")` is native.
+
+### The end-to-end proof, and the mistake it took to get there
+
+The relay and the client were each proven against fakes for a long time,
+which is exactly the condition that hides a seam. The integration test that
+joins them failed on its first attempt, for a reason worth recording:
+
+> The test built its own browser runtime while the route resolved the
+> browser from its own `LocationServiceMap`, so the route never saw the
+> browser the test started.
+
+The fix is `httpApiLayer` from `test/server/httpapi-layer.ts`, merged with
+the browser services on **one layer**, so both resolve through one map. The
+test carries a comment saying so, because it is easy to repeat.
+
+It now passes, and the measurement is the evidence rather than the green
+dot: `frames=1 light=919515 colours=64` through a 1280x720 framebuffer.
+That is 919,515 light pixels of 921,600, so a real Chromium rendered
+`about:blank` and the relay carried it, ZRLE-decoded, to the client. A
+banner check cannot make that claim.
+
+## 10. What has not started
+
+**Nothing renders.** The human's side exists as a library and a route. There
+is no pane, no canvas, and no UI, so an end user cannot see any of this yet.
+
+That is a deliberate stopping point rather than an oversight, and it is
+worth stating precisely because the pane _was_ built once: an iframe and a
+toolbar against the proxy route. That commit was discarded when the surface
+changed, on purpose, and only the proxy route was preserved on
+`scratch/preview-proxy`. The panel itself is gone from every branch.
+
+What the pane needs, decided already:
+
+- A **canvas**, not an image, because ZRLE delivers partial rectangles.
+- A **read-only URL**, continuously visible. That is the ADR's mitigation
+  for an agent rendering a convincing login page inside our own interface.
+- **Pointer and keyboard mapping.** Pointer is a scale and device-pixel-ratio
+  transform. Keyboard is a DOM key to **X11 keysym** table, which is the one
+  genuinely fiddly part and the largest single piece.
+- No address bar and no recents: the agent owns navigation, not the human.
+
+Two facts worth carrying in from earlier:
 
 - The display must exist before Chromium renders into it, and `ensure()`
   resolving does not mean the browser has painted. Poll for paint, as the
-  integration test does.
-- `Xvnc` never emitted `CopyRect` here. Whether that is the app's scroll
-  path or this server's choice is unjudged.
+  integration tests do.
+- `Xvnc` never emitted `CopyRect` in any of these runs. Whether that is the
+  app's scroll path or this server's choice is unjudged, and it matters for
+  scrolling cost.

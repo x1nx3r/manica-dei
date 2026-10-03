@@ -110,16 +110,21 @@ dependency, no sequencing against its roadmap.
      48.3 ms against video's 33.3 ms, so it is the one case where video
      might still win. The fix is a two-line probe change and it does not
      need a spike. Close it in the product.
-   - **The largest remaining piece is the RFB client.** RFB is a published
-     spec, so we can write one and avoid noVNC's MPL-2.0 terms.
-   - Status: ADR-0003 accepted 2026-10-02, transport chosen 2026-10-03.
+   - **The largest remaining piece is the pane.** The RFB client is built and
+     proven: decoder, protocol, and loop, with the relay and the client
+     verified together against a real server (`frames=1 light=919515
+colours=64` through 1280x720, so real Chromium pixels arrived). What is
+     missing is the UI: a canvas pane, a read-only URL, and DOM key to X11
+     keysym mapping.
+   - Status: ADR-0003 accepted 2026-10-02, transport chosen 2026-10-03, agent
+     side and human transport landed 2026-10-03 (release 0.2.1).
    - Deferred to a later phase: cptr's per-tab choice between this stream and
      an iframe proxy, which needs the proxy route and a URL rewriter. The
      route and its tests are preserved on `scratch/preview-proxy`.
 7. **Trail and spend.** Both are native server data — message history and
    per-session cost/tokens are already in the session objects. Surface
    them in the UI (the timeline exists; add a usage/cost view). Cross-
-   _session_ audit stays manus-dei's job (its registry harvests `/event`),
+   *session* audit stays manus-dei's job (its registry harvests `/event`),
    and fleet-level budgets are its Phase 4 — this repo only guarantees the
    documented API those features read.
 8. **Identity context + system-prompt stance** (manus-dei ADR-015). deusd
@@ -156,7 +161,7 @@ dependency, no sequencing against its roadmap.
 
 ## Principles
 
-- The fork never learns manus-dei exists at the _code_ level: the seam is
+- The fork never learns manus-dei exists at the *code* level: the seam is
   opencode's documented HTTP/SSE/WS API, and manus-aware features talk to
   deusd the same way any client would.
 - Keep upstream's per-package engineering guides intact
