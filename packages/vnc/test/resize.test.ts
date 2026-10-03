@@ -100,6 +100,27 @@ describe("rfb client resize", () => {
     client.close()
   })
 
+  test("a state report does not make the client ask non-incrementally again", async () => {
+    // A live Xvnc sends an ExtendedDesktopSize state report in reply to every
+    // non-incremental request. A client that treats the report as "nothing
+    // received" keeps asking non-incrementally, so the server replies with the
+    // same rect forever. The rule answers every non-incremental request, so a
+    // buggy client collects reports without bound. A correct client sends one
+    // non-incremental request, learns it is received, and goes incremental.
+    const server = fakeServer([])
+    server.rule((request, reply) => {
+      if (request[0] === 3 && request[1] === 0) reply(extendedDesktopSize(4, 2, { reason: 0 }))
+    })
+    const queue = new ByteQueue()
+    server.begin(queue)
+    const sizes: DesktopSize[] = []
+    const client = await start(server.transport, { queue, onDesktopSize: (size) => sizes.push(size) })
+    await Bun.sleep(120)
+    // The only non-incremental request is the first, so exactly one report.
+    expect(sizes.length).toBe(1)
+    client.close()
+  })
+
   test("a frame drawn after a resize goes into the new framebuffer", async () => {
     const server = fakeServer([extendedDesktopSize(8, 4, { reason: 1 }), rawUpdate(8, 4, [0, 255, 0])])
     const queue = new ByteQueue()

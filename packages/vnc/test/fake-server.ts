@@ -31,6 +31,15 @@ export type FakeServer = {
    * and `start()` blocks forever.
    */
   begin(queue: { push: (chunk: Uint8Array) => void }): void
+  /**
+   * Answer every client request, not just the scripted ones.
+   *
+   * The rule receives the request bytes and a `reply` sink. It runs after the
+   * script, so a test can script the first answer and rule the rest. This is
+   * how a loop is proven closed: a rule that answers every non-incremental
+   * request lets a buggy client collect replies forever.
+   */
+  rule(handler: (request: Uint8Array, reply: (bytes: Uint8Array) => void) => void): void
 }
 
 /**
@@ -46,13 +55,21 @@ export function fakeServer(
 ): FakeServer {
   const written: Uint8Array[] = []
   let push: ((chunk: Uint8Array) => void) | undefined
+  let respond: ((request: Uint8Array, reply: (bytes: Uint8Array) => void) => void) | undefined
 
   const transport: Transport = {
     write: (bytes: Uint8Array) => {
       written.push(bytes)
       if (bytes[0] === 3) {
+        // A scripted answer, when one is queued. A real server answers only
+        // some requests, so the script is the primary mechanism.
         const next = script.shift()
         if (next) push?.(next)
+        // And a rule, when the test needs one that depends on the request. This
+        // is how a test proves a loop is closed: the rule can answer every
+        // request of a given shape, so a client that keeps sending that shape
+        // is caught rather than merely unsatisfied.
+        respond?.(bytes, (bytes) => push?.(bytes))
       }
     },
   }
@@ -71,6 +88,9 @@ export function fakeServer(
     begin(queue) {
       push = (chunk) => queue.push(chunk)
       for (const chunk of handshakeBytes) push(chunk)
+    },
+    rule(handler) {
+      respond = handler
     },
   }
 }

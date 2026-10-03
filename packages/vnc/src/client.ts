@@ -176,7 +176,14 @@ export async function start(transport: Transport, options: Options & { queue?: B
             framebuffer = createFramebuffer(width, height)
           }
           options.onDesktopSize?.(update.size, framebuffer)
-          // Ask again, in case the update carried nothing else.
+          // A resize rect is a reply, so the next request is incremental. This
+          // is not optional: the server answers a non-incremental request with
+          // a fresh state report every time, so leaving `received` false here
+          // makes the client ask non-incrementally forever and the server reply
+          // with the same rect each time. A live Xvnc produced four identical
+          // reports in two seconds before this line existed.
+          if (outstanding > 0) outstanding--
+          received = true
           request()
           scheduleIdleRequest()
           continue
