@@ -591,6 +591,18 @@ export function SessionSidePanel(props: {
                                 </div>
                               )}
                             </Show>
+                            <Show when={reviewTab()}>
+                              <Tabs.Trigger
+                                value={SESSION_BROWSER_TAB}
+                                id={browserTabID}
+                                aria-controls={activeTab() === SESSION_BROWSER_TAB ? browserTabPanelID : undefined}
+                              >
+                                <div class="flex items-center gap-1.5">
+                                  <Icon size="small" name="window-cursor" />
+                                  <span>{language.t("browser.title")}</span>
+                                </div>
+                              </Tabs.Trigger>
+                            </Show>
                             <Show when={reviewTab() && props.canReview()}>
                               <Tabs.Trigger
                                 value="review"
