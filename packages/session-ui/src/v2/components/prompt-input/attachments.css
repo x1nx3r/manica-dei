@@ -1,3 +1,14 @@
+/* Keep the editor selectable when it holds nothing.
+ *
+ * An empty contenteditable collapses in some layouts, so it needs content. The
+ * zero-width space gives it one without showing anything. The escape belongs
+ * here, in CSS, and not in the JSX class list: as a class it read as an octal
+ * escape to the linter, and moving it out is the fix rather than an escape
+ * trick. The selector is the element's own data-component. */
+[data-component="prompt-input"]:empty::before {
+  content: "\200B";
+}
+
 @keyframes prompt-input-v2-attachments-fade-left {
   from {
     visibility: hidden;
