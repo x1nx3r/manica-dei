@@ -1,0 +1,29 @@
+Drive the shared session browser: one Chromium inside the container that the
+human can also see and drive. Anything this tool does appears on the human's
+screen, and anything they do is visible to you through a later snapshot.
+
+Take a snapshot before acting. The snapshot returns the page's accessibility
+tree as text, where every interactive element carries a ref like `@e3`:
+
+  - button "Sign in" [ref=e2]
+  - textbox "Email" [ref=e3]
+
+Use those refs with `click` and `fill`. Refs come from the last snapshot and
+stop being valid when the page navigates, so take a fresh snapshot after a
+navigation or if a ref stops resolving.
+
+Actions:
+- navigate: open a URL. Returns the title and a snapshot.
+- snapshot: the accessibility tree with refs. `full` returns every node rather
+  than the interactive ones. `selector` scopes it to one subtree.
+- click: click an element by ref or CSS selector.
+- fill: clear and type into an element by ref or selector.
+- press: press a key, such as `Enter`, `Tab`, or `Control+a`.
+- scroll: scroll the page up, down, left, or right.
+- back: go back in history, the same as the browser's back button.
+- screenshot: capture the page. Returns the saved file path.
+- evaluate: run JavaScript in the page and return the result as JSON.
+
+All actions target the same browser the human is watching. This tool attaches
+to that browser; it never starts one of its own, and `close` is not an action
+here because nothing this tool does may remove the human's browser.
