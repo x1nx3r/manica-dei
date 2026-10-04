@@ -42,6 +42,16 @@ export const browserConnectHandlers = HttpApiBuilder.group(BrowserConnectApi, "b
     })
 
     return handlers
+      .handle("status", () =>
+        Effect.gen(function* () {
+          // Answered from the process state, so it costs a field read rather
+          // than a CDP round trip. This is what a caller polls.
+          const info = yield* browser(Browser.Service.use((service) => service.get)).pipe(
+            Effect.catch(() => Effect.succeed(undefined)),
+          )
+          return { alive: info !== undefined }
+        }),
+      )
       .handle("url", () =>
         Effect.gen(function* () {
           const endpoint = yield* browser(Browser.Service.use((service) => service.endpoint)).pipe(

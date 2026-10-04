@@ -26,10 +26,14 @@ beforeAll(async () => {
   mock.module("./sdk", () => ({
     useSDK: () => () => ({ url: "http://127.0.0.1:4096", directory: "/tmp" }),
   }))
-  // The URL poll is a liveness signal, so the default answer is a live browser.
-  // A test that wants a dead one overrides this.
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ url: "about:blank" }), { status: 200 })) as unknown as typeof fetch
+  // Answers both browser routes, because the pane reads the page on demand and
+  // asks the cheaper route for liveness. A test that wants a dead browser
+  // overrides this.
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes("/browser/status")) return new Response(JSON.stringify({ alive: true }), { status: 200 })
+    return new Response(JSON.stringify({ url: "about:blank" }), { status: 200 })
+  }) as unknown as typeof fetch
   // A client whose `onClose` the test can fire, and which records how many times
   // it was started.
   await import("./browser")
@@ -40,7 +44,7 @@ function harness() {
   const opens: number[] = []
   let closeCallback: ((error?: Error) => void) | undefined
 
-  mock.module("@opencode-ai/core/browser/relay", () => ({
+  const relay = {
     connect: async () => {
       opens.push(1)
       return {
@@ -49,7 +53,9 @@ function harness() {
         transport: { write: () => {} },
       }
     },
-  }))
+  }
+
+  mock.module("@opencode-ai/core/browser/relay", () => relay)
 
   mock.module("@manica-dei/vnc", () => ({
     start: async (_transport: unknown, options: { onClose?: (error?: Error) => void }) => {
@@ -151,26 +157,59 @@ describe("browser provider reconnect", () => {
     expect(opens.length).toBeGreaterThanOrEqual(1)
   })
 
-  test("the URL poll detects a browser that died without closing the socket", async () => {
+  test("the liveness poll detects a browser that died without closing the socket", async () => {
     // A killed server process does not close its accepted connections — a
     // direct TCP connection to a killed Xvnc stays open past five seconds — so
-    // the RFB socket is not a liveness signal. The poll is. When it reports no
-    // browser, the stream is dead whatever the socket says.
+    // the RFB socket is not a liveness signal. The status route is, and it
+    // answers from the process state rather than reading the page.
+    //
+    // The drop is observed through its effect rather than by catching the
+    // transient "reconnecting" state: a drop always reconnects, and the healthy
+    // relay in `harness` makes that fast enough to race a sleep. Counting opens
+    // is not racy.
     const { opens } = harness()
     const ctx = capturedInit!()
     await ctx.open()
-    expect(ctx.state.status).toBe("open")
+    expect(opens.length).toBe(1)
 
-    // The server now says there is no browser.
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ url: "", error: "no browser" }), { status: 200 })) as unknown as typeof fetch
+    // The server now says the browser is gone.
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/browser/status")) return new Response(JSON.stringify({ alive: false }), { status: 200 })
+      return new Response(JSON.stringify({ url: "about:blank" }), { status: 200 })
+    }) as unknown as typeof fetch
 
-    // The poll runs every second while open.
-    await Bun.sleep(1_400)
-    expect(ctx.state.status).toBe("reconnecting")
-
-    // And a reconnect follows, which relaunches the browser on demand.
-    await Bun.sleep(700)
+    // The poll runs every second, so a reconnect follows within a few.
+    await Bun.sleep(2_000)
     expect(opens.length).toBeGreaterThanOrEqual(2)
+  }, 15_000)
+
+  test("the URL is read when the stream opens, and not on a timer", async () => {
+    // Reading the page costs a CDP round trip, so it happens when the pane opens
+    // and after a reconnect, not every second. This asserts the count, because a
+    // reintroduced timer would show up here as growth.
+    const { opens } = harness()
+    const requests: string[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      requests.push(url)
+      if (url.includes("/browser/url")) return new Response(JSON.stringify({ url: "about:blank" }), { status: 200 })
+      if (url.includes("/browser/status")) return new Response(JSON.stringify({ alive: true }), { status: 200 })
+      return new Response("{}", { status: 200 })
+    }) as unknown as typeof fetch
+
+    const ctx = capturedInit!()
+    await ctx.open()
+    await Bun.sleep(100)
+    const urlReadsAtOpen = requests.filter((u) => u.includes("/browser/url")).length
+    expect(urlReadsAtOpen).toBe(1)
+
+    // Three seconds of liveness polling must not add page reads.
+    await Bun.sleep(3_200)
+    const urlReadsLater = requests.filter((u) => u.includes("/browser/url")).length
+    expect(urlReadsLater).toBe(1)
+    // And the liveness poll did run, so this is not passing by doing nothing.
+    expect(requests.filter((u) => u.includes("/browser/status")).length).toBeGreaterThan(1)
+    expect(opens.length).toBe(1)
   }, 15_000)
 })

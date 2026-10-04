@@ -231,10 +231,16 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
         // fresh rather than inheriting a spent one.
         attempt = 0
         setStore({ status: "open" })
+        // The URL is read once here and once more after a reconnect. Reading it
+        // costs a CDP round trip, so it is not read on a timer: the value changes
+        // when the agent navigates, and a pane that is open is not the thing that
+        // needs to know within the second. The poll below asks a question that
+        // costs nothing instead.
         void refreshUrl()
-        // The agent drives navigation over CDP, so there is no event to listen
-        // for here. A poll is cheaper than a channel for one consumer.
-        poll = setInterval(() => void refreshUrl(), 1000)
+        // Liveness, and only liveness. A killed Chromium does not close its RFB
+        // socket, so the socket cannot say the browser is gone; the process
+        // state can, and this asks for that rather than reading the page.
+        poll = setInterval(() => void checkAlive(), 1000)
       } catch (error) {
         console.debug("[browser] failed", error instanceof Error ? error.message : String(error))
         if (current !== generation) return
@@ -300,24 +306,37 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
         // connection is still fine, so this is separate from `status`.
         const next = typeof body.error === "string" ? body.error : undefined
         if (next !== store.urlError) setStore("urlError", next)
+      } catch (error) {
+        setStore("urlError", error instanceof Error ? error.message : String(error))
+      }
+    }
 
-        // "no browser" is not a page that failed to read: it is the server
-        // saying there is no live browser at all. The RFB socket may still be
-        // open, because a killed server process does not close its accepted
-        // connections — verified: a direct TCP connection to a killed Xvnc
-        // stays open past five seconds. So the socket is not a liveness signal
-        // and this poll is. When the browser is gone the stream is dead
-        // whatever the socket says, so treat it as a drop and let the retry
-        // bring it back.
-        if (next === "no browser" && store.status === "open") {
+    /**
+     * Ask whether the browser is still alive.
+     *
+     * This is the liveness signal, and it is deliberately not the URL read. A
+     * killed Chromium does not close its RFB socket — verified: a direct TCP
+     * connection to a killed Xvnc stayed open past five seconds with no FIN — so
+     * the socket cannot report the death. The process state can, and this route
+     * answers from it without touching Chromium, which is the difference between
+     * a field read and a CDP round trip every second.
+     */
+    const checkAlive = async () => {
+      if (store.status !== "open") return
+      try {
+        const response = await fetch(`${baseUrl()}/browser/status`, {
+          headers: { "x-opencode-directory": directory() },
+        })
+        if (!response.ok) return
+        const body = (await response.json()) as { alive?: boolean }
+        if (body.alive === false && store.status === "open") {
           console.debug("[browser] the server reports no browser; treating the stream as dropped")
           dropStream("the browser is gone")
         }
-      } catch (error) {
+      } catch {
         // A transport failure is not a browser death: the server may be busy or
-        // restarting, and tearing down a healthy stream on one bad poll would
+        // restarting, and tearing down a healthy stream on one bad request would
         // be worse than waiting for the next one.
-        setStore("urlError", error instanceof Error ? error.message : String(error))
       }
     }
 
