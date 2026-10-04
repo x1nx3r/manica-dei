@@ -37,7 +37,10 @@ describe.skipIf(skip)(reason ? `${reason} (browser lifecycle)` : "browser lifecy
       expect(framebuffer.width).toBe(1280)
       expect(framebuffer.height).toBe(720)
       expect(framebuffer.total).toBeGreaterThan(0)
-      // about:blank renders a light page, and must not be one flat colour.
+      // The launch page is the container warning: a dark background with light
+      // text. Asserting the dark field, not just "some light pixels", is what
+      // separates the committed page from Chromium's blank white first paint.
+      expect(framebuffer.dark).toBeGreaterThan(framebuffer.total / 2)
       expect(framebuffer.light).toBeGreaterThan(0)
       expect(framebuffer.distinctColors).toBeGreaterThan(1)
 
@@ -69,14 +72,17 @@ function readRfbBanner(port: number): Promise<string> {
   })
 }
 
-// The RFB port answers as soon as Xvnc starts, before Chromium has painted.
-// Poll until the page is on the screen, or report the last look.
+// The RFB port answers as soon as Xvnc starts, before Chromium has painted. The
+// first paint is Chromium's blank white screen, which also appears *before* the
+// launch page commits, so "some light pixels" would pass on the flash and prove
+// nothing. The launch page is the container warning: a dark background with a
+// little light text. Wait for that, or report the last look.
 async function waitForPaint(port: number, timeoutMs = 15_000): Promise<Framebuffer> {
   const deadline = Date.now() + timeoutMs
   let last: Framebuffer | undefined
   while (Date.now() < deadline) {
     last = await readFramebuffer(port)
-    if (last.light > 0 && last.distinctColors > 1) return last
+    if (last.dark > last.total / 2 && last.light > 0 && last.distinctColors > 1) return last
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   if (!last) throw new Error("never read a framebuffer")

@@ -19,6 +19,9 @@ export type Framebuffer = {
   // Pixels with every channel above 200, which a rendered page has and a blank
   // display does not.
   light: number
+  // Pixels with every channel below 24, which the dark launch page has and the
+  // blank white display does not.
+  dark: number
   // Approximate, capped so a photographic page does not allocate a huge set.
   distinctColors: number
 }
@@ -138,6 +141,7 @@ export async function readFramebuffer(port: number, opts: { maxColors?: number }
     // blank screen that is not blank.
     let total = 0
     let light = 0
+    let dark = 0
     const colors = new Set<number>()
 
     for (;;) {
@@ -169,11 +173,12 @@ export async function readFramebuffer(port: number, opts: { maxColors?: number }
           const b = payload[o]!
           total++
           if (r > 200 && g > 200 && b > 200) light++
+          if (r < 24 && g < 24 && b < 24) dark++
           if (colors.size < maxColors) colors.add((r << 16) | (g << 8) | b)
         }
       }
       // A whole update is in hand. Enough to judge the screen.
-      return { width, height, total, light, distinctColors: colors.size }
+      return { width, height, total, light, dark, distinctColors: colors.size }
     }
   } finally {
     socket.destroy()

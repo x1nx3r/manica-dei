@@ -6,6 +6,7 @@ import net from "node:net"
 import { makeLocationNode } from "../effect/app-node"
 import * as Cdp from "./cdp"
 import { readEndpoint, type Endpoint } from "./endpoint"
+import { warningPageUrl } from "./start-page"
 import { watchWindow } from "./window-follow"
 
 // ADR-0003: one Chromium per session, headful on Xvnc. The agent drives it
@@ -171,7 +172,10 @@ const layer = Layer.effect(
           // for why this replaced --remote-debugging-pipe.
           "--remote-debugging-port=0",
           `--user-data-dir=${profile}`,
-          "about:blank",
+          // The browser opens on the container warning rather than a blank tab.
+          // It is the first thing the human sees, which is when the warning is
+          // worth anything, and the agent navigates away as soon as it acts.
+          warningPageUrl(),
         ],
         { stdio: ["ignore", "ignore", "ignore"], env: { ...process.env, DISPLAY: `:${n}` } },
       )

@@ -79,16 +79,39 @@ describe.skipIf(skip)("browser relay integration", () => {
         expect(client.framebuffer.data.length).toBe(1280 * 720 * 4)
 
         // Wait for a frame, which means a real Chromium painted and the relay
-        // carried it through.
+        // carried it through. A frame alone is not enough: Chromium's first
+        // paint is a blank white screen, and the launch page commits after it.
+        // Wait for the dark container warning, or the sample would be the flash.
+        const isDarkWarning = () => {
+          const data = client.framebuffer.data
+          let dark = 0
+          let light = 0
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i]!
+            const g = data[i + 1]!
+            const b = data[i + 2]!
+            if (r < 24 && g < 24 && b < 24) dark++
+            if (r > 200 && g > 200 && b > 200) light++
+          }
+          return { dark, light, total: data.length / 4 }
+        }
+        let shot = { dark: 0, light: 0, total: 0 }
         yield* Effect.promise(async () => {
           const deadline = Date.now() + 15_000
-          while (frames.length === 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100))
+          while (Date.now() < deadline) {
+            if (frames.length > 0) {
+              shot = isDarkWarning()
+              // The launch page is dark-dominant; the blank first paint is not.
+              if (shot.dark > shot.total / 2) break
+            }
+            await new Promise((r) => setTimeout(r, 100))
+          }
         })
         expect(frames.length).toBeGreaterThan(0)
 
-        // about:blank renders light, so the framebuffer must hold light pixels
-        // and more than one colour. This is the assertion a banner check cannot
-        // make, and it is the whole point of the test.
+        // The warning page is dark with a little light text, so the framebuffer
+        // must be mostly dark and hold more than one colour. This is the
+        // assertion a banner check cannot make, and it is the whole point.
         const data = client.framebuffer.data
         let light = 0
         const colours = new Set<number>()
@@ -100,7 +123,8 @@ describe.skipIf(skip)("browser relay integration", () => {
           if (colours.size < 64) colours.add((r << 16) | (g << 8) | b)
         }
         // Print the measurement, so a pass is evidence rather than a green dot.
-        console.log(`[relay] frames=${frames.length} light=${light} colours=${colours.size}`)
+        console.log(`[relay] frames=${frames.length} dark=${shot.dark} light=${light} colours=${colours.size}`)
+        expect(shot.dark).toBeGreaterThan(shot.total * 0.5)
         expect(light).toBeGreaterThan(0)
         expect(colours.size).toBeGreaterThan(1)
 
