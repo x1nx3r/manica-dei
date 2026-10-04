@@ -1,57 +1,77 @@
 import { describe, expect, test } from "bun:test"
-import { buildArgs, buildCommand, commandFor, renderResult } from "../../src/tool/browser"
+import { ACTIONS, buildArgs, buildCommand, commandFor, renderResult } from "../../src/tool/browser"
 
 // ADR-0005: the browser tool is a named surface over `agent-browser`. The part
 // we own is the mapping from model intent to a command line, and the parse of
 // the JSON envelope back. Both are pure, so they are tested here directly; the
 // attach path is tested against a real binary and Chromium in a guarded run.
 
-describe("browser tool command mapping", () => {
-  test("each action maps to the agent-browser command", () => {
-    // Our names, not theirs. `navigate` is `open`, `evaluate` is `eval`, and the
-    // rest happen to agree.
-    expect(commandFor("navigate")).toBe("open")
-    expect(commandFor("evaluate")).toBe("eval")
-    expect(commandFor("snapshot")).toBe("snapshot")
-    expect(commandFor("click")).toBe("click")
-    expect(commandFor("fill")).toBe("fill")
-    expect(commandFor("press")).toBe("press")
-    expect(commandFor("scroll")).toBe("scroll")
-    expect(commandFor("back")).toBe("back")
-    expect(commandFor("screenshot")).toBe("screenshot")
+const call = (params: Parameters<typeof buildArgs>[0]) => buildArgs(params).join(" ")
+
+describe("browser tool action mapping", () => {
+  test("navigating", () => {
+    expect(call({ action: "navigate", url: "https://example.com" })).toBe("open https://example.com")
+    expect(call({ action: "back" })).toBe("back")
+    expect(call({ action: "forward" })).toBe("forward")
+    expect(call({ action: "reload" })).toBe("reload")
+    expect(call({ action: "pushstate", url: "/dash" })).toBe("pushstate /dash")
   })
 
-  test("navigate carries the url", () => {
-    expect(buildArgs({ action: "navigate", url: "https://example.com" })).toEqual(["open", "https://example.com"])
+  test("reading the page", () => {
+    expect(call({ action: "snapshot" })).toBe("snapshot -i")
+    expect(call({ action: "snapshot", full: true })).toBe("snapshot")
+    expect(call({ action: "snapshot", selector: "main" })).toBe("snapshot -i --selector main")
+    expect(call({ action: "get", what: "text", target: "@e1" })).toBe("get text @e1")
+    expect(call({ action: "get", what: "url" })).toBe("get url")
+    expect(call({ action: "is", what: "visible", target: "@e1" })).toBe("is visible @e1")
+    expect(call({ action: "find", locator: "role", text: "button", what: "click" })).toBe("find role button click")
+    expect(call({ action: "console" })).toBe("console")
+    expect(call({ action: "errors" })).toBe("errors")
+    expect(call({ action: "network" })).toBe("network requests")
+    expect(call({ action: "read", url: "https://example.com" })).toBe("read https://example.com")
   })
 
-  test("click carries the ref", () => {
-    expect(buildArgs({ action: "click", target: "@e3" })).toEqual(["click", "@e3"])
+  test("acting on an element", () => {
+    expect(call({ action: "click", target: "@e2" })).toBe("click @e2")
+    expect(call({ action: "dblclick", target: "@e2" })).toBe("dblclick @e2")
+    expect(call({ action: "hover", target: "@e2" })).toBe("hover @e2")
+    expect(call({ action: "focus", target: "@e2" })).toBe("focus @e2")
+    expect(call({ action: "check", target: "@e3" })).toBe("check @e3")
+    expect(call({ action: "uncheck", target: "@e3" })).toBe("uncheck @e3")
+    expect(call({ action: "select", target: "@e4", text: "Option A" })).toBe("select @e4 Option A")
+    expect(call({ action: "fill", target: "@e5", text: "hello world" })).toBe("fill @e5 hello world")
+    expect(call({ action: "type", target: "@e5", text: "more" })).toBe("type @e5 more")
+    expect(call({ action: "press", text: "Enter" })).toBe("press Enter")
+    expect(call({ action: "keyboard", text: "hello" })).toBe("keyboard type hello")
+    expect(call({ action: "scroll" })).toBe("scroll down")
+    expect(call({ action: "scroll", text: "up" })).toBe("scroll up")
+    expect(call({ action: "scrollintoview", target: "@e6" })).toBe("scrollintoview @e6")
+    expect(call({ action: "drag", target: "@e7", into: "@e8" })).toBe("drag @e7 @e8")
   })
 
-  test("fill carries the ref and the text as separate arguments", () => {
-    // The text must not be joined onto the ref: agent-browser takes them as two
-    // arguments, and a space in the text would otherwise become part of the ref.
-    expect(buildArgs({ action: "fill", target: "@e4", text: "hello world" })).toEqual(["fill", "@e4", "hello world"])
+  test("upload takes several files, download takes a path", () => {
+    expect(call({ action: "upload", target: "@e1", text: "/a.txt,/b.txt" })).toBe("upload @e1 /a.txt /b.txt")
+    expect(call({ action: "download", target: "@e2", text: "/tmp/out.bin" })).toBe("download @e2 /tmp/out.bin")
   })
 
-  test("snapshot defaults to interactive, and `full` asks for everything", () => {
-    expect(buildArgs({ action: "snapshot" })).toEqual(["snapshot", "-i"])
-    expect(buildArgs({ action: "snapshot", full: true })).toEqual(["snapshot"])
+  test("waiting", () => {
+    // The command auto-detects: a number is a timeout, anything else a selector.
+    expect(call({ action: "wait", target: ".loaded" })).toBe("wait .loaded")
+    expect(call({ action: "waitms", text: "500" })).toBe("wait 500")
   })
 
-  test("snapshot can be scoped to a selector", () => {
-    expect(buildArgs({ action: "snapshot", selector: "main" })).toEqual(["snapshot", "-i", "--selector", "main"])
+  test("tabs, and no way to close one", () => {
+    expect(call({ action: "tabnew", url: "https://example.com" })).toBe("tab new https://example.com")
+    expect(call({ action: "tablist" })).toBe("tab list")
+    expect(call({ action: "tabselect", target: "2" })).toBe("tab select 2")
   })
 
-  test("scroll defaults to down", () => {
-    expect(buildArgs({ action: "scroll" })).toEqual(["scroll", "down"])
-    expect(buildArgs({ action: "scroll", text: "up" })).toEqual(["scroll", "up"])
-  })
-
-  test("press and evaluate carry their argument", () => {
-    expect(buildArgs({ action: "press", text: "Enter" })).toEqual(["press", "Enter"])
-    expect(buildArgs({ action: "evaluate", script: "document.title" })).toEqual(["eval", "document.title"])
+  test("capturing and JavaScript", () => {
+    expect(call({ action: "screenshot" })).toBe("screenshot")
+    expect(call({ action: "screenshot", full: true })).toBe("screenshot --full")
+    expect(call({ action: "pdf", text: "/tmp/page.pdf" })).toBe("pdf /tmp/page.pdf")
+    expect(call({ action: "highlight", target: "@e1" })).toBe("highlight @e1")
+    expect(call({ action: "evaluate", script: "document.title" })).toBe("eval document.title")
   })
 
   test("an action missing its required argument is refused before any subprocess", () => {
@@ -62,11 +82,50 @@ describe("browser tool command mapping", () => {
     expect(() => buildArgs({ action: "fill", target: "@e1" })).toThrow(/text/)
     expect(() => buildArgs({ action: "press" })).toThrow(/key/)
     expect(() => buildArgs({ action: "evaluate" })).toThrow(/script/)
+    expect(() => buildArgs({ action: "get" })).toThrow(/what/)
+    expect(() => buildArgs({ action: "is", what: "visible" })).toThrow(/target/)
+    expect(() => buildArgs({ action: "select", target: "@e1" })).toThrow(/value/)
+    expect(() => buildArgs({ action: "drag", target: "@e1" })).toThrow(/destination/)
+  })
+})
+
+describe("browser tool never exposes the excluded surface", () => {
+  // ADR-0005: nothing the agent can reach may remove the browser, the human's
+  // tab, or their session state. These are refused by construction -- the action
+  // does not exist -- and this test is what keeps it that way.
+  const forbidden = ["close", "connect", "cookies", "storage", "auth", "clipboard", "route", "set"]
+
+  test("the excluded commands are not actions", () => {
+    for (const name of forbidden) {
+      expect(ACTIONS as readonly string[]).not.toContain(name)
+      // Neither bare nor as a nested sub-command.
+      expect(ACTIONS as readonly string[]).not.toContain(`tab${name}`)
+      expect(ACTIONS as readonly string[]).not.toContain(`network${name}`)
+    }
   })
 
-  test("actions with no arguments build nothing extra", () => {
-    expect(buildArgs({ action: "back" })).toEqual(["back"])
-    expect(buildArgs({ action: "screenshot" })).toEqual(["screenshot"])
+  test("no action's command line can name an excluded command", () => {
+    // Walk every action with a permissive argument set and assert the resulting
+    // argv never starts with a command that could reach the browser or the
+    // human's state.
+    const argvFor = (action: string) =>
+      buildArgs({
+        action: action as never,
+        url: "/",
+        target: "x",
+        text: "x",
+        what: "text",
+        selector: "x",
+        locator: "role",
+        into: "y",
+        script: "1",
+      })
+    for (const action of ACTIONS) {
+      const argv = argvFor(action)
+      expect(forbidden).not.toContain(argv[0])
+      // `tab close` would be two words; neither may appear adjacent.
+      expect(argv.slice(0, 2).join(" ")).not.toBe("tab close")
+    }
   })
 })
 
@@ -89,16 +148,6 @@ describe("browser tool attach flags", () => {
     expect(argv).not.toContain("--auto-connect")
     expect(argv).not.toContain("--headed")
   })
-
-  test("the action arguments follow the attach flags", () => {
-    expect(buildCommand(41000, { action: "click", target: "@e2" })).toEqual([
-      "--cdp",
-      "41000",
-      "--json",
-      "click",
-      "@e2",
-    ])
-  })
 })
 
 describe("browser tool result rendering", () => {
@@ -107,13 +156,13 @@ describe("browser tool result rendering", () => {
       success: true,
       data: { snapshot: '- button "Sign in" [ref=e2]\n- textbox "Email" [ref=e3]' },
     }
-    expect(renderResult("snapshot", envelope)).toBe('- button "Sign in" [ref=e2]\n- textbox "Email" [ref=e3]')
+    expect(renderResult(["snapshot"], envelope)).toBe('- button "Sign in" [ref=e2]\n- textbox "Email" [ref=e3]')
   })
 
   test("other results unwrap `data` rather than echoing the envelope", () => {
     // The model should not pay context for the `{success, data}` wrapper.
     const envelope = { success: true, data: { url: "https://example.com", title: "Example" } }
-    expect(JSON.parse(renderResult("open", envelope))).toEqual({
+    expect(JSON.parse(renderResult(["open"], envelope))).toEqual({
       url: "https://example.com",
       title: "Example",
     })
@@ -122,14 +171,22 @@ describe("browser tool result rendering", () => {
   test("a failure is raised with the tool's own message", () => {
     // A failing command must not look like a successful empty result.
     const envelope = { success: false, error: "No element found for ref @e9" }
-    expect(() => renderResult("click", envelope)).toThrow("No element found for ref @e9")
+    expect(() => renderResult(["click"], envelope)).toThrow("No element found for ref @e9")
   })
 
   test("a string payload is returned as-is", () => {
-    expect(renderResult("eval", { success: true, data: "Example Domain" })).toBe("Example Domain")
+    expect(renderResult(["eval"], { success: true, data: "Example Domain" })).toBe("Example Domain")
   })
 
   test("a non-object envelope is stringified rather than dropped", () => {
-    expect(renderResult("open", "plain")).toBe("plain")
+    expect(renderResult(["open"], "plain")).toBe("plain")
+  })
+})
+
+describe("browser tool command list", () => {
+  test("every action maps to a non-empty command", () => {
+    for (const action of ACTIONS) {
+      expect(commandFor(action).length).toBeGreaterThan(0)
+    }
   })
 })
