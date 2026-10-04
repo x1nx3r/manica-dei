@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, mock, test } from "bun:test"
+import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 
 // The provider's reconnect behaviour, with the client and the relay replaced.
 //
@@ -26,17 +26,28 @@ beforeAll(async () => {
   mock.module("./sdk", () => ({
     useSDK: () => () => ({ url: "http://127.0.0.1:4096", directory: "/tmp" }),
   }))
-  // Answers both browser routes, because the pane reads the page on demand and
-  // asks the cheaper route for liveness. A test that wants a dead browser
-  // overrides this.
+  // A client whose `onClose` the test can fire, and which records how many times
+  // it was started.
+  await import("./browser")
+})
+
+/**
+ * The default answers for the two browser routes: a live browser showing a page.
+ *
+ * A test that wants a dead browser or no page overrides `fetch`. It is restored
+ * before every test, because `fetch` is global and a stub left behind would make
+ * an unrelated test fail intermittently.
+ */
+function healthyFetch() {
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url.includes("/browser/status")) return new Response(JSON.stringify({ alive: true }), { status: 200 })
     return new Response(JSON.stringify({ url: "about:blank" }), { status: 200 })
   }) as unknown as typeof fetch
-  // A client whose `onClose` the test can fire, and which records how many times
-  // it was started.
-  await import("./browser")
+}
+
+beforeEach(() => {
+  healthyFetch()
 })
 
 /** A fake client and relay, and the counters the test asserts on. */

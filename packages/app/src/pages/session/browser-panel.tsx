@@ -273,19 +273,20 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
           </TooltipV2>
 
           {/*
-            Continuously visible, and never editable. This is the ADR's
-            mitigation: the human can always tell which page is on screen.
+            The page URL is not shown here. Chromium runs fully chromed, so its
+            own address bar is already in the pane's pixels, and a second one
+            beside it said nothing new.
+
+            The read is kept, and `browser.state.url` still holds it, because
+            the ADR makes a trustworthy statement of the page's address the
+            mitigation for an agent rendering a convincing login page inside our
+            own interface. Our own chrome cannot be spoofed by the page, unlike
+            the in-page bar. Nothing renders it today; if the in-page bar is ever
+            judged too weak to trust, this is where it goes back.
           */}
-          <div
-            class="flex-1 min-w-0 truncate px-2 py-0.5 rounded-md bg-surface-base text-12-regular text-text-weak"
-            title={browser.state.url}
-            aria-label={language.t("browser.currentUrl")}
-          >
-            {browser.state.url ||
-              (browser.state.urlError
-                ? language.t("browser.urlFailed", { reason: browser.state.urlError })
-                : language.t("browser.noUrl"))}
-          </div>
+
+          {/* Holds the status and close to the right now that the URL is gone. */}
+          <div class="flex-1 min-w-0" />
 
           <span class="shrink-0 px-2 py-0.5 rounded-full bg-surface-base text-11-medium text-text-weak">
             {status() === "open"
