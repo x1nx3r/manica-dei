@@ -311,7 +311,21 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
           </TooltipV2>
         </div>
 
-        <div ref={container} class="relative flex-1 min-h-0 bg-black">
+        <div
+          ref={container}
+          class="relative flex-1 min-h-0 bg-black"
+          data-prevent-autofocus
+          // A click anywhere in the pane gives the canvas focus, not only a
+          // click on the picture. The letterbox bars are part of the pane, and
+          // clicking them should start typing into the page rather than leave
+          // the keyboard wherever it was. The attribute above is what stops the
+          // session's document handler from stealing the first keystroke back to
+          // the composer; the terminal uses the same pair.
+          onMouseDown={(event) => {
+            if (event.target === canvas) return
+            canvas?.focus()
+          }}
+        >
           <Show
             when={status() === "open"}
             fallback={
