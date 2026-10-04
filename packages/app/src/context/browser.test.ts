@@ -75,6 +75,24 @@ function harness() {
 }
 
 describe("browser provider reconnect", () => {
+  test("two reports of one failure spend one attempt", async () => {
+    // The socket's close callback and the URL poll can both fire for a single
+    // failure. Without a guard the second spends another attempt, so one
+    // flapping event could exhaust the budget.
+    const { drop } = harness()
+    const ctx = capturedInit!()
+    await ctx.open()
+    drop(new Error("the relay closed"))
+    expect(ctx.state.attempt).toBe(1)
+    // A second report for the same dead stream must not advance the count.
+    drop(new Error("the relay closed"))
+    drop(new Error("the relay closed"))
+    expect(ctx.state.attempt).toBe(1)
+    expect(ctx.state.status).toBe("reconnecting")
+    // Let the scheduled retry settle so it does not leak into another test.
+    await Bun.sleep(500)
+  })
+
   test("a dropped stream becomes reconnecting, then open again", async () => {
     const { opens, drop } = harness()
     const ctx = capturedInit!()

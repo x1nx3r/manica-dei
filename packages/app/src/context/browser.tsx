@@ -63,6 +63,9 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
     let client: Client | undefined
     let socket: WebSocket | undefined
     let generation = 0
+    // The generation the live stream was opened under, or -1 when there is
+    // none. `dropStream` uses it to ignore a second report of the same failure.
+    let openGeneration = -1
     let latest: Framebuffer | undefined
     let poll: ReturnType<typeof setInterval> | undefined
     const listeners = new Set<(framebuffer: Framebuffer) => void>()
@@ -88,6 +91,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
     const stop = () => {
       deliberate = true
       attempt = 0
+      openGeneration = -1
       stopRetrying()
       generation++
       stopPolling()
@@ -134,8 +138,20 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
      * retry decision is made once. A drop is retried, because it is usually the
      * container restarting; when the attempts run out the state becomes
      * "failed", which is terminal and carries the reason.
+     *
+     * It is called from two places that can both fire for one failure: the
+     * socket's close callback and the poll. Without a guard the second call
+     * spends another attempt on the same drop, so a single flapping event could
+     * exhaust the budget. The stream is identified by the generation it was
+     * opened under, and a drop for a stream that is already gone is ignored.
      */
     const dropStream = (reason: string) => {
+      // A stream that is already gone is ignored. The socket's close callback
+      // and the poll can both fire for one failure, and without this the second
+      // call spends another attempt on the same drop, so one flapping event
+      // could exhaust the budget.
+      if (openGeneration === -1) return
+      openGeneration = -1
       stopPolling()
       stopRetrying()
       client?.close()
@@ -152,6 +168,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       if (store.status === "connecting" || store.status === "open" || store.status === "reconnecting") return
       deliberate = false
       const current = ++generation
+      openGeneration = current
       setStore({ status: "connecting", error: undefined, urlError: undefined })
 
       try {
@@ -190,7 +207,6 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
           },
           onClose: (error) => {
             console.debug("[browser] closed", error?.message ?? "(clean)")
-            if (current !== generation) return
             dropStream(error?.message ?? "the connection closed")
           },
           onCursor: (cursor) => {

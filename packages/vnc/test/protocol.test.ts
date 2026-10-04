@@ -414,6 +414,76 @@ describe("readMessage", () => {
     expect(update.cursor?.width).toBe(0)
   })
 
+  test("decodes an X cursor and keeps the stream aligned", async () => {
+    // We request the rich cursor, so a server should send that, but the spec
+    // says to cope with either and a reader that does not know -240 would
+    // desynchronise. The payload is two colours, then a bitmap, then a mask.
+    const queue = new ByteQueue()
+    queue.push(
+      bytes(
+        0,
+        0,
+        0,
+        2, // update, padding, two rectangles
+        // X cursor: hotspot (1,0), size 2x1, encoding -240
+        0,
+        1,
+        0,
+        0,
+        0,
+        2,
+        0,
+        1,
+        0xff,
+        0xff,
+        0xff,
+        0x10,
+        // primary rgb (red), secondary rgb (blue)
+        255,
+        0,
+        0,
+        0,
+        0,
+        255,
+        // bitmap 2x1: left pixel primary, right pixel secondary = 0b10000000
+        0x80,
+        // mask 2x1: both valid = 0b11000000
+        0xc0,
+        // the real rect, a 2x1 raw at 0,0
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        // two PIXELs: green, then red
+        0,
+        255,
+        0,
+        0,
+        0,
+        0,
+        255,
+        0,
+      ),
+    )
+    const framebuffer = target()
+    const update = await readMessage(queue, framebuffer, zrle())
+    if (update.kind !== "rects") throw new Error("expected a framebuffer update")
+    expect(update.cursor?.hotspotX).toBe(1)
+    // Left pixel uses the primary colour, right the secondary.
+    expect(Array.from(update.cursor!.pixels.slice(0, 4))).toEqual([255, 0, 0, 255])
+    expect(Array.from(update.cursor!.pixels.slice(4, 8))).toEqual([0, 0, 255, 255])
+    // And the real rect was still reached.
+    expect(Array.from(framebuffer.data.slice(0, 4))).toEqual([0, 255, 0, 255])
+  })
+
   test("reports a bell without touching the framebuffer", async () => {
     const queue = new ByteQueue()
     queue.push(bytes(2))
