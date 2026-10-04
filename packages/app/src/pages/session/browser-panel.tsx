@@ -47,12 +47,10 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
     const frame = frameSize()
     if (!frame || box.width === 0 || box.height === 0) return { width: "0px", height: "0px" }
     const scale = Math.min(box.width / frame.width, box.height / frame.height)
-    const result = {
+    return {
       width: `${Math.max(1, Math.floor(frame.width * scale))}px`,
       height: `${Math.max(1, Math.floor(frame.height * scale))}px`,
     }
-    console.debug("[browser] fit", result, "scale", scale, "box", { ...box }, "frame", frame)
-    return result
   })
 
   /**
@@ -151,13 +149,11 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
     const area = { width: box.width, height: box.height }
     const frame = frameSize()
     const open = browser.state.status === "open"
-    console.debug("[browser] resize effect", { open, frame, area })
     if (!open || !frame || area.width === 0 || area.height === 0) return
     const timer = setTimeout(() => {
       const current = frameSize()
       if (!current) return
       const next = target(current, area)
-      console.debug("[browser] resize target", next, "frame", current, "container", area, "dpr", window.devicePixelRatio)
       if (next) browser.resize(next.width, next.height)
     }, 400)
     // Solid runs this before the next run and on disposal, so a changed input
