@@ -40,8 +40,14 @@ here, never upstream.
   required work, not optional (Sentry, the `app.opencode.ai` UI-proxy
   fallback, upgrade checks, stats/share, console/identity wiring — see
   `PLAN.md` F0). The product must not call anomalyco infrastructure.
-- **MIT license**: keep `LICENSE` and the upstream copyright notice; our
-  additions carry the same license.
+- **License**: our own code is MIT — keep `LICENSE` and the upstream copyright
+  notice; our additions carry the same license. We may also take in third-party
+  code under any **permissive** license, and under **MPL-2.0** (weak,
+  file-level copyleft). Apache-2.0 is permissive, not copyleft: keep its
+  `LICENSE`/`NOTICE` and state what we changed. If we modify an MPL-2.0 file,
+  that file stays MPL-2.0; files we write are ours. No license here is viral
+  across our tree. The one exclusion is **ELv2** (`ref/computer`, cptr): never
+  ship it, never vendor it.
 - **Engineering rules for code work** live in
   `docs/UPSTREAM-AGENTS.md` (the relocated upstream guide) and the
   per-package `AGENTS.md` files. They still apply — follow them.
