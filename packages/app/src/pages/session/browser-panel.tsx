@@ -47,10 +47,12 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
     const frame = frameSize()
     if (!frame || box.width === 0 || box.height === 0) return { width: "0px", height: "0px" }
     const scale = Math.min(box.width / frame.width, box.height / frame.height)
-    return {
+    const result = {
       width: `${Math.max(1, Math.floor(frame.width * scale))}px`,
       height: `${Math.max(1, Math.floor(frame.height * scale))}px`,
     }
+    console.debug("[browser] fit", result, "scale", scale, "box", { ...box }, "frame", frame)
+    return result
   })
 
   /**
@@ -100,33 +102,68 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
   let pending: Framebuffer | undefined
 
   /**
-   * The framebuffer size that would fill the container, or undefined when the
+   * The framebuffer size that fills the container, or undefined when the
    * current one is close enough.
    *
-   * The remote is resized to the pane's *aspect ratio*, not its pixel size: the
-   * agent shares this display and may be reading it, so the pixel budget stays
-   * near what it already is and only the shape changes. A change smaller than
-   * half a percent of either dimension is ignored, because a dragged panel
-   * passes through many near-identical shapes and each resize costs the agent a
+   * The remote is set to the pane's own pixel box, not merely its aspect ratio.
+   * A framebuffer pixel then lands on a screen pixel, so the picture is sharp
+   * and nothing is cropped. Keeping the pixel count and changing only the shape
+   * was the earlier behaviour and it was wrong for this: the pane is the thing
+   * being fitted, so shrinking the remote to preserve an arbitrary budget made
+   * the page smaller than the space it had to fill.
+   *
+   * `devicePixelRatio` is applied so the result is sharp on a HiDPI screen
+   * rather than being upscaled by the browser.
+   *
+   * A change under two percent of either dimension is ignored: a dragged panel
+   * passes through many near-identical sizes, and each resize costs the agent a
    * full repaint.
    */
   const target = (frame: { width: number; height: number }, area: { width: number; height: number }) => {
     if (area.width === 0 || area.height === 0) return undefined
-    const wanted = area.width / area.height
-    const current = frame.width / frame.height
-    if (Math.abs(wanted - current) / current < 0.005) return undefined
-    // Keep the pixel count, so the shape changes without the cost of the
-    // picture changing with it.
-    const pixels = frame.width * frame.height
-    let width = Math.round(Math.sqrt(pixels * wanted))
-    let height = Math.round(width / wanted)
-    // The server accepts 32..32768; stay inside it and keep 16-bit sanity.
-    width = Math.max(32, Math.min(32768, width))
-    height = Math.max(32, Math.min(32768, height))
+    const ratio = typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1
+    // The server accepts 32..32768.
+    const clamp = (value: number) => Math.max(32, Math.min(32768, Math.round(value)))
+    const width = clamp(area.width * ratio)
+    const height = clamp(area.height * ratio)
+    // Nothing to do when the remote is already the size the pane wants. This is
+    // also the loop guard: asking for the size a server already has can bounce.
+    const widthChange = Math.abs(width - frame.width) / frame.width
+    const heightChange = Math.abs(height - frame.height) / frame.height
+    if (widthChange < 0.02 && heightChange < 0.02) return undefined
     return { width, height }
   }
 
-  let resizeTimer: ReturnType<typeof setTimeout> | undefined
+  // Fill the container by reshaping the remote.
+  //
+  // This is an effect rather than a callback inside the resize observer,
+  // because the decision needs three things that arrive at different times: the
+  // container size, the frame size, and an open connection. The observer alone
+  // is not enough — it fires before the first frame exists, so `frameSize()` is
+  // undefined, the resize is skipped, and it never runs again because the
+  // container has not changed since. The effect re-runs when any input appears,
+  // so the first frame is what actually triggers the first resize.
+  //
+  // The timer debounces: a drag fires the observer many times a second and each
+  // resize marks the whole framebuffer changed, which costs the agent a full
+  // repaint.
+  createEffect(() => {
+    const area = { width: box.width, height: box.height }
+    const frame = frameSize()
+    const open = browser.state.status === "open"
+    console.debug("[browser] resize effect", { open, frame, area })
+    if (!open || !frame || area.width === 0 || area.height === 0) return
+    const timer = setTimeout(() => {
+      const current = frameSize()
+      if (!current) return
+      const next = target(current, area)
+      console.debug("[browser] resize target", next, "frame", current, "container", area, "dpr", window.devicePixelRatio)
+      if (next) browser.resize(next.width, next.height)
+    }, 400)
+    // Solid runs this before the next run and on disposal, so a changed input
+    // cancels the pending resize rather than stacking one on it.
+    onCleanup(() => clearTimeout(timer))
+  })
 
   const draw = (framebuffer: Framebuffer) => {
     pending = framebuffer
@@ -151,32 +188,17 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
     onCleanup(unsubscribe)
 
     // Track the container so the fit follows a resize, a panel drag, or the
-    // window changing.
+    // window changing. The resize decision is an effect, because it also needs
+    // the frame size and an open connection; see below.
     if (typeof ResizeObserver !== "undefined" && container) {
       const observer = new ResizeObserver((entries) => {
         const rect = entries[0]?.contentRect
         if (!rect) return
         setBox({ width: rect.width, height: rect.height })
-
-        // Fill the container by reshaping the remote, but only once the pane has
-        // settled. A drag fires this many times a second; each resize marks the
-        // whole framebuffer changed, so asking on every tick would flood both
-        // the human's pane and the agent's view.
-        if (resizeTimer) clearTimeout(resizeTimer)
-        resizeTimer = setTimeout(() => {
-          resizeTimer = undefined
-          const frame = frameSize()
-          if (!frame) return
-          const next = target(frame, rect)
-          if (next) browser.resize(next.width, next.height)
-        }, 400)
       })
       observer.observe(container)
       onCleanup(() => observer.disconnect())
     }
-    onCleanup(() => {
-      if (resizeTimer) clearTimeout(resizeTimer)
-    })
   })
 
   // Open once, when the pane appears and nothing has connected yet. Reconnects

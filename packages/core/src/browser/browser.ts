@@ -6,6 +6,7 @@ import net from "node:net"
 import { makeLocationNode } from "../effect/app-node"
 import * as Cdp from "./cdp"
 import { readEndpoint, type Endpoint } from "./endpoint"
+import { watchWindow } from "./window-follow"
 
 // ADR-0003: one Chromium per session, headful on Xvnc. The agent drives it
 // over CDP and the human watches it over RFB. Xvnc is the display server and
@@ -59,6 +60,8 @@ type Active = {
   cdp: Cdp.Interface
   endpoint: Endpoint
   profile: string
+  // Stops the watcher that keeps Chromium's window the size of the screen.
+  stopWatching: () => void
 }
 
 function probeRfb(port: number): Promise<boolean> {
@@ -99,6 +102,7 @@ const layer = Layer.effect(
       const current = active
       if (!current) return
       active = undefined
+      current.stopWatching()
       kill(current.chrome)
       kill(current.xvnc)
     }
@@ -215,6 +219,21 @@ const layer = Layer.effect(
         cdp,
         endpoint,
         profile,
+        // Nothing resizes Chromium's window when the screen changes and there is
+        // no window manager, so it is done here. The relay never parses RFB, so
+        // the backend cannot react to a resize on the wire; reading the screen
+        // and setting the window makes it true for any cause.
+        stopWatching: watchWindow(
+          {
+            display: `:${n}`,
+            cdp: () => {
+              const current = active
+              if (!current || current.cdp.closed()) return undefined
+              return current.cdp
+            },
+          },
+          { onError: (error) => console.error("[browser] window-follow failed", error) },
+        ),
       }
       watch(chrome, xvnc)
       return active.info
