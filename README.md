@@ -96,6 +96,92 @@ agent-browser doctor         # launch test + a Chrome-for-Testing check
 Ask the session browser to open a page and it appears in the pane. If the
 tool errors with "not found", this is why.
 
+## Local development dependencies
+
+What you need depends on what you are changing.
+
+| To work on | You need |
+|---|---|
+| The UI, the server, the tests | Bun only |
+| The shared browser | the four executables below |
+| Window-follow (window tracks the pane) | `xrandr` — optional |
+
+### The browser stack
+
+Four executables, spawned **by name from `PATH`**:
+
+| Binary | Provides | Required |
+|---|---|---|
+| `Xvnc` | TigerVNC's display server | yes |
+| `chromium` | a real headful browser | yes |
+| `agent-browser` | the CLI the `browser` tool spawns | yes |
+| `xrandr` | screen size, so the window follows the pane | no |
+
+Linux:
+
+```bash
+# Arch
+sudo pacman -S tigervnc xorg-xrandr chromium
+
+# Debian/Ubuntu — but read the chromium note below first
+sudo apt install tigervnc-standalone-server x11-xserver-utils
+
+# the CLI, on any platform with node
+npm install -g agent-browser
+```
+
+**`chromium` is the trap on Ubuntu.** 26.04 carries no deb chromium;
+`chromium-browser` is a snap transitional shim and useless in this context.
+The template works around it with a pinned Chrome for Testing symlinked to
+`chromium`, and the same approach works locally. See
+`../../docs/upstream-finding/chromium-is-not-in-ubuntu-26-04.md`.
+
+**`agent-browser` needs only its CLI here.** Our tool always attaches with
+`--cdp <port>` to the session's own Chromium, so the browser that
+`agent-browser install` would fetch is never launched. The CLI on `PATH` is
+the whole requirement.
+
+**`xrandr` missing is not fatal.** `window-follow` reads the screen size and
+quietly does nothing when it cannot, so the browser still runs; the window
+just stops tracking the pane.
+
+There is no preflight. A missing binary surfaces as a launch error that does
+**not** name the tool — `chromium did not spawn`, or `RFB port <n> never
+answered` when `Xvnc` is absent. If the browser pane fails to start, check
+`PATH` for all four before looking anywhere else.
+
+### On macOS
+
+The app and the server are cross-platform; the browser stack is not. It
+spawns Linux X11 binaries — `Xvnc`, a `chromium` on `PATH`, `xrandr` — and
+macOS ships no X server and no binary under the name `chromium` (Chrome for
+macOS is `Google Chrome.app`). Assembling a native equivalent is not a
+supported or tested path, so treat it as out of scope.
+
+What works on a mac: the UI, the server, the TUI, and the test suites — so
+all ordinary work, and all of `packages/vnc` against a fake server.
+
+To exercise the shared browser from a mac, run the server where the X11
+stack lives — a Linux host, or the session container — and point the local
+app at it. The app's add-server dialog takes any URL, and the RFB relay
+runs through that server, so the display never has to be local:
+
+```bash
+# on the Linux host
+cd packages/opencode && bun run ./src/index.ts serve --port 4096
+
+# on the mac — the app is just a web UI pointed at a server
+cd packages/app && bun dev --port 4444
+# then add http://<linux-host>:4096 in the server dialog
+```
+
+This mirrors manus-dei's own model: the mac is a development machine
+driving a Linux host, not a second fleet.
+
+> **A dev image is planned.** One that ships the whole browser stack —
+> `Xvnc`, Chromium, `agent-browser` — preinstalled, so none of the setup
+> above is needed. Until it lands, bear with the manual install.
+
 ## The shared browser, in one paragraph
 
 A session gains one Chromium in the container, headful on Xvnc. Xvnc is
