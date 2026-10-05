@@ -46,6 +46,12 @@ export const Flag = {
   OPENCODE_MODELS_PATH: process.env["OPENCODE_MODELS_PATH"],
   OPENCODE_DB: process.env["OPENCODE_DB"],
 
+  // ADR-0007: start the session browser in the background when the server
+  // listens. Off by default, because `opencode serve` is spawned by the CLI
+  // subprocess tests too, and they must not start Xvnc. The container's
+  // entrypoint sets this.
+  OPENCODE_EAGER_BROWSER: truthy("OPENCODE_EAGER_BROWSER"),
+
   OPENCODE_WORKSPACE_ID: process.env["OPENCODE_WORKSPACE_ID"],
   OPENCODE_EXPERIMENTAL_WORKSPACES: enabledByExperimental("OPENCODE_EXPERIMENTAL_WORKSPACES"),
 

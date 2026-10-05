@@ -1,6 +1,6 @@
 # ADR-0007: The session browser is a process-scoped resource
 
-Status: proposed · Date: 2026-10-05
+Status: accepted · Date: 2026-10-05
 Amends: ADR-0003 ("One Chromium per session, owned by the server")
 Fixes: the regression in `f7eeba1e4` (manica-dei issue #4)
 Relates to: manus-dei ADR-006 (the session surface is this server's own UI)

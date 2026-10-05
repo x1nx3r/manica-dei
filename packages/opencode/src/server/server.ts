@@ -34,6 +34,10 @@ type ListenOptions = CorsOptions & {
   hostname: string
   mdns?: boolean
   mdnsDomain?: string
+  // ADR-0007: start the session browser in the background when the listener
+  // comes up. Opt-in, because `Server.listen` is also how tests stand a server
+  // up, and those must not spawn Xvnc. The product's `serve` command sets it.
+  eagerBrowser?: boolean
 }
 type ListenerState = {
   scope: Scope.Scope
@@ -98,7 +102,7 @@ const listenEffect: (opts: ListenOptions) => Effect.Effect<EffectListener, unkno
 )
 
 function listenerLayer(opts: ListenOptions, port: number) {
-  return HttpRouter.serve(HttpApiApp.createRoutes(opts), {
+  return HttpRouter.serve(HttpApiApp.createRoutes(opts, { eagerBrowser: opts.eagerBrowser }), {
     middleware: disposeMiddleware,
     disableLogger: true,
     disableListenLog: true,

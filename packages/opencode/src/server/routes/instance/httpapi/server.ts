@@ -61,6 +61,7 @@ import { PermissionSaved } from "@opencode-ai/core/permission/saved"
 import { ProjectV2 } from "@opencode-ai/core/project"
 import { ProjectCopy } from "@opencode-ai/core/project/copy"
 import { PtyTicket } from "@opencode-ai/core/pty/ticket"
+import { Browser } from "@opencode-ai/core/browser"
 import { BrowserTicket } from "@opencode-ai/core/browser/ticket"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { SessionProjector } from "@opencode-ai/core/session/projector"
@@ -276,13 +277,35 @@ const app = LayerNode.group([
   ProjectV2.node,
   ProjectCopy.node,
   PtyTicket.node,
+  // ADR-0007: the browser is a process-scoped resource, so the served routes
+  // resolve it here and not through a location.
+  Browser.node,
   BrowserTicket.node,
 ])
 
 export function createRoutes(
   corsOptions?: CorsOptions,
+  options?: { eagerBrowser?: boolean },
 ): Layer.Layer<never, EffectConfig.ConfigError, RouteRequirements> {
   const locationServiceMapV2 = buildLocationServiceMap()
+
+  // ADR-0007: the server owns the browser and starts it in the background, so
+  // a caller never has to decide whether to start one. Forked, so a cold
+  // Chromium does not block the listener. Only the real listener opts in; the
+  // module-level `routes` and the test fixture must not spawn a browser.
+  const eagerBrowser = options?.eagerBrowser
+    ? Layer.effectDiscard(
+        Effect.gen(function* () {
+          const browser = yield* Browser.Service
+          yield* browser.ensure.pipe(
+            Effect.catch((error) =>
+              Effect.logError("the session browser did not start", { message: error.message }),
+            ),
+            Effect.forkScoped,
+          )
+        }),
+      )
+    : Layer.empty
 
   return Layer.mergeAll(
     rootApiRoutes,
@@ -293,6 +316,7 @@ export function createRoutes(
     serverRoutes,
     docRoute,
     uiRoute,
+    eagerBrowser,
   ).pipe(
     Layer.provide([
       errorLayer,

@@ -28,25 +28,21 @@ import { WebSocketTracker } from "../websocket-tracker"
 export const browserConnectHandlers = HttpApiBuilder.group(BrowserConnectApi, "browser", (handlers) =>
   Effect.gen(function* () {
     const locations = yield* LocationServiceMap.Service
+    // ADR-0007: the browser is a process-scoped resource, so it is resolved
+    // once here and not through the location map. The map stays only for the
+    // disposer below.
+    const browser = yield* Browser.Service
     const unregister = registerDisposer((directory) =>
       Effect.runPromise(locations.invalidate(Location.Ref.make({ directory: AbsolutePath.make(directory) }))),
     )
     yield* Effect.addFinalizer(() => Effect.sync(unregister))
-
-    const browser = Effect.fnUntraced(function* <A, E, R>(effect: Effect.Effect<A, E, R>) {
-      return yield* effect.pipe(
-        Effect.provide(
-          locations.get(Location.Ref.make({ directory: AbsolutePath.make((yield* InstanceState.context).directory) })),
-        ),
-      )
-    })
 
     return handlers
       .handle("status", () =>
         Effect.gen(function* () {
           // Answered from the process state, so it costs a field read rather
           // than a CDP round trip. This is what a caller polls.
-          const info = yield* browser(Browser.Service.use((service) => service.get)).pipe(
+          const info = yield* browser.get.pipe(
             Effect.catch(() => Effect.succeed(undefined)),
           )
           return { alive: info !== undefined }
@@ -54,7 +50,7 @@ export const browserConnectHandlers = HttpApiBuilder.group(BrowserConnectApi, "b
       )
       .handle("url", () =>
         Effect.gen(function* () {
-          const endpoint = yield* browser(Browser.Service.use((service) => service.endpoint)).pipe(
+          const endpoint = yield* browser.endpoint.pipe(
             Effect.catch(() => Effect.succeed(undefined)),
           )
           // Empty has two meanings and they must not be conflated: no browser
@@ -95,11 +91,11 @@ export const browserConnectHandlers = HttpApiBuilder.group(BrowserConnectApi, "b
       .handleRaw(
         "connect",
         Effect.fn("BrowserHttpApi.connect")(function* (ctx: { request: HttpServerRequest.HttpServerRequest }) {
-          // On demand: whichever side asks first starts the browser, and the
-          // other joins the same instance. A session that never browses pays
-          // nothing, and there is no ordering problem between the agent and the
-          // human.
-          const info = yield* browser(Browser.Service.use((service) => service.ensure)).pipe(
+          // The server already started the browser (ADR-0007), so this joins
+          // the instance in flight and waits for the RFB port rather than
+          // starting a second one. A relaunch here is the self-healing path
+          // when Chromium has died.
+          const info = yield* browser.ensure.pipe(
             Effect.catch((error) =>
               Effect.logError("unable to start the session browser", { message: error.message }).pipe(
                 Effect.as(undefined),

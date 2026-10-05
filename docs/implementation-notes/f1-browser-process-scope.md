@@ -137,14 +137,41 @@ existing `httpApiLayer` fixture and `requestInDirectory`.
 7. Verify the server starts one browser at listen and tears it down at stop,
    with a guarded test or a manual run.
 
+**Corrected during implementation.** `listenerLayer` is not production-only:
+`httpapi-listen.test.ts` and `httpapi-mdns.test.ts` stand a real server up with
+`Server.listen`, and an eager browser there leaked fourteen `Xvnc` per run.
+The flag therefore moves up to `ListenOptions.eagerBrowser`, and the `serve`
+command sets it from `Flag.OPENCODE_EAGER_BROWSER`.
+
+That is still not enough on its own: `test/cli/serve/serve-process.test.ts`
+spawns the real `opencode serve` binary, so putting the flag on `serve`
+unconditionally leaked three more per full run. The gate is the environment
+variable `OPENCODE_EAGER_BROWSER`, off by default, and the container's
+`entrypoint.sh` sets it alongside `exec opencode serve`. Tests never set it,
+so `Server.listen` and the spawned CLI both start nothing.
+
+**This is a template change on the manus-dei side** (one env on the existing
+`exec opencode serve` line), and it lands with the `v0.3.3` pin bump.
+
 ### M3 — the pane
 
-8. `handlers/browser.ts`: `connect` returns a retryable status while the RFB
-   port is not up, instead of `ensure`-then-503; `url` drops the
-   `error: "no browser"` branch; `status` reports the lifecycle rather than a
-   dead-end boolean.
-9. `packages/app`: fold the pane's states into a retry-connect loop; revisit
-   the retry budget against a measured cold start.
+**Not needed, and not done.** The plan assumed `connect` had to stop calling
+`ensure` and the pane had to be rewritten around a retry loop. Neither holds
+once the browser is process-scoped and eagerly started:
+
+- `connect`'s `ensure` is idempotent and, with eager start, joins the launch
+  already in flight. It waits for the RFB port and then attaches, which is
+  strictly better than a client retry against a cold start.
+- The pane already retries. `browser-retry.ts` and `browser.tsx` handle a
+  dropped stream, and `checkAlive` turns `alive: false` into a drop that
+  retries. `alive: false` is now transient — the server is bringing one up —
+  not a dead end.
+
+The "no browser" branches that remain (`url`'s `error: "no browser"`,
+`checkAlive`'s drop reason) fire only while the browser is restarting, and the
+retry loop clears them. Rewriting the pane would add risk to a release whose
+only job is to unbreak the fleet. Left as a follow-up if the copy proves
+confusing, not as a defect.
 
 ### M4 — tests
 
@@ -157,6 +184,20 @@ existing `httpApiLayer` fixture and `requestInDirectory`.
 
 13. `v0.3.3`, since the fleet is rolling back off `v0.3.2` and the pane is dead
     on it.
+
+## Results
+
+- `browser-status.test.ts` passes on the fix and fails with `Service not found:
+  @opencode/v2/Browser` when `Browser.node` is removed from the `app` group —
+  the exact v0.3.2 failure.
+- `packages/core`: 1133 pass, 6 skip, 0 fail.
+- `packages/opencode/test/server`: 306 pass, 3 skip, 0 fail, and zero `Xvnc`
+  spawned (the suite leaked fourteen before the `ListenOptions` correction).
+- `packages/opencode` full suite: the same six `cf-ai-gateway` /
+  `cloudflare-ai-gateway` provider failures that reproduce on the pre-change
+  tree — pre-existing, not this work. No `Xvnc` spawned.
+- A live `opencode serve` with `OPENCODE_EAGER_BROWSER=1` starts exactly one
+  `Xvnc` at listen and `GET /browser/status` answers `{"alive":true}`.
 
 ## Verification
 
