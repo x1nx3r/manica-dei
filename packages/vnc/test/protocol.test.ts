@@ -55,6 +55,43 @@ describe("ByteQueue", () => {
     queue.push(bytes(0xff, 0xff, 0xff, 0x11))
     expect(await queue.takeI32()).toBe(-239)
   })
+
+  // A whole ZRLE update arrives as many small TCP chunks. Taking a large rect
+  // consumes several whole chunks, and the queue used to subtract the remaining
+  // need rather than each chunk's own length. That under-counted the buffered
+  // bytes, so a later read waited forever for bytes it already held — the pane
+  // showed black while the server sent a full framebuffer. The reads below are
+  // the shape that exposed it, and each is raced against a timeout so a
+  // regression fails instead of hanging.
+  test("counts buffered bytes across many small chunks", async () => {
+    const queue = new ByteQueue()
+    const total = 64
+    for (let i = 0; i < total; i++) queue.push(bytes(i))
+    expect(queue.buffered).toBe(total)
+
+    const first = await queue.take(10)
+    expect(first.length).toBe(10)
+    expect(queue.buffered).toBe(total - 10)
+
+    const second = await Promise.race([
+      queue.take(20),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 500)),
+    ])
+    expect(second).not.toBe("timeout")
+    expect(second).toEqual(Uint8Array.from({ length: 20 }, (_, i) => i + 10))
+    expect(queue.buffered).toBe(total - 30)
+  })
+
+  test("a read that spans whole chunks does not starve a later read", async () => {
+    const queue = new ByteQueue()
+    // Three-byte chunks so a take(2) leaves a partial head each time.
+    for (let i = 0; i < 9; i++) queue.push(bytes(i * 3, i * 3 + 1, i * 3 + 2))
+    expect(await queue.take(2)).toEqual(bytes(0, 1))
+    // Consuming the whole second chunk must drop the count by three, not by
+    // the remainder of the request.
+    expect(await queue.take(4)).toEqual(bytes(2, 3, 4, 5))
+    expect(queue.buffered).toBe(21)
+  })
 })
 
 describe("encodeSetPixelFormat", () => {

@@ -161,12 +161,17 @@ export class ByteQueue {
         out.set(head, offset)
         offset += head.length
         this.chunks.shift()
+        // The whole chunk leaves the queue, so the count drops by its length,
+        // not by the remaining need. Subtracting `needed` here over-counts when
+        // the chunk is shorter, which drifts the total below the real buffered
+        // bytes and makes a later read wait for bytes it already holds.
+        this.length -= head.length
       } else {
         out.set(head.subarray(0, needed), offset)
         this.chunks[0] = head.subarray(needed)
         offset += needed
+        this.length -= needed
       }
-      this.length -= needed
     }
     return out
   }
