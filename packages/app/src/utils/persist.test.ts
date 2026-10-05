@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import { ServerScope } from "./server-scope"
 
 type PersistTestingType = typeof import("./persist").PersistTesting
@@ -47,6 +47,11 @@ class MemoryStorage implements Storage {
 
 const storage = new MemoryStorage()
 
+// `localStorage` is global, and this file replaces it. Save the original
+// descriptor and put it back after every test, so a stub cannot leak into a
+// later file in the same run.
+const realLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+
 let persistTesting: PersistTestingType
 let Persist: PersistType
 let removePersisted: RemovePersistedType
@@ -72,6 +77,11 @@ beforeEach(() => {
     value: storage,
     configurable: true,
   })
+})
+
+afterEach(() => {
+  if (realLocalStorage) Object.defineProperty(globalThis, "localStorage", realLocalStorage)
+  else Reflect.deleteProperty(globalThis, "localStorage")
 })
 
 describe("persist localStorage resilience", () => {

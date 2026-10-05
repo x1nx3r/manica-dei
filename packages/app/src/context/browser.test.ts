@@ -1,4 +1,12 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
+
+// `fetch` is global, and this file replaces it. A stub left behind reaches into
+// every later file in the same run, and the failure surfaces nowhere near here:
+// the terminal addon loads its wasm with `fetch`, so a two-byte stub body
+// becomes a WebAssembly CompileError in an unrelated suite. Save the real one
+// and put it back after every test, rather than only re-stubbing before the
+// next.
+const realFetch = globalThis.fetch
 
 // The provider's reconnect behaviour, with the client and the relay replaced.
 //
@@ -34,9 +42,9 @@ beforeAll(async () => {
 /**
  * The default answers for the two browser routes: a live browser showing a page.
  *
- * A test that wants a dead browser or no page overrides `fetch`. It is restored
- * before every test, because `fetch` is global and a stub left behind would make
- * an unrelated test fail intermittently.
+ * A test that wants a dead browser or no page overrides `fetch`. It is set
+ * before every test and the real one is restored after every test, because
+ * `fetch` is global and a stub left behind would make an unrelated test fail.
  */
 function healthyFetch() {
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -48,6 +56,10 @@ function healthyFetch() {
 
 beforeEach(() => {
   healthyFetch()
+})
+
+afterEach(() => {
+  globalThis.fetch = realFetch
 })
 
 /** A fake client and relay, and the counters the test asserts on. */
