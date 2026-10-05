@@ -1,7 +1,7 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createMemo, createSignal, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
-import { start, type Cursor, type Interface as Client, type Framebuffer } from "@manica-dei/vnc"
+import { start, type Cursor, type DamageRect, type Interface as Client, type Framebuffer } from "@manica-dei/vnc"
 import { connect } from "@opencode-ai/core/browser/relay"
 import { nextDelay } from "./browser-retry"
 import { useSDK } from "./sdk"
@@ -67,8 +67,11 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
     // none. `dropStream` uses it to ignore a second report of the same failure.
     let openGeneration = -1
     let latest: Framebuffer | undefined
+    // The damage that belongs to `latest`. Replayed with it so a pane that
+    // subscribes after a frame still knows which region to repaint.
+    let latestDamage: DamageRect | undefined
     let poll: ReturnType<typeof setInterval> | undefined
-    const listeners = new Set<(framebuffer: Framebuffer) => void>()
+    const listeners = new Set<(framebuffer: Framebuffer, damage?: DamageRect) => void>()
 
     // Reconnect policy. A dropped stream is usually a container restart or a
     // Chromium crash, and both are worth retrying. A stream closed on purpose is
@@ -100,6 +103,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       client = undefined
       socket = undefined
       latest = undefined
+      latestDamage = undefined
       setCursor(undefined)
     }
 
@@ -159,6 +163,7 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
       client = undefined
       socket = undefined
       latest = undefined
+      latestDamage = undefined
       setCursor(undefined)
       if (scheduleRetry()) return
       setStore({ status: "failed", error: reason })
@@ -183,10 +188,11 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
 
         client = await start(opened.transport, {
           queue: opened.queue,
-          onFrame: (framebuffer) => {
+          onFrame: (framebuffer, damage) => {
             console.debug("[browser] frame", framebuffer.width, "x", framebuffer.height, "listeners", listeners.size)
             latest = framebuffer
-            for (const listener of listeners) listener(framebuffer)
+            latestDamage = damage
+            for (const listener of listeners) listener(framebuffer, damage)
           },
           onDesktopSize: (size, framebuffer) => {
             // The framebuffer may have been replaced, so a pane holding the old
@@ -203,7 +209,10 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
               size.status,
             )
             latest = framebuffer
-            for (const listener of listeners) listener(framebuffer)
+            // A resize replaces the framebuffer, so no old region is valid in
+            // the new one. The pane repaints fully.
+            latestDamage = undefined
+            for (const listener of listeners) listener(framebuffer, undefined)
           },
           onClose: (error) => {
             console.debug("[browser] closed", error?.message ?? "(clean)")
@@ -281,9 +290,9 @@ export const { use: useBrowser, provider: BrowserProvider } = createSimpleContex
      * frames have arrived still paints rather than showing an empty canvas until
      * the agent happens to change something.
      */
-    const subscribe = (listener: (framebuffer: Framebuffer) => void) => {
+    const subscribe = (listener: (framebuffer: Framebuffer, damage?: DamageRect) => void) => {
       listeners.add(listener)
-      if (latest) listener(latest)
+      if (latest) listener(latest, latestDamage)
       return () => {
         listeners.delete(listener)
       }

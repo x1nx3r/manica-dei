@@ -2,7 +2,9 @@ import { createFramebuffer, ZrleDecoder, type Framebuffer } from "./decode"
 import {
   ByteQueue,
   type Transport,
+  type DamageRect,
   encodeFramebufferUpdateRequest,
+  encodeEnableContinuousUpdates,
   encodeKeyEvent,
   encodePointerEvent,
   encodeSetDesktopSize,
@@ -34,8 +36,10 @@ export type { Transport }
 
 export type Options = {
   // Called when the framebuffer changed and should be drawn. Not called for
-  // bells, cut text, or pseudo-rects.
-  onFrame?: (framebuffer: Framebuffer) => void
+  // bells, cut text, or pseudo-rects. `damage` is the union of the rectangles
+  // this update changed, so a renderer can repaint only that region; it is
+  // absent when the update changed nothing drawable.
+  onFrame?: (framebuffer: Framebuffer, damage?: DamageRect) => void
   // Called when the desktop geometry is reported or changes. The framebuffer is
   // the new one when the size changed, and the same one otherwise. A caller
   // that holds the framebuffer must swap to this one.
@@ -51,6 +55,11 @@ export type Options = {
   // How many updates to request per second when the screen is idle. Continuous
   // updates keep latency low; a rate keeps an idle session cheap.
   idleRequestsPerSecond?: number
+  // Whether to accept the server's offer of continuous updates. On by default:
+  // it is what makes a moving page arrive on time. Set false to keep the
+  // request loop in charge, which a caller might want if it drives frames
+  // itself.
+  continuousUpdates?: boolean
 }
 
 export class RfbError extends Error {
@@ -130,16 +139,32 @@ export async function start(transport: Transport, options: Options & { queue?: B
   const MAX_OUTSTANDING = 4
   let outstanding = 0
   let received = false
+  // When the server streams on its own, per-frame requests and the idle timer
+  // stop. A request in flight would still be answered, so this is a switch, not
+  // a teardown.
+  let continuous = false
 
   const request = () => {
     if (closed) return
+    if (continuous) return
     if (outstanding >= MAX_OUTSTANDING) return
     outstanding++
     transport.write(encodeFramebufferUpdateRequest(width, height, received))
   }
 
+  const enableContinuousUpdates = () => {
+    if (closed || continuous) return
+    if (options.continuousUpdates === false) return
+    continuous = true
+    outstanding = 0
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = undefined
+    transport.write(encodeEnableContinuousUpdates(true, width, height))
+  }
+
   const scheduleIdleRequest = () => {
     if (closed) return
+    if (continuous) return
     if (idleTimer) clearTimeout(idleTimer)
     idleTimer = setTimeout(
       () => {
@@ -165,6 +190,10 @@ export async function start(transport: Transport, options: Options & { queue?: B
           continue
         }
         if (update.kind === "bell" || update.kind === "colourMap") continue
+        if (update.kind === "continuousUpdatesAvailable") {
+          enableContinuousUpdates()
+          continue
+        }
 
         // This is a FramebufferUpdate, which may carry any combination of a
         // cursor, a resize, and pixel rectangles. They are applied in that
@@ -192,11 +221,17 @@ export async function start(transport: Transport, options: Options & { queue?: B
             width = update.size.width
             height = update.size.height
             framebuffer = createFramebuffer(width, height)
+            // The continuous region is a rectangle, so a resize must restate it.
+            // A stale region would clip the stream to the old size.
+            if (continuous) {
+              continuous = false
+              enableContinuousUpdates()
+            }
           }
           options.onDesktopSize?.(update.size, framebuffer)
         }
 
-        if (update.changed) options.onFrame?.(framebuffer)
+        if (update.changed) options.onFrame?.(framebuffer, update.damage)
         // Ask again, and keep the idle wake alive.
         request()
         scheduleIdleRequest()

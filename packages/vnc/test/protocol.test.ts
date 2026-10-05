@@ -258,9 +258,75 @@ describe("readMessage", () => {
     )
     const framebuffer = target()
     const update = await readMessage(queue, framebuffer, zrle())
-    expect(update).toEqual({ kind: "rects", rects: 1, changed: true })
+    // The damage box is the rect itself, which is what a renderer repaints.
+    expect(update).toEqual({ kind: "rects", rects: 1, changed: true, damage: { x: 0, y: 0, width: 2, height: 1 } })
     expect(Array.from(framebuffer.data.slice(0, 4))).toEqual([255, 0, 0, 255])
     expect(Array.from(framebuffer.data.slice(4, 8))).toEqual([0, 255, 0, 255])
+  })
+
+  test("unions the damage of several rectangles in one update", async () => {
+    // Two Raw rects: one at 0,0 2x1, one at 4,2 1x1. The damage box covers both,
+    // because the pane repaints one region per update. A wider box than the sum
+    // of the rects is correct and is what noVNC does.
+    const queue = new ByteQueue()
+    const rawRect = (x: number, y: number, w: number, h: number) => {
+      const out = [
+        (x >> 8) & 0xff,
+        x & 0xff,
+        (y >> 8) & 0xff,
+        y & 0xff,
+        (w >> 8) & 0xff,
+        w & 0xff,
+        (h >> 8) & 0xff,
+        h & 0xff,
+        0,
+        0,
+        0,
+        0, // encoding raw
+      ]
+      for (let i = 0; i < w * h; i++) out.push(0, 0, 0, 0)
+      return out
+    }
+    queue.push(
+      bytes(
+        0,
+        0,
+        0,
+        2, // update, padding, two rectangles
+        ...rawRect(0, 0, 2, 1),
+        ...rawRect(4, 2, 1, 1),
+      ),
+    )
+    const update = await readMessage(queue, target(), zrle())
+    expect(update).toEqual({ kind: "rects", rects: 2, changed: true, damage: { x: 0, y: 0, width: 5, height: 3 } })
+  })
+
+  test("a pseudo-rect adds no damage", async () => {
+    // A LastRect carries no pixels, so an update holding only pseudo-rects must
+    // report no damage rather than a zero box at the origin.
+    const queue = new ByteQueue()
+    queue.push(
+      bytes(
+        0,
+        0,
+        0,
+        1, // update, padding, one rectangle
+        0,
+        0,
+        0,
+        0, // x, y
+        0,
+        0,
+        0,
+        0, // width 0, height 0
+        0xff,
+        0xff,
+        0xff,
+        0x20, // encoding LastRect (-224)
+      ),
+    )
+    const update = await readMessage(queue, target(), zrle())
+    expect(update).toEqual({ kind: "rects", rects: 1, changed: false })
   })
 
   test("decodes a cursor rect and keeps the stream aligned", async () => {

@@ -98,6 +98,9 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
   // page then never redraws, which is exactly what a blank about:blank looks
   // like.
   let pending: Framebuffer | undefined
+  // The damage that belongs to `pending`, replayed with it so a pane that
+  // mounts late still repaints only what changed.
+  let pendingDamage: { x: number; y: number; width: number; height: number } | undefined
 
   /**
    * The framebuffer size that fills the container, or undefined when the
@@ -161,22 +164,97 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
     onCleanup(() => clearTimeout(timer))
   })
 
-  const draw = (framebuffer: Framebuffer) => {
+  // The pane draws in two stages, following noVNC.
+  //
+  // The decoders produce whole frames, but the server only ever sends the
+  // rectangles that changed. Repainting the whole canvas for a small change is
+  // what made the pane feel slow: at 1086x864 that is a 3.7 MB ImageData and a
+  // full-screen blit on the main thread, on every frame.
+  //
+  // So a framebuffer-sized backbuffer holds the picture, each frame writes only
+  // its changed box into it, and one scaled `drawImage` copies that box to the
+  // visible canvas. The scaling happens in the compositor rather than in a pixel
+  // loop. When a frame carries no box — a resize replaces the picture, and the
+  // first frame after it — the whole thing is copied once.
+  let backbuffer: HTMLCanvasElement | undefined
+  let scratch: ImageData | undefined
+  let scratchBox: { x: number; y: number; width: number; height: number } | undefined
+
+  /** An ImageData for one region of a row-major RGBA framebuffer. */
+  const regionImage = (framebuffer: Framebuffer, box: { x: number; y: number; width: number; height: number }) => {
+    if (
+      !scratch ||
+      !scratchBox ||
+      scratchBox.width !== box.width ||
+      scratchBox.height !== box.height
+    ) {
+      scratch = new ImageData(box.width, box.height)
+      scratchBox = { ...box }
+    }
+    const data = scratch.data
+    for (let row = 0; row < box.height; row++) {
+      const from = ((box.y + row) * framebuffer.width + box.x) * 4
+      data.set(framebuffer.data.subarray(from, from + box.width * 4), row * box.width * 4)
+    }
+    return scratch
+  }
+
+  const draw = (framebuffer: Framebuffer, damage?: { x: number; y: number; width: number; height: number }) => {
     pending = framebuffer
+    pendingDamage = damage
     setFrameSize((current) =>
       current?.width === framebuffer.width && current.height === framebuffer.height
         ? current
         : { width: framebuffer.width, height: framebuffer.height },
     )
     if (!canvas) return
-    if (canvas.width !== framebuffer.width || canvas.height !== framebuffer.height) {
+
+    const resized = canvas.width !== framebuffer.width || canvas.height !== framebuffer.height
+    if (resized) {
       canvas.width = framebuffer.width
       canvas.height = framebuffer.height
     }
+
+    // The backbuffer is framebuffer-sized and holds the whole picture. A resize
+    // invalidates it, as does a first use.
+    if (!backbuffer || backbuffer.width !== framebuffer.width || backbuffer.height !== framebuffer.height) {
+      backbuffer = document.createElement("canvas")
+      backbuffer.width = framebuffer.width
+      backbuffer.height = framebuffer.height
+      scratch = undefined
+      scratchBox = undefined
+      damage = undefined
+    }
+
     const context = canvas.getContext("2d")
-    if (!context) return
-    const image = new ImageData(new Uint8ClampedArray(framebuffer.data), framebuffer.width, framebuffer.height)
-    context.putImageData(image, 0, 0)
+    const back = backbuffer.getContext("2d")
+    if (!context || !back) return
+
+    // A region to copy: either the frame's own damage, or the whole picture when
+    // there is none. A resize also forces a full copy: setting the canvas size
+    // clears it, so a partial box would leave the rest blank.
+    const box = resized ? undefined : damage
+    const region = box ?? { x: 0, y: 0, width: framebuffer.width, height: framebuffer.height }
+    if (region.width <= 0 || region.height <= 0) return
+
+    back.putImageData(regionImage(framebuffer, region), region.x, region.y)
+    // One scaled copy of the changed box to the visible canvas. The box is
+    // placed at its own position scaled to the canvas, not stretched over it:
+    // the source and destination rects differ by one ratio, because the canvas
+    // keeps the framebuffer's pixel size and CSS scales the whole element.
+    const scaleX = canvas.width / framebuffer.width
+    const scaleY = canvas.height / framebuffer.height
+    context.drawImage(
+      backbuffer,
+      region.x,
+      region.y,
+      region.width,
+      region.height,
+      region.x * scaleX,
+      region.y * scaleY,
+      region.width * scaleX,
+      region.height * scaleY,
+    )
   }
 
   onMount(() => {
@@ -207,11 +285,12 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
   })
 
   // The canvas is created after the connection opens, so the frame that was
-  // replayed on subscribe is drawn here once the element exists.
+  // replayed on subscribe is drawn here once the element exists. This is a full
+  // draw: the backbuffer is new, so a partial region would show only a box.
   createEffect(() => {
     if (browser.state.status !== "open") return
     const frame = pending
-    if (frame) queueMicrotask(() => draw(frame))
+    if (frame) queueMicrotask(() => draw(frame, undefined))
   })
 
   // The URL is polled because the agent drives navigation over CDP and there is

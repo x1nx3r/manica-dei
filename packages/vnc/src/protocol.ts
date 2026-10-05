@@ -48,6 +48,11 @@ export const ENCODING = {
   // than the plain form so we can read the reason and the status of a resize.
   extendedDesktopSize: -308,
   lastRect: -224,
+  // ContinuousUpdates. A client that advertises this and then enables it stops
+  // asking for each update; the server streams damage as it happens. Without it
+  // every frame costs a request and a reply, and the server holds an incremental
+  // request until something changes, so frames arrive late and in bursts.
+  continuousUpdates: -313,
 } as const
 
 const MESSAGE = {
@@ -55,6 +60,9 @@ const MESSAGE = {
   setColourMapEntries: 1,
   bell: 2,
   serverCutText: 3,
+  // The server's reply that continuous updates may be enabled. It carries no
+  // payload, and the client answers it with EnableContinuousUpdates.
+  endOfContinuousUpdates: 150,
 } as const
 
 const SECURITY = {
@@ -260,6 +268,11 @@ export async function handshake(queue: ByteQueue, transport: Transport) {
       // the one we ask for: it is the spec encoding, the server prefers it over
       // the X cursor, and its payload has no nested encoding word.
       ENCODING.cursor,
+      // Declares that we understand continuous updates. The server answers with
+      // EndOfContinuousUpdates, and the client then enables streaming so frames
+      // arrive on change rather than on request. A server that does not know the
+      // encoding simply never answers, and the request loop stays in charge.
+      ENCODING.continuousUpdates,
     ]),
   )
 
@@ -397,6 +410,49 @@ export function encodeSetDesktopSize(width: number, height: number, screens: Scr
 export type RectHeader = { x: number; y: number; width: number; height: number; encoding: number }
 
 /**
+ * A framebuffer region. Used for the damage box an update covers.
+ *
+ * The union of every pixel rectangle in one FramebufferUpdate, which is what a
+ * renderer needs to repaint cheaply. noVNC draws each rectangle into a
+ * framebuffer-sized backbuffer and then copies only the union region to the
+ * visible canvas, so a small change never costs a whole-screen blit.
+ */
+export type DamageRect = { x: number; y: number; width: number; height: number }
+
+/** Grow `box` to include `rect`. A zero-sized rect changes nothing. */
+export function unionRect(box: DamageRect | undefined, rect: DamageRect): DamageRect | undefined {
+  if (rect.width <= 0 || rect.height <= 0) return box
+  // Only the geometry is copied. The caller passes a RectHeader, which also
+  // carries the encoding, and a damage box with an encoding in it is not a
+  // region.
+  if (!box) return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+  const left = Math.min(box.x, rect.x)
+  const top = Math.min(box.y, rect.y)
+  const right = Math.max(box.x + box.width, rect.x + rect.width)
+  const bottom = Math.max(box.y + box.height, rect.y + rect.height)
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
+/**
+ * EnableContinuousUpdates (message 150).
+ *
+ * Sent once after the server signals EndOfContinuousUpdates. Enable is one, and
+ * the region is the whole framebuffer, so the server then streams every change
+ * without a request for each one. That removes the request/reply round trip
+ * that otherwise gates every frame.
+ */
+export function encodeEnableContinuousUpdates(enable: boolean, width: number, height: number) {
+  const bytes = new Uint8Array(10)
+  bytes[0] = MESSAGE.endOfContinuousUpdates
+  bytes[1] = enable ? 1 : 0
+  bytes[4] = (width >> 8) & 0xff
+  bytes[5] = width & 0xff
+  bytes[6] = (height >> 8) & 0xff
+  bytes[7] = height & 0xff
+  return bytes
+}
+
+/**
  * Read one server message and apply it to the framebuffer.
  *
  * Returns what happened so a caller can react, for example to redraw only after
@@ -407,10 +463,22 @@ export type Update =
   // any combination: Xvnc routinely sends a cursor and a resize in one update.
   // An earlier shape treated these as exclusive and silently dropped the cursor
   // whenever a resize was present.
-  | { kind: "rects"; rects: number; changed: boolean; size?: DesktopSize; cursor?: Cursor }
+  | {
+      kind: "rects"
+      rects: number
+      changed: boolean
+      size?: DesktopSize
+      cursor?: Cursor
+      // The union of the pixel rectangles in this update, for a renderer that
+      // repaints only what changed. Absent when the update carried no pixels.
+      damage?: DamageRect
+    }
   | { kind: "bell" }
   | { kind: "cut"; text: string }
   | { kind: "colourMap" }
+  // The server will accept continuous updates. The client answers with
+  // EnableContinuousUpdates; nothing is drawn for it.
+  | { kind: "continuousUpdatesAvailable" }
 
 export async function readMessage(
   queue: ByteQueue,
@@ -421,6 +489,10 @@ export async function readMessage(
   const type = await queue.takeU8()
 
   if (type === MESSAGE.bell) return { kind: "bell" }
+
+  // EndOfContinuousUpdates carries no payload. Reported so the client can send
+  // EnableContinuousUpdates, which is what actually turns streaming on.
+  if (type === MESSAGE.endOfContinuousUpdates) return { kind: "continuousUpdatesAvailable" }
 
   if (type === MESSAGE.serverCutText) {
     await queue.take(3) // padding
@@ -450,6 +522,8 @@ export async function readMessage(
   // A cursor is a shape, not a framebuffer region, so it is reported on its own
   // rather than merged into the pixel rectangles.
   let cursor: Cursor | undefined
+  // The union of the pixel rectangles drawn by this update.
+  let damage: DamageRect | undefined
 
   for (let index = 0; index < count; index++) {
     const header = await readRectHeader(queue)
@@ -484,7 +558,12 @@ export async function readMessage(
       continue
     }
 
-    changed = (await applyRect(queue, header, target, zrle)) || changed
+    const applied = await applyRect(queue, header, target, zrle)
+    changed = applied || changed
+    // A pixel rectangle is what a renderer must repaint. Pseudo-rects returned
+    // above, so anything reaching here drew pixels — except CopyRect, whose
+    // destination region is the header. The union is what the pane blits.
+    if (applied) damage = unionRect(damage, header)
   }
 
   // One update may carry a resize and a cursor together, so the result holds
@@ -495,6 +574,7 @@ export async function readMessage(
     changed,
     ...(size ? { size } : {}),
     ...(cursor ? { cursor } : {}),
+    ...(damage ? { damage } : {}),
   }
 }
 
