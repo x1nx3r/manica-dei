@@ -5,9 +5,16 @@ on:
     branches: [main]
   pull_request:
 
-# Every job is independent on purpose. A `needs:` chain turns one package's
-# failure into a skipped suite for another, and a run that skips tests still
-# reports green. Each job installs and runs on its own.
+# The jobs are serialized with `needs`, and every one carries `if: !cancelled()`
+# so a failure upstream does not skip the suites below it. Both halves matter:
+#
+# - The serialization is load-bearing. The opencode subprocess tests
+#   (`run-process`) assert wall-clock bounds, and two full-workspace installs
+#   racing on the runner starve them into false timeouts (see 963159ff5). Running
+#   the jobs concurrently reintroduces that race.
+# - `!cancelled()` is what fixes the original problem: `needs: app` alone meant
+#   an app failure skipped the whole opencode suite and the run still reported
+#   green. `!cancelled()` keeps the ordering without the skipping.
 jobs:
   typecheck:
     name: typecheck (turbo, all packages)
@@ -21,6 +28,8 @@ jobs:
       - run: bun turbo typecheck
 
   app:
+    needs: typecheck
+    if: ${{ !cancelled() }}
     name: app — typecheck + unit tests
     runs-on: ubuntu-latest
     steps:
@@ -35,6 +44,8 @@ jobs:
         working-directory: packages/app
 
   core:
+    needs: app
+    if: ${{ !cancelled() }}
     name: core — unit tests
     runs-on: ubuntu-latest
     steps:
@@ -47,6 +58,8 @@ jobs:
         working-directory: packages/core
 
   opencode:
+    needs: core
+    if: ${{ !cancelled() }}
     name: opencode — test suite
     runs-on: ubuntu-latest
     steps:
