@@ -1,9 +1,9 @@
 export * as Browser from "./browser"
 
 import { spawn, type ChildProcess } from "child_process"
-import { Context, Effect, Layer, Schema, Types } from "effect"
+import { Context, Effect, Layer, Schema, Semaphore, Types } from "effect"
 import net from "node:net"
-import { makeLocationNode } from "../effect/app-node"
+import { makeGlobalNode } from "../effect/app-node"
 import * as Cdp from "./cdp"
 import { readEndpoint, type Endpoint } from "./endpoint"
 import { warningPageUrl } from "./start-page"
@@ -82,8 +82,14 @@ function probeRfb(port: number): Promise<boolean> {
 const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
-    // One browser per location. The closure is per-directory, like Pty's.
+    // One browser per process. The closure is per-process, like Database's.
     let active: Active | undefined
+    // `ensure` is check-then-launch, and `active` is only assigned when the
+    // launch finishes. Two callers arriving before that both saw `undefined`
+    // and both launched — two Xvnc, two Chromium, two profiles, and neither
+    // aware of the other. The permit serialises the check with the launch, so
+    // the second caller waits and then finds the first's browser.
+    const launchLock = Semaphore.makeUnsafe(1)
 
     const kill = (proc: ChildProcess | undefined) => {
       if (!proc) return
@@ -243,11 +249,13 @@ const layer = Layer.effect(
       return active.info
     })
 
-    const ensure: Effect.Effect<Info, LaunchError> = Effect.gen(function* () {
-      if (active && active.chrome.exitCode === null && active.xvnc.exitCode === null) return active.info
-      teardown()
-      return yield* launch
-    })
+    const ensure: Effect.Effect<Info, LaunchError> = launchLock.withPermits(1)(
+      Effect.gen(function* () {
+        if (active && active.chrome.exitCode === null && active.xvnc.exitCode === null) return active.info
+        teardown()
+        return yield* launch
+      }),
+    )
 
     // Reads live state on each run, so a browser that died is reported.
     const get: Effect.Effect<Info | undefined> = Effect.gen(function* () {
@@ -272,4 +280,10 @@ const layer = Layer.effect(
   }),
 )
 
-export const node = makeLocationNode({ service: Service, layer, deps: [] })
+// One browser per process, not per location. The browser is a container-level
+// resource: one Xvnc and one Chromium serve the whole container, and there is
+// no sense in which a subdirectory gets its own. Keying it by Location let the
+// pane and the tool resolve different directories and start two stacks, each
+// blind to the other. Global is the same model Pty.ticket, Database and
+// Credential use, and it is what makes "one browser per session" true.
+export const node = makeGlobalNode({ service: Service, layer, deps: [] })

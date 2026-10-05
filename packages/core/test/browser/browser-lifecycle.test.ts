@@ -56,6 +56,33 @@ describe.skipIf(skip)(reason ? `${reason} (browser lifecycle)` : "browser lifecy
       } catch {}
     }
   }, 30_000)
+
+  // The other half of the two-browser bug: `ensure` is check-then-launch, and
+  // `active` is only assigned when the launch finishes. Callers arriving before
+  // that both saw `undefined` and both launched. The pane's connect and the
+  // agent's first tool call are exactly that pair. The permit must serialise
+  // them, so every caller gets the same display.
+  test("concurrent ensure calls start one browser, not two", async () => {
+    const runtime = makeRuntime(Browser.Service, LayerNode.compile(Browser.node))
+    try {
+      const results = await Promise.all([
+        runtime.runPromise((s) => s.ensure),
+        runtime.runPromise((s) => s.ensure),
+        runtime.runPromise((s) => s.ensure),
+      ])
+      const displays = results.map((info) => info.display)
+      expect(new Set(displays).size).toBe(1)
+      // And the container holds exactly one Xvnc, which is the thing the issue
+      // actually observed. `pgrep -f` matches the display argument, so a second
+      // stack on another display would be counted here.
+      const xvnc = Bun.spawnSync(["pgrep", "-c", "-f", `Xvnc :${displays[0]}`])
+      expect(Number(xvnc.stdout.toString().trim() || "0")).toBe(1)
+    } finally {
+      try {
+        await runtime.runPromise((s) => s.stop)
+      } catch {}
+    }
+  }, 30_000)
 })
 
 function readRfbBanner(port: number): Promise<string> {
