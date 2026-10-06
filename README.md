@@ -176,11 +176,43 @@ cd packages/app && bun dev --port 4444
 ```
 
 This mirrors manus-dei's own model: the mac is a development machine
-driving a Linux host, not a second fleet.
+driving a Linux host, not a second fleet. The dev image below is the quickest
+way to get such a host.
 
-> **A dev image is planned.** One that ships the whole browser stack —
-> `Xvnc`, Chromium, `agent-browser` — preinstalled, so none of the setup
-> above is needed. Until it lands, bear with the manual install.
+### A dev image
+
+`Dockerfile.dev` ships the whole browser stack — `Xvnc`, Chromium,
+`agent-browser`, `xrandr` — plus Bun, so none of the installs above are
+needed. It mirrors manus-dei's session image (`templates/base/Dockerfile`) on
+purpose: the same Ubuntu base, the same pinned Chrome for Testing under the
+name `chromium`, the same pinned `agent-browser`. A bug that reproduces in a
+session reproduces here.
+
+```bash
+docker build --platform linux/amd64 -f Dockerfile.dev -t manica-dei-dev .
+
+docker run --rm -it --platform linux/amd64 \
+  -v "$PWD":/workspace \
+  -p 4096:4096 -p 4444:4444 \
+  manica-dei-dev
+
+# inside the container
+bun install
+bun run ./src/index.ts serve --hostname 0.0.0.0 --port 4096
+```
+
+The repo is mounted, not copied, so edits are live and the image stays the
+environment. The server must bind `0.0.0.0` to be reachable from outside the
+container. Chrome for Testing is linux64, so the image is `linux/amd64` and the
+`--platform` flag above is load-bearing: a no-op on an amd64 host, emulation on
+Apple silicon.
+
+To exercise the pane, point the app at that server:
+
+```bash
+cd packages/app && bun dev --port 4444
+# then add http://localhost:4096 in the server dialog
+```
 
 ## The shared browser, in one paragraph
 

@@ -10,3 +10,6 @@ node_modules
 **/.turbo
 **/.vite
 **/coverage
+# Study checkouts (noVNC, browserless, vscode, selenoid). Gitignored, and not
+# part of any image.
+ref

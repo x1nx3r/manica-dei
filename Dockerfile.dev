@@ -1,0 +1,107 @@
+# manica-dei dev image — the browser stack, preinstalled.
+#
+# The README's "Local development dependencies" section lists four executables
+# the shared browser spawns by name from PATH: `Xvnc`, `chromium`,
+# `agent-browser`, and (optionally) `xrandr`. This image ships all four, plus
+# Bun, so setting up a Linux environment for the shared browser is a `docker
+# build` and a `docker run` instead of four installs.
+#
+# It mirrors manus-dei's `templates/base/Dockerfile`: the same Ubuntu base, the
+# same pinned Chrome for Testing symlinked to `chromium`, the same pinned
+# `agent-browser`. That is deliberate — a dev image that differs from the
+# session image tests the wrong thing. The template remains the source of
+# truth for the browser stack; keep the pins in step with it.
+#
+# Build and run (see README, "A dev image"):
+#
+#   docker build -f Dockerfile.dev -t manica-dei-dev .
+#   docker run --rm -it -v "$PWD":/workspace -p 4096:4096 -p 4444:4444 manica-dei-dev
+#
+# Chrome for Testing ships linux64 only, so the image must be amd64. Build with
+# `--platform linux/amd64` (see the README): a no-op on an amd64 host, and
+# emulation on Apple silicon. The platform is not pinned in `FROM` because
+# Docker discourages a constant there and an amd64 host needs no flag.
+FROM ubuntu:26.04
+
+# Pinned, because a moving browser or CLI under a pinned repo is not
+# reproducible. Keep in step with manus-dei/templates/base/Dockerfile.
+ARG CHROMIUM_VERSION=154.0.8037.92
+ARG AGENT_BROWSER_VERSION=0.27.0
+ARG BUN_VERSION=1.3.14
+
+# The developer shell and the browser stack's system dependencies, the same
+# list the template installs: tigervnc-standalone-server provides `Xvnc` (the
+# display server and the RFB server in one process), x11-xserver-utils provides
+# `xrandr` for window-follow, and the lib* packages are what a headful
+# Chrome-for-Testing needs. gh comes from GitHub's apt source.
+RUN DEBIAN_FRONTEND=noninteractive apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates curl wget git ripgrep procps vim jq \
+      build-essential python3 unzip zip htop tmux tree file \
+      netcat-openbsd openssh-client man-db manpages gnupg \
+      tigervnc-standalone-server \
+ # The display server's one tool the fork actually calls: `xrandr`.
+      x11-xserver-utils \
+ # The shared libraries and fonts a headful Chrome-for-Testing needs. The repos
+ # have the dependencies even though they do not have the browser.
+      libnss3 libatk-bridge2.0-0 libatk1.0-0 libdrm2 libxkbcommon0 \
+      libgbm1 libasound2t64 libxcomposite1 libxdamage1 libxrandr2 \
+      libxfixes3 libxext6 libxi6 libxtst6 libcairo2 libpango-1.0-0 \
+      libcups2t64 libxss1 fonts-liberation \
+ && install -d -m 0755 /etc/apt/keyrings \
+ && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && DEBIAN_FRONTEND=noninteractive apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gh \
+ && rm -rf /var/lib/apt/lists/*
+
+# Chrome for Testing, pinned, symlinked to the name the fork launches
+# (`browser.ts` spawns `chromium`). Ubuntu 26.04 carries no deb chromium — the
+# `chromium-browser` package is a snap shim — so this is the same workaround the
+# template uses. No mkdir for the destination: `mv` would nest the zip's
+# chrome-linux64 inside an existing directory and leave the symlink dangling.
+RUN curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \
+      "https://storage.googleapis.com/chrome-for-testing-public/${CHROMIUM_VERSION}/linux64/chrome-linux64.zip" \
+      -o /tmp/chrome.zip \
+ && unzip -q /tmp/chrome.zip -d /opt/chromium-tmp \
+ && mv /opt/chromium-tmp/chrome-linux64 /opt/chromium \
+ && rmdir /opt/chromium-tmp \
+ && rm /tmp/chrome.zip \
+ && ln -s /opt/chromium/chrome /usr/local/bin/chromium \
+ && chromium --version
+
+# Node and the agent's browser tool. The tool spawns `agent-browser` from PATH
+# and always attaches with `--cdp <port>` to the session's own Chromium, so the
+# CLI is the whole requirement — the browser `agent-browser install` could
+# fetch is never launched.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs \
+ && rm -rf /var/lib/apt/lists/* \
+ && npm install -g --no-fund --no-audit "agent-browser@${AGENT_BROWSER_VERSION}" \
+ && npm cache clean --force \
+ && node --version && npm --version \
+ && agent-browser --version
+
+# Bun, pinned, from the release archive rather than the install script, so the
+# version is exact and matches `packageManager` in package.json.
+RUN curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \
+      "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" \
+      -o /tmp/bun.zip \
+ && unzip -q /tmp/bun.zip -d /tmp/bun \
+ && install -m 0755 /tmp/bun/bun-linux-x64/bun /usr/local/bin/bun \
+ && rm -rf /tmp/bun /tmp/bun.zip \
+ && bun --version
+
+# The repo is mounted here, not copied, so edits are live and the image stays
+# the environment. `bun install` runs inside, against the mounted lockfile.
+WORKDIR /workspace
+
+# The fork's server (`bun run ./src/index.ts serve --hostname 0.0.0.0`) and the
+# app dev server (`bun dev --port 4444`). The server must bind 0.0.0.0 to be
+# reachable from outside the container.
+EXPOSE 4096 4444
+
+CMD ["bash"]
