@@ -17,16 +17,17 @@ Background: `PLAN.md` F1, `docs/adr/0006-goal-loop.md`.
 ## 0. The shape
 
 ```
-goal set ─▶ SCOPE ─▶ COMMIT ──authorized──▶ WORK ─▶ JUDGE ─┬─ continue ─┐
-   ▲          │         │                              │            │
-   │          │         │                              │            └─▶ WORK
-   │     (question)  (question:                        ├─ done ────────▶ stop
-   │          │      "run unattended?")                ├─ blocked ─▶ question
-   └──────────┴───────────────────────────────────────  └─ wait ────▶ park
+goal set ─▶ SCOPE ─▶ COMMIT ──authorized──▶ WORK ─▶ GATES ─▶ JUDGE ─┬─ continue ─▶ WORK
+   ▲          │         │                            │              ├─ done ─────▶ stop
+   │     (question)  (question:                  (fail: output       ├─ blocked ─▶ question
+   │          │      "run unattended?")           is the prompt)    └─ wait ────▶ park
+   └──────────┴────────────────────────────────────────────────────
 ```
 
 The judge runs only when a goal exists **and** is authorized. Without both,
-`runLoop` behaves exactly as it does today.
+`runLoop` behaves exactly as it does today. The gates run before the judge;
+a failing gate short-circuits it and its bounded output becomes the
+continuation.
 
 ---
 
@@ -43,12 +44,16 @@ distinguished from "authorized".
 | `packages/core/src/database/migration/*.ts` | a new migration (timestamped; never edit an applied one) |
 | `packages/opencode/src/session/goal.ts` | a `Goal` service, mirroring `todo.ts` |
 
-**Schema.** `session_id` (PK), `goal`, `size`, `size_reason`, `contract`,
-`authorized_at` (nullable), `turn_budget`, `turns_used`, `last_verdict`,
-`status`, `time_created`, `time_updated`.
+**Schema.** `session_id` (PK), `goal`, `size`, `size_reason`, `contract` (the
+five fields — outcome, verification, constraints, boundaries, stop_when — as
+JSON), `gates` (the executable form of `verification`: command, timeout,
+max_retries, attempts, last_exit_code, last_output_tail; JSON), `authorized_at`
+(nullable), `turn_budget`, `turns_used`, `last_verdict`, `status`,
+`time_created`, `time_updated`.
 
 **Acceptance.** A goal round-trips. A goal with no `authorized_at` is
-distinguishable and never loops. `turns_used` and `last_verdict` persist.
+distinguishable and never loops. `turns_used` and `last_verdict` persist. The
+contract's five fields and the gate list round-trip intact.
 
 **Tests** (`packages/opencode/test/session/goal.test.ts`)
 
@@ -134,23 +139,35 @@ mis-parse silently ends or extends a run.
 
 ---
 
-## 4. M4 — Loop wiring
+## 4. M4 — Gates and loop wiring
 
-The change to `runLoop` (`session/prompt.ts:1088`), at the exit
-(`:1111-1130`).
+Two changes at the exit of `runLoop` (`session/prompt.ts:1088`, `:1111-1130`):
+run the gates first, then consult the judge.
 
 **Files**
 
 | File | Change |
 |---|---|
-| `packages/opencode/src/session/prompt.ts` | before the break, consult the goal |
-| `packages/opencode/test/session/goal-loop.test.ts` | with an injected fake judge |
+| `packages/opencode/src/session/goal-gate.ts` | run a gate command, capture exit code + bounded output tail, track retries |
+| `packages/opencode/src/session/prompt.ts` | before the break: gates, then the goal/judge |
+| `packages/opencode/test/session/goal-gate.test.ts` | the runner, pure |
+| `packages/opencode/test/session/goal-loop.test.ts` | the loop, with an injected fake judge |
 
-**Acceptance.** No goal → today's behaviour, byte-for-byte. Goal +
-authorized → the four verdicts act as specified. Budget is the floor.
+**Acceptance.** No goal → today's behaviour, byte-for-byte. Goal + authorized →
+gates run before the judge; a failing gate short-circuits the judge and its
+output tail is the continuation; the four verdicts act as specified; the budget
+is the floor; consecutive judge failures trip the circuit breaker.
 
 **Tests** — the loop is driven with a **fake judge**, so these are
 deterministic.
+
+*Gates*
+- a passing gate → the judge runs
+- a failing gate → the judge is **not** called; the continuation carries the
+  output tail
+- a gate that fails past `max_retries` → the loop stops as `blocked`
+- a gate that passes after failing once → `attempts` resets and the judge runs
+- gates run in the session workspace, not the process directory
 
 *Regression (the one that must never break)*
 - **no goal set → the loop exits exactly as before.** Asserted against the
@@ -158,23 +175,21 @@ deterministic.
 
 *Authorization*
 - goal set, not authorized → the loop does not continue
-- goal set, authorized → the judge is consulted on exit
+- goal set, authorized → the gates and judge are consulted on exit
 
 *Verdict effects*
 - `continue` → a new user message is appended and the turn runs again
 - `done` → the loop exits, the goal is marked done
 - `blocked` → the `question` tool is invoked and the loop parks
-- `wait` → the loop parks without spending a turn; resumes on the event
+- `wait` → the loop parks without spending a turn; resumes on the barrier
 
-*Budget*
+*Budget and the circuit breaker*
 - turns equal to the budget → the loop stops
 - one under the budget → it continues
 - the budget is per goal and survives a re-read
-
-*Fail-open*
-- the judge throws → `continue`
-- the judge times out → `continue`
-- the judge returns garbage → `continue`
+- consecutive parse failures → pause, naming the judge config
+- consecutive transport failures → pause, naming the judge config
+- a single failure → `continue` (fail-open)
 
 *The cache invariant (the load-bearing one)*
 - across a continuation, the **system prompt prefix is byte-identical**.
@@ -186,21 +201,25 @@ deterministic.
 
 ---
 
-## 5. M5 — Scope, commit, and the gate
+## 5. M5 — Scope, commit, and the `goal` tool
 
 **Files**
 
 | File | Change |
 |---|---|
 | `packages/opencode/src/session/prompt/*.txt` | the scope and commit prompts |
+| `packages/opencode/src/tool/goal.ts` | the `goal` tool: the agent's kickoff — writes goal, size, contract, gates |
 | `packages/opencode/src/session/goal.ts` | the authorization write |
 | `packages/opencode/test/session/goal-commit.test.ts` | — |
 
 **Acceptance.** A fresh goal goes scope → commit → authorized → loop. A goal
-that never gets authorization never loops.
+that never gets authorization never loops. The contract's `verification` becomes
+the gate the loop runs.
 
 **Tests**
 
+- the `goal` tool writes goal, size, contract, and gates in one call
+- the tool refuses a contract with an empty `verification`
 - answering the commit question sets `authorized_at`
 - declining leaves it null and the session idle
 - the authorization survives a service restart (re-read from disk)
@@ -297,8 +316,13 @@ and should not be skipped.
 
 ## 10. Open risks
 
-- **The judge is a model call per turn.** Cost and latency scale with the
+- **The judge is a model call per stop.** Cost and latency scale with the
   budget. M7's judge suite should report cost per case, not just accuracy.
+- **A gate command can be wrong or hang.** It runs with a timeout, its output
+  is bounded, and a gate that cannot pass stops the loop as `blocked` rather
+  than looping — but the contract is only ever as good as its `verification`.
+  This is why `verification` must be a command, and why a goal that cannot
+  name one is a scoping failure.
 - **Cache-stability is fragile.** Any future change that injects the
   scratchpad mid-conversation breaks it; M4's prefix test is the guard.
 - **The eval harness is new infrastructure.** It is the smallest thing that

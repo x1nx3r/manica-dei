@@ -99,11 +99,21 @@ otherwise silently make — through `question`. Ordinary turns; no loop.
 the completion contract (below), and asks for permission to run unattended.
 The human's answer is the authorization.
 
+The kickoff is a **`goal` tool** the agent calls once scoping is done: it
+writes the record — goal, size, contract — and the human's affirmative answer
+to the commit question sets `authorized_at`. A tool rather than an overloaded
+question, because "I am ready" is a distinct act the agent should take
+explicitly, and because the record write and the human's consent stay two
+visible steps. Until the tool is called there is no goal, and the session
+behaves exactly as it does today.
+
 **3. Work.** The run loop proceeds as today, except that stopping is no
 longer the end.
 
-**4. Judge.** When the loop would exit, a judge decides whether the goal is
-met and either ends the loop or continues it.
+**4. Gate and judge.** When the loop would exit, the contract's gates run
+first — a failure short-circuits and its output is the continuation. Only if
+the gates pass does a judge decide whether the goal is met, ending the loop or
+continuing it.
 
 Scoping and commit are deliberately separate, against ADR-009's preference
 for a single gate. They answer different questions — *what* versus
@@ -113,14 +123,50 @@ that carries a durable permission, which the single-gate shape did not.
 
 ### The completion contract is the terminating condition
 
-At commit the agent writes down **how the judge will know the goal is met**:
-the deliverable, the evidence that proves it, what must not break, and the
-stop condition. The judge judges against *that*, not against the original
-prompt.
+At commit the agent writes down **how the loop will know the goal is met**.
+The contract has five named fields, following Codex's "strong goal" shape,
+because the agent, the judge, and the gate runner all read the same thing:
 
-This is the piece without which "continue until done" has no floor — the
-failure ADR-009 names in its own last line: *"the review rubric must be
-written down … otherwise 'iterate until pass' has no terminating condition."*
+| Field | Meaning |
+|---|---|
+| **Outcome** | the single end state that must be true when done |
+| **Verification** | the specific command that **proves** it — concrete and checkable |
+| **Constraints** | what must not change or regress |
+| **Boundaries** | files, directories, tools, systems in scope |
+| **Stop when** | the condition under which the agent stops and asks instead of pushing on |
+
+The judge judges against *that*, not against the original prompt. And
+**Verification is not prose — it is the gate** (next section). This is the
+piece without which "continue until done" has no floor — the failure ADR-009
+names in its own last line: *"the review rubric must be written down …
+otherwise 'iterate until pass' has no terminating condition."*
+
+### Quality gates: the contract is executable
+
+A claim of evidence is not evidence. The contract's **Verification** field is
+a command — a test, a build, a benchmark, a lint — and the loop runs it at
+every turn boundary **before the judge**:
+
+- **A passing gate is the evidence.** The judge no longer decides whether the
+  work is real; the command decided.
+- **A failing gate short-circuits the judge entirely.** Its bounded output —
+  a tail of stdout and stderr — *is* the continuation, so the agent repairs
+  against real output rather than a vibe check.
+- **Retries are capped.** A gate that keeps failing past the cap stops the
+  loop as `blocked`, never `done`. A red suite is not a disagreement to
+  adjudicate; it is a fact.
+- **Gates run in the session's workspace**, so a relative command checks the
+  project the goal is about and cannot pass against a different one.
+
+This is what makes the judge affordable and honest. The judge is a **reader,
+not a verifier**: it checks that the Verification criterion is satisfied and
+that the evidence is *shown* in the response. It never needs tools and never
+trusts a claim, because a false claim fails the gate before the judge is
+called. The two layers answer two questions — the gate asks *"is it true?"*,
+the judge asks *"is it done?"*
+
+A goal whose Verification cannot be expressed as a command was not scoped
+tightly enough. That is a scoping failure, not a gap in the loop.
 
 ### Task size and the ask rubric
 
@@ -257,15 +303,26 @@ Following `goals.py`:
   `blocked`, not `done`.
 - **`blocked`** — genuinely unachievable, or the next step needs a human.
   The loop routes it to the `question` tool, so the human is asked rather
-  than the run simply ending. See the next section for how this differs from
-  the agent asking on its own.
+  than the run simply ending. The mechanism is the synthetic continuation:
+  the loop appends the judge's reason and instructs the agent to ask, so the
+  question still comes from the agent's own tool rather than the loop calling
+  it. See the next section for how this differs from the agent asking on its
+  own.
 - **`continue`** — not done, and there is a concrete next step. The default
   when in doubt.
 - **`wait`** — not done, but progress is gated on async work (a subagent, a
   build, the shared browser mid-navigation). Parks the loop without burning
   a turn; it resumes on the event or the timer. This verdict matters more
   here than upstream because the session browser and subagents both run
-  asynchronously.
+  asynchronously. The park is a **barrier** — a pid, a session, or a deadline
+  — and the loop re-enters when the barrier releases. While parked, the loop
+  consumes neither a turn nor a judge call.
+
+The judge reads the contract, the last response, and the assumption ledger —
+never the whole transcript — and decides against the **Verification**
+criterion, requiring the response to *show* the evidence the gate produced.
+It is a reader: a response that claims done without showing evidence is
+`continue`, never `done`.
 
 ### The agent may ask at any point, and asking is not a failure
 
@@ -310,8 +367,15 @@ ruinous.
 
 A turn budget, configured per goal, is the backstop. When it is spent the
 loop stops and hands back to the human with the contract's remaining gaps
-stated. A judge failure is **fail-open** (continue), because a broken judge
-must not silently end a run that was still working.
+stated.
+
+A single judge failure is **fail-open** (continue), because a broken judge
+must not silently end a run that was still working. Fail-open alone, though,
+lets a permanently broken judge burn the whole budget, so there is a
+**circuit breaker**: consecutive parse failures (the model will not return
+the JSON verdict) or consecutive transport failures (an unreachable API)
+stop the loop and hand back with the judge configuration named. Tolerate a
+blip; do not tolerate a misconfiguration forever.
 
 ### The goal is persisted on the session
 
@@ -320,19 +384,30 @@ verdict are recorded against the session, so a reconnect or a restart does
 not lose an authorized run. This is session-local state, not a task — the
 task is manus-dei's, per ADR-008.
 
-### The judge model is configurable
+### The judge model is configurable, and not the session's own
 
-The judge is a model call, and an extra one per turn. It uses a configured
-model, defaulting to the session's own, and is **off unless a goal exists**.
-A session with no goal behaves exactly as it does today.
+The judge is a model call, and an extra one per stop. It uses a configured
+judge model, **not the session's own by default**: the failure this loop
+exists to catch is the agent that is confidently wrong about its own work, and
+a model grading itself is the weakest possible check on exactly that.
+`goals.py` reaches the same conclusion — its judge runs on an `auxiliary`
+model, never the agent's. The judge is configurable and is **off unless a goal
+exists**; a session with no goal behaves exactly as it does today.
 
 ## Consequences
 
 - **The fork diverges further from upstream.** This is real and is the
   cost of the decision. It is the right divergence: autonomy is what makes
   the session an agent, and the fork is the agent runtime.
-- **A new model call per turn** while a goal is active. Bounded by the
-  budget; absent when no goal is set.
+- **A new model call per stop** while a goal is active — not per turn. The
+  judge runs where `runLoop` would exit, when the model stops with no pending
+  tool calls, so a productive run with many tool calls invokes it once.
+  Bounded by the budget; absent when no goal is set.
+- **The contract's Verification becomes an executable gate.** The loop runs it
+  at every turn boundary before the judge, and a failure short-circuits the
+  judge with the command's output. This is what lets the judge stay a
+  text-only reader, and what catches the confidently-wrong run the judge
+  alone cannot.
 - **A new persisted record** on the session, and a migration with it.
 - **A new per-session artifact**, the scratchpad, written and read on every
   authorized run. Its content is the agent's, not a schema, so it can evolve
@@ -343,10 +418,12 @@ A session with no goal behaves exactly as it does today.
   out-of-band relay is manus-dei's work, not the fork's.
 - **The shared browser gains an obvious use**: a human can watch an
   authorized run and take the wheel mid-pursuit without stopping the loop.
-- **Tests.** The verdict parser, the contract handling, and the budget are
-  pure functions and are unit-tested. The loop's continuation path is tested
-  against a fake judge, asserting the prompt cache prefix is unchanged across
-  a continuation — the invariant, not a snapshot.
+- **Tests.** The verdict parser, the contract handling, the gate runner, and
+  the budget are pure functions and are unit-tested. The loop's continuation
+  path is tested against a fake judge, asserting the prompt cache prefix is
+  unchanged across a continuation — the invariant, not a snapshot. The gate
+  runner is tested against a command that passes and one that fails,
+  asserting a failure short-circuits the judge and carries the output tail.
 
 ## Out of scope
 
