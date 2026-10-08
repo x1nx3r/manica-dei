@@ -13,6 +13,9 @@ import { Token } from "@/util/token"
 import { Plugin } from "../../src/plugin"
 import { provideTmpdirInstance, TestInstance } from "../fixture/fixture"
 import { Session as SessionNs } from "@/session/session"
+import { Scratchpad } from "../../src/session/scratchpad"
+import { InstanceState } from "@/effect/instance-state"
+import fs from "fs/promises"
 import { MessageV2 } from "../../src/session/message-v2"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionStatus } from "../../src/session/status"
@@ -718,6 +721,55 @@ describe("session.compaction.prune", () => {
           compaction: { prune: true },
         },
       },
+    ),
+  )
+
+  it.live(
+    "message compaction leaves the scratchpad file byte-identical",
+    provideTmpdirInstance(
+      (dir) =>
+        Effect.gen(function* () {
+          const compact = yield* SessionCompaction.Service
+          const ssn = yield* SessionNs.Service
+          const ctx = yield* InstanceState.context
+          const info = yield* ssn.create({})
+
+          // Enough history with one large tool output that prune actually prunes.
+          const a = yield* createUserMessage(info.id, "first")
+          const b = yield* createAssistantMessage(info.id, a.id, dir)
+          yield* ssn.updatePart({
+            id: PartID.ascending(),
+            messageID: b.id,
+            sessionID: info.id,
+            type: "tool",
+            callID: crypto.randomUUID(),
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: {},
+              output: "x".repeat(200_000),
+              title: "done",
+              metadata: {},
+              time: { start: Date.now(), end: Date.now() },
+            },
+          })
+          yield* createUserMessage(info.id, "second")
+          yield* createUserMessage(info.id, "third")
+
+          // The scratchpad is a file, so compaction cannot reach it.
+          const file = SessionNs.scratchpad(info, ctx)
+          const content = Scratchpad.upsertSection(Scratchpad.init(), "Goal", "add the widget")
+          yield* Effect.promise(() => Scratchpad.write(file, content))
+
+          yield* compact.prune({ sessionID: info.id })
+
+          // The prune ran — a tool part was compacted — and the file is untouched.
+          const msgs = yield* ssn.messages({ sessionID: info.id })
+          const part = msgs.flatMap((message) => message.parts).find((part) => part.type === "tool")
+          expect(part?.type === "tool" && part.state.status === "completed" && part.state.time.compacted).toBeNumber()
+          expect(yield* Effect.promise(() => fs.readFile(file, "utf8"))).toBe(content)
+        }),
+      { config: { compaction: { prune: true } } },
     ),
   )
 

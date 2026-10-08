@@ -328,11 +328,28 @@ export const Event = {
   Error: SessionV1.Event.Error,
 }
 
-export function plan(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
+function sessionFile(
+  kind: "plans" | "scratchpads",
+  input: { slug: string; time: { created: number } },
+  instance: InstanceContext,
+) {
   const base = instance.project.vcs
-    ? path.join(instance.worktree, ".opencode", "plans")
-    : path.join(Global.Path.data, "plans")
+    ? path.join(instance.worktree, ".opencode", kind)
+    : path.join(Global.Path.data, kind)
   return path.join(base, [input.time.created, input.slug].join("-") + ".md")
+}
+
+export function plan(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
+  return sessionFile("plans", input, instance)
+}
+
+/**
+ * Fork ADR-0006: the session's scratchpad. The same shape as the plan path, in
+ * its own directory — so plan mode's file can fold into it later without a
+ * second location.
+ */
+export function scratchpad(input: { slug: string; time: { created: number } }, instance: InstanceContext) {
+  return sessionFile("scratchpads", input, instance)
 }
 
 export const getUsage = (input: { model: Provider.Model; usage: Usage; metadata?: ProviderMetadata }) => {
