@@ -14,6 +14,7 @@ import { Timestamps } from "../database/schema.sql"
 import type { SystemContext } from "../system-context/index"
 import { AgentV2 } from "../agent"
 import type { Revert } from "@opencode-ai/schema/revert"
+import type { SessionGoal } from "@opencode-ai/schema/session-goal"
 
 type SessionMessageData = Omit<(typeof SessionMessage.Message)["Encoded"], "type" | "id">
 type V1MessageData = Omit<SessionV1.Info, "id" | "sessionID">
@@ -115,6 +116,27 @@ export const TodoTable = sqliteTable(
     index("todo_session_idx").on(table.session_id),
   ],
 )
+
+// Fork ADR-0006: one goal per session. The durable record of an authorized run
+// — the goal, the completion contract, the gates, and the loop's progress.
+export const GoalTable = sqliteTable("session_goal", {
+  session_id: text()
+    .$type<SessionSchema.ID>()
+    .primaryKey()
+    .references(() => SessionTable.id, { onDelete: "cascade" }),
+  goal: text().notNull(),
+  size: text().$type<SessionGoal.Size>(),
+  size_reason: text(),
+  contract: text({ mode: "json" }).$type<SessionGoal.Contract>(),
+  gates: text({ mode: "json" }).notNull().$type<SessionGoal.Gate[]>(),
+  // The commit gate: null until a human authorizes the unattended run.
+  authorized_at: integer(),
+  turn_budget: integer().notNull(),
+  turns_used: integer().notNull().default(0),
+  last_verdict: text().$type<SessionGoal.Verdict>(),
+  status: text().notNull().$type<SessionGoal.Status>(),
+  ...Timestamps,
+})
 
 export const SessionMessageTable = sqliteTable(
   "session_message",
