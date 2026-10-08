@@ -83,6 +83,33 @@ const it = testEffect(
   ]),
 )
 
+const IDENTITY_KEYS = ["MANUS_USER_NAME", "MANUS_USER_GITHUB", "MANUS_USER_ROLE"] as const
+
+/** Sets `MANUS_USER_*` for one effect and restores the environment after. */
+function withIdentity<A, E, R>(
+  values: Partial<Record<(typeof IDENTITY_KEYS)[number], string | undefined>>,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> {
+  return Effect.gen(function* () {
+    const previous = IDENTITY_KEYS.map((key) => [key, process.env[key]] as const)
+    for (const key of IDENTITY_KEYS) {
+      const value = values[key]
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    return yield* effect.pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          for (const [key, value] of previous) {
+            if (value === undefined) delete process.env[key]
+            else process.env[key] = value
+          }
+        }),
+      ),
+    )
+  })
+}
+
 describe("session.system", () => {
   test("selects the Meta prompt for Muse Spark model IDs", () => {
     for (const id of ["meta/muse-spark-preview", "muse-spark-1.1", "muse-spark-1.2"]) {
@@ -164,5 +191,29 @@ describe("session.system", () => {
         ].join("\n"),
       )
     }),
+  )
+
+  it.effect("identity is undefined without MANUS_USER_* — a stock session is untouched", () =>
+    withIdentity(
+      {},
+      Effect.gen(function* () {
+        const prompt = yield* SystemPrompt.Service
+        expect(yield* prompt.identity()).toBeUndefined()
+      }),
+    ),
+  )
+
+  it.effect("identity renders the injected person and the stance", () =>
+    withIdentity(
+      { MANUS_USER_NAME: "Ada", MANUS_USER_GITHUB: "ada", MANUS_USER_ROLE: "frontend developer" },
+      Effect.gen(function* () {
+        const prompt = yield* SystemPrompt.Service
+        const output = yield* prompt.identity()
+        expect(output).toContain("Name: Ada")
+        expect(output).toContain("GitHub: ada")
+        expect(output).toContain("Role: frontend developer")
+        expect(output).toContain("Greet Ada by name")
+      }),
+    ),
   )
 })

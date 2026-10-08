@@ -19,6 +19,7 @@ import type { Agent } from "@/agent/agent"
 import { Permission } from "@/permission"
 import { Skill } from "@/skill"
 import { AbsolutePath } from "@opencode-ai/core/schema"
+import { Identity } from "@opencode-ai/core/identity"
 import { Location } from "@opencode-ai/core/location"
 import { LocationServiceMap, locationServiceMapLayer } from "@opencode-ai/core/location-services"
 import { Reference } from "@opencode-ai/core/reference"
@@ -52,6 +53,7 @@ export function provider(model: Provider.Model) {
 
 export interface Interface {
   readonly environment: (model: Provider.Model) => Effect.Effect<string[]>
+  readonly identity: () => Effect.Effect<string | undefined>
   readonly skills: (agent: Agent.Info) => Effect.Effect<string | undefined>
   readonly mcp: (agent: Agent.Info, permission?: PermissionV1.Ruleset) => Effect.Effect<string | undefined>
 }
@@ -102,6 +104,14 @@ const layer = Layer.effect(
                 "</available_references>",
               ].join("\n"),
         ].filter((part): part is string => part !== undefined)
+      }),
+
+      identity: Effect.fn("SystemPrompt.identity")(function* () {
+        // F1.8: who the session works with, and the stance. Absent
+        // `MANUS_USER_*` → undefined, so a stock opencode session is untouched.
+        const identity = Identity.fromEnv(process.env)
+        if (!identity) return undefined
+        return Identity.render(identity, new Date())
       }),
 
       skills: Effect.fn("SystemPrompt.skills")(function* (agent: Agent.Info) {
