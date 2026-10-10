@@ -14,6 +14,7 @@ import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import { JUDGE_SYSTEM_PROMPT } from "@opencode-ai/core/session/goal/judge"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -261,6 +262,25 @@ const layer = Layer.effect(
               user,
             ),
             prompt: PROMPT_SUMMARY,
+          },
+          // Fork ADR-0006: the goal loop's judge. A hidden, tool-less agent on
+          // a dedicated model, so a session can grade its own work without
+          // trusting the model that did the work.
+          "goal-judge": {
+            name: "goal-judge",
+            mode: "primary",
+            options: {},
+            native: true,
+            hidden: true,
+            temperature: 0,
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                "*": "deny",
+              }),
+              user,
+            ),
+            prompt: JUDGE_SYSTEM_PROMPT,
           },
         }
 
