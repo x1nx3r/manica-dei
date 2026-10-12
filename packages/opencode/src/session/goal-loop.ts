@@ -69,13 +69,19 @@ const layer = Layer.effect(
         return unchanged({ _tag: "stop", note: "The turn budget is spent; the goal stops here." })
       }
 
-      // Gates run before the judge.
+      // Gates run before the judge. Their output is captured here and handed to
+      // the judge as a fact: the judge is a text-only reader, and the agent's
+      // summary of a check is not the check (ADR-0006, "prefer a fact over a
+      // rule"). The gates run in this same decision, so the evidence is fresh
+      // by construction.
+      const evidence: Judge.GateEvidence[] = []
       if (goal.gates.length > 0) {
         const next = goal.gates.map((gate) => ({ ...gate }))
         for (let index = 0; index < next.length; index++) {
           const gate = next[index]
           const outcome = yield* gates.run(gate, input.cwd)
           if (outcome.passed) {
+            evidence.push({ command: gate.command, exitCode: 0, output: outcome.output })
             next[index] = { ...gate, attempts: 0, last_exit_code: 0, last_output_tail: "" }
             continue
           }
@@ -113,6 +119,7 @@ const layer = Layer.effect(
         contract: goal.contract,
         assumptions: input.assumptions,
         lastResponse: input.lastResponse,
+        evidence,
       })
 
       // The circuit breaker: consecutive failures stop the loop, so a

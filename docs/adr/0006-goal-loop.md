@@ -200,10 +200,12 @@ every turn boundary **before the judge**:
   adjudicate; it is a fact.
 - **Gates run in the session's workspace**, so a relative command checks the
   project the goal is about and cannot pass against a different one.
-- **Evidence must be fresh.** A green gate that predates the last edit to the
-  workspace is *stale*, and stale evidence is not evidence. This is recorded
-  as a fact about the workspace, not derived from the agent's summary, so the
-  judge can be handed it and the agent cannot argue with it.
+- **The gate's output is handed to the judge as a fact.** The gate runs in the
+  same decision that calls the judge, so its result is fresh by construction —
+  there is no window in which a green gate predates the work it certifies.
+  What must not happen is the judge reading the *agent's* summary of the check:
+  the loop captures the command, its exit code, and its output tail, and hands
+  them over. The agent cannot shape it and cannot argue with it.
 
 What a gate does **not** buy: it asks *"does the command pass?"*, not *"is the
 outcome true?"* The two coincide only when the command exercises the outcome —
@@ -522,9 +524,10 @@ exists**; a session with no goal behaves exactly as it does today.
   gate proves the command, not the outcome, and the judge must still decide
   whether the outcome is shown true. This is what keeps the judge a text-only
   reader — and the eval showed the limit of that.
-- **Evidence gains a freshness fact.** Whether the workspace changed after the
-  last passing gate is recorded, so the judge can be told that green evidence
-  is stale. New persisted state, and a migration with it.
+- **The judge is handed the gate's own output.** No new persisted state and no
+  migration: the gate runs in the same decision as the judge, so freshness
+  needs no record. The contract is that the judge reads the captured result,
+  not the agent's account of it.
 - **The commit gate now means two things.** "Run unattended" *and* "I agree
   what done means". One extra confirmation at a step where the human is already
   present; it is the only place the agent's self-written yardstick can be

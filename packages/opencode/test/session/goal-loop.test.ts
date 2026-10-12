@@ -25,12 +25,14 @@ import { testEffect } from "../lib/effect"
 // gates before judge, the four verdicts, and the circuit breaker.
 
 let judgeCalls = 0
+let judgeInput: GoalJudge.JudgeInput | undefined
 let judgeResult: GoalJudge.JudgeResult = { judgement: { verdict: "continue", reason: "keep going" } }
 
 const fakeJudge = Layer.mock(GoalJudge.Service, {
-  judge: () =>
+  judge: (input) =>
     Effect.sync(() => {
       judgeCalls += 1
+      judgeInput = input
       return judgeResult
     }),
 })
@@ -81,6 +83,7 @@ const decideInput = (sessionID: never, cwd: string) => ({
 
 beforeEach(() => {
   judgeCalls = 0
+  judgeInput = undefined
   judgeResult = { judgement: { verdict: "continue", reason: "keep going" } }
 })
 
@@ -218,6 +221,29 @@ describe("session.goal-loop", () => {
       yield* loop.decide(decideInput(info.id as never, test.directory))
 
       expect(judgeCalls).toBe(1)
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a passing gate hands the judge the gate's own output as evidence", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget", gates: [gate("echo gate-ran")] })
+      yield* goal.authorize(info.id)
+      yield* loop.decide(decideInput(info.id as never, test.directory))
+
+      // The judge reads the loop's capture of the check, not the agent's word
+      // for it (ADR-0006, "prefer a fact over a rule").
+      expect(judgeInput?.evidence?.length).toBe(1)
+      expect(judgeInput?.evidence?.[0]?.command).toBe("echo gate-ran")
+      expect(judgeInput?.evidence?.[0]?.exitCode).toBe(0)
+      expect(judgeInput?.evidence?.[0]?.output).toContain("gate-ran")
 
       yield* session.remove(info.id)
     }),

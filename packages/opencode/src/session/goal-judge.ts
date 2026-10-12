@@ -28,6 +28,8 @@ export interface JudgeInput {
   readonly contract?: SessionGoal.Contract
   readonly assumptions?: string
   readonly lastResponse: string
+  /** What the gates produced, captured by the loop — not the agent's summary. */
+  readonly evidence?: ReadonlyArray<Judge.GateEvidence>
 }
 
 export interface JudgeResult {

@@ -44,9 +44,9 @@ export const JUDGE_SYSTEM_PROMPT = [
   "Decide one of four verdicts.",
   "",
   "DONE — the goal is met:",
-  "- The response shows the goal's Outcome is true, with the completion",
-  "  contract's Verification output as concrete evidence for it (a command",
-  "  result, file contents, a test result).",
+  "- The response shows the goal's Outcome is true. The verification evidence",
+  "  below is the loop's own capture of the check — judge whether it proves the",
+  "  outcome, not whether a command passed.",
   "- The Outcome, not the command, is the criterion. A passing verification",
   "  proves the outcome only when it exercises the outcome; a green run over a",
   "  deliverable that does not do the job is not done.",
@@ -83,6 +83,19 @@ export interface JudgePromptInput {
   readonly contract?: SessionGoal.Contract
   readonly assumptions?: string
   readonly lastResponse: string
+  /**
+   * What the loop's gates actually produced, captured by the loop rather than
+   * reported by the agent. The judge is only called when every gate passed, so
+   * this is the check's real output, and the agent cannot shape it.
+   */
+  readonly evidence?: ReadonlyArray<GateEvidence>
+}
+
+/** One gate's result, as the loop saw it. */
+export interface GateEvidence {
+  readonly command: string
+  readonly exitCode: number
+  readonly output: string
 }
 
 /**
@@ -107,6 +120,9 @@ export function buildJudgePrompt(input: JudgePromptInput): string {
           `Stop when: ${input.contract.stop_when}`,
           "",
         ]
+      : []),
+    ...(input.evidence && input.evidence.length > 0
+      ? ["Verification evidence (the loop ran these and captured the output):", renderEvidence(input.evidence), ""]
       : []),
     ...(input.assumptions ? ["Assumptions the agent recorded:", input.assumptions, ""] : []),
     "Agent's most recent response:",
@@ -155,6 +171,22 @@ function renderContract(contract: SessionGoal.Contract): string {
     `Constraints: ${contract.constraints}`,
     `Boundaries: ${contract.boundaries}`,
   ].join("\n")
+}
+
+/** The gates' captured output, rendered as the fact it is. */
+function renderEvidence(evidence: ReadonlyArray<GateEvidence>): string {
+  return evidence
+    .map((entry) =>
+      [
+        `$ ${entry.command}`,
+        `exit code: ${entry.exitCode}`,
+        "output (tail):",
+        "```",
+        entry.output.trim().length === 0 ? "(no output)" : entry.output,
+        "```",
+      ].join("\n"),
+    )
+    .join("\n\n")
 }
 
 function clip(text: string, max: number): string {

@@ -130,6 +130,23 @@ describe("GoalJudge.buildJudgePrompt", () => {
     expect(stopAt).toBeGreaterThan(runConditionAt)
   })
 
+  test("carries the gates' own output as evidence when the loop supplies it", () => {
+    const prompt = GoalJudge.buildJudgePrompt({
+      goal: "g",
+      contract,
+      lastResponse: "r",
+      evidence: [{ command: "bun test widget", exitCode: 0, output: "12 pass, 0 fail" }],
+    })
+    expect(prompt).toContain("Verification evidence (the loop ran these and captured the output):")
+    expect(prompt).toContain("$ bun test widget")
+    expect(prompt).toContain("12 pass, 0 fail")
+  })
+
+  test("omits the evidence block when the loop supplied none", () => {
+    const prompt = GoalJudge.buildJudgePrompt({ goal: "g", contract, lastResponse: "r" })
+    expect(prompt).not.toContain("Verification evidence")
+  })
+
   test("includes the assumption ledger when present, omits the blocks when absent", () => {
     const withLedger = GoalJudge.buildJudgePrompt({
       goal: "g",
