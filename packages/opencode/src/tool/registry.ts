@@ -239,6 +239,8 @@ const layer = Layer.effect(
           builtin: [
             tool.invalid,
             ...(questionEnabled ? [tool.question] : []),
+            // The goal tool's commit is a question, so it rides the same gate.
+            ...(questionEnabled ? [tool.goal] : []),
             tool.shell,
             tool.read,
             tool.glob,

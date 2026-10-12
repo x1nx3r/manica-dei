@@ -57,6 +57,8 @@ describe("Identity.render", () => {
     expect(block).toContain("Greet Ada by name")
     expect(block).toContain("Read this repository's own standards")
     expect(block).toContain("Ask what to work on before diving in")
+    // The stance must point at the kickoff, or the agent just does the task.
+    expect(block).toContain("set the goal with the goal tool")
   })
 
   test("is stable for the same input — no clock read inside", () => {

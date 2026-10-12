@@ -330,3 +330,36 @@ and should not be skipped.
   second consumer.
 - **Size self-assessment can be wrong.** The human can override, and the
   scratchpad records the reason, so a bad call is visible rather than silent.
+
+## M6b — the live run (2026-10-12)
+
+One run against a real model, `opencode-go/deepseek-v4.1-flash`, with the real
+auth and a trivial goal (`hello.txt` containing `hello`, verified by a
+command). What actually happened:
+
+```
+tools: bash, bash, read, bash, question, goal, bash
+goal:  size=small, authorized=true, turns_used=1, last_verdict=done, status=done
+gate:  test "$(cat hello.txt)" = hello  → exit 0
+```
+
+Scope → `goal` (the contract the agent wrote: outcome, `verification`, and
+constraints) → the commit `question` → authorized → work → the gate passed →
+the judge said `done`. The loop is real.
+
+**Two bugs the live run found that the unit tests could not.** Both are why it
+was worth running:
+
+1. **The `goal` tool was never materialized.** The registry's `builtin` list is
+   explicit; M5 added `goal` to the tool *map* but not to that array, so it was
+   constructed and discarded. The M5 tests drove `tool.execute` directly and
+   never saw it. Fixed, with the regression test
+   `materializes the goal tool for the build agent`.
+2. **The stance did not name the kickoff.** F1.8 said "ask what to work on" but
+   not "then set the goal", so an agent with no `MANUS_USER_*` — and even one
+   with it — did the task directly. The stance now ends by naming the `goal`
+   tool.
+
+A third, operational: `OPENCODE_DB=… bun run …` on a multi-line command did not
+take effect (the first two runs wrote into the real `~/.local/share/opencode`
+database); `export OPENCODE_DB=…` does. The run is otherwise isolated.
