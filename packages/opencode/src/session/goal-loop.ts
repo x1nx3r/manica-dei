@@ -1,0 +1,163 @@
+import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { Context, Effect, Layer } from "effect"
+import { GoalJudge as Judge } from "@opencode-ai/core/session/goal/judge"
+import type { SessionV1 } from "@opencode-ai/core/v1/session"
+import type { ProviderV2 } from "@opencode-ai/core/provider"
+import type { ModelV2 } from "@opencode-ai/core/model"
+import { GoalGate } from "./goal-gate"
+import { Goal } from "./goal"
+import { GoalJudge } from "./goal-judge"
+import type { SessionID } from "./schema"
+
+// Fork ADR-0006, M4: the loop's decision. Everything here is one question —
+// given the goal, the gates, and the judge, does the loop stop or go on? — and
+// the answer is a value the caller acts on.
+//
+// The order is the point: gates run before the judge, so a failing gate is
+// deterministic evidence that short-circuits judging entirely.
+
+export type Decision =
+  | { readonly _tag: "stop" }
+  | { readonly _tag: "continue"; readonly prompt: string }
+  | { readonly _tag: "blocked"; readonly reason: string }
+  | { readonly _tag: "wait"; readonly reason: string; readonly wait: Judge.WaitDirective }
+
+/** Consecutive judge failures of one kind that stop the loop. */
+export const MAX_CONSECUTIVE_FAILURES = 3
+
+export interface DecideInput {
+  readonly sessionID: SessionID
+  /** The session's workspace: where a gate runs. */
+  readonly cwd: string
+  readonly user: SessionV1.User
+  readonly providerID: ProviderV2.ID
+  readonly modelID: ModelV2.ID
+  readonly lastResponse: string
+  /** The assumption ledger, when the scratchpad has one. */
+  readonly assumptions?: string
+  /** Consecutive judge failures before this call, by kind. */
+  readonly failures: { readonly parse: number; readonly transport: number }
+}
+
+export interface DecideResult {
+  readonly decision: Decision
+  /** Consecutive judge failures after this call. */
+  readonly failures: { readonly parse: number; readonly transport: number }
+}
+
+export interface Interface {
+  readonly decide: (input: DecideInput) => Effect.Effect<DecideResult>
+}
+
+export class Service extends Context.Service<Service, Interface>()("@opencode/SessionGoalLoop") {}
+
+const layer = Layer.effect(
+  Service,
+  Effect.gen(function* () {
+    const goals = yield* Goal.Service
+    const gates = yield* GoalGate.Service
+    const judge = yield* GoalJudge.Service
+
+    const decide = Effect.fn("GoalLoop.decide")(function* (input: DecideInput) {
+      const unchanged = (decision: Decision): DecideResult => ({ decision, failures: input.failures })
+
+      const goal = yield* goals.get(input.sessionID)
+      if (!goal || !goal.authorized || goal.status !== "active") return unchanged({ _tag: "stop" })
+
+      // The budget is the floor. When it is spent the loop stops and hands back.
+      if (goal.turns_used >= goal.turn_budget) return unchanged({ _tag: "stop" })
+
+      // Gates run before the judge.
+      if (goal.gates.length > 0) {
+        const next = goal.gates.map((gate) => ({ ...gate }))
+        for (let index = 0; index < next.length; index++) {
+          const gate = next[index]
+          const outcome = yield* gates.run(gate, input.cwd)
+          if (outcome.passed) {
+            next[index] = { ...gate, attempts: 0, last_exit_code: 0, last_output_tail: "" }
+            continue
+          }
+          const attempts = gate.attempts + 1
+          next[index] = { ...gate, attempts, last_exit_code: outcome.exitCode, last_output_tail: outcome.output }
+          yield* goals.setGates({ sessionID: input.sessionID, gates: next })
+          if (attempts > gate.max_retries) {
+            return unchanged({
+              _tag: "blocked",
+              reason: `quality gate exhausted ${gate.max_retries} retries: $ ${gate.command}`,
+            })
+          }
+          return unchanged({
+            _tag: "continue",
+            prompt: GoalGate.continuation({
+              goal: goal.goal,
+              command: gate.command,
+              exitCode: outcome.exitCode,
+              output: outcome.output,
+              attempt: attempts,
+              maxRetries: gate.max_retries,
+            }),
+          })
+        }
+        yield* goals.setGates({ sessionID: input.sessionID, gates: next })
+      }
+
+      const result = yield* judge.judge({
+        sessionID: input.sessionID,
+        user: input.user,
+        providerID: input.providerID,
+        modelID: input.modelID,
+        goal: goal.goal,
+        contract: goal.contract,
+        assumptions: input.assumptions,
+        lastResponse: input.lastResponse,
+      })
+
+      // The circuit breaker: consecutive failures stop the loop, so a
+      // misconfigured judge cannot burn the budget. A success resets both.
+      const failures = result.failure
+        ? {
+            parse: input.failures.parse + (result.failure === "parse" ? 1 : 0),
+            transport: input.failures.transport + (result.failure === "transport" ? 1 : 0),
+          }
+        : { parse: 0, transport: 0 }
+      const settled = (decision: Decision): DecideResult => ({ decision, failures })
+      if (failures.parse >= MAX_CONSECUTIVE_FAILURES || failures.transport >= MAX_CONSECUTIVE_FAILURES) {
+        return settled({ _tag: "stop" })
+      }
+
+      const judgement = result.judgement
+      yield* goals.record({ sessionID: input.sessionID, verdict: judgement.verdict })
+
+      switch (judgement.verdict) {
+        case "done":
+          yield* goals.setStatus({ sessionID: input.sessionID, status: "done" })
+          return settled({ _tag: "stop" })
+        case "blocked":
+          yield* goals.setStatus({ sessionID: input.sessionID, status: "blocked" })
+          return settled({ _tag: "blocked", reason: judgement.reason })
+        case "wait":
+          return settled({ _tag: "wait", reason: judgement.reason, wait: judgement.wait ?? { seconds: 60 } })
+        case "continue":
+          return settled({ _tag: "continue", prompt: continuation(goal.goal, judgement.reason) })
+      }
+    })
+
+    return Service.of({ decide })
+  }),
+)
+
+export const node = LayerNode.make({ service: Service, layer, deps: [Goal.node, GoalGate.node, GoalJudge.node] })
+
+/** The continuation a `continue` verdict produces. */
+export function continuation(goal: string, reason: string): string {
+  return [
+    "[Continuing toward your standing goal]",
+    `Goal: ${goal}`,
+    "",
+    reason.length > 0 ? `The judge says the goal is not met yet: ${reason}` : "The judge says the goal is not met yet.",
+    "",
+    "Take the next concrete step. If you believe the goal is complete, state so and stop. If you are blocked and need input, say so clearly and stop.",
+  ].join("\n")
+}
+
+export * as GoalLoop from "./goal-loop"

@@ -14,6 +14,7 @@ import { type Tool as AITool, tool, jsonSchema } from "ai"
 import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
+import { GoalLoop } from "./goal-loop"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@opencode-ai/core/session/runner/max-steps"
@@ -136,6 +137,7 @@ const layer = Layer.effect(
     const revert = yield* SessionRevert.Service
     const summary = yield* SessionSummary.Service
     const sys = yield* SystemPrompt.Service
+    const goalLoop = yield* GoalLoop.Service
     const llm = yield* LLM.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
@@ -1083,6 +1085,8 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        // Consecutive judge failures for the circuit breaker, for this run.
+        let failures: { parse: number; transport: number } = { parse: 0, transport: 0 }
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1125,6 +1129,45 @@ const layer = Layer.effect(
                 callID: orphan.callID,
               })
             }
+
+            // Fork ADR-0006: the goal loop. Without an authorized goal this is
+            // a stop, and the loop exits exactly as it did before — the
+            // regression this milestone must not break.
+            const result = yield* goalLoop.decide({
+              sessionID,
+              cwd: ctx.directory,
+              user: lastUser,
+              providerID: lastUser.model.providerID,
+              modelID: lastUser.model.modelID,
+              lastResponse: (lastAssistantMsg?.parts ?? [])
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join("\n"),
+              failures,
+            })
+            failures = result.failures
+
+            if (result.decision._tag === "continue") {
+              const continuation: SessionV1.User = {
+                id: MessageID.ascending(),
+                sessionID,
+                role: "user",
+                time: { created: Date.now() },
+                agent: lastUser.agent,
+                model: lastUser.model,
+              }
+              yield* sessions.updateMessage(continuation)
+              yield* sessions.updatePart({
+                id: PartID.ascending(),
+                messageID: continuation.id,
+                sessionID,
+                type: "text",
+                text: result.decision.prompt,
+                synthetic: true,
+              } satisfies SessionV1.TextPart)
+              continue
+            }
+
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break
           }
@@ -1623,6 +1666,7 @@ export const node = LayerNode.make({
     SessionRevert.node,
     SessionSummary.node,
     SystemPrompt.node,
+    GoalLoop.node,
     LLM.node,
     EventV2Bridge.node,
     RuntimeFlags.node,

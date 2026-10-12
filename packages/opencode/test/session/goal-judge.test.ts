@@ -71,8 +71,8 @@ describe("session.goal-judge", () => {
         lastResponse: "I added it.",
       })
 
-      expect(result).toEqual(Judge.FAIL_OPEN)
-      expect(result.verdict).toBe("continue")
+      expect(result.judgement).toEqual(Judge.FAIL_OPEN)
+      expect(result.failure).toBe("transport")
     }),
   )
 })

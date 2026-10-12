@@ -30,8 +30,18 @@ export interface JudgeInput {
   readonly lastResponse: string
 }
 
+export interface JudgeResult {
+  readonly judgement: Judge.Judgement
+  /**
+   * Why the judgement is a fail-open fallback rather than a verdict the model
+   * returned: the reply could not be parsed (`parse`) or the call did not
+   * answer (`transport`). The loop counts these to trip its circuit breaker.
+   */
+  readonly failure?: "parse" | "transport"
+}
+
 export interface Interface {
-  readonly judge: (input: JudgeInput) => Effect.Effect<Judge.Judgement>
+  readonly judge: (input: JudgeInput) => Effect.Effect<JudgeResult>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionGoalJudge") {}
@@ -68,7 +78,15 @@ const layer = Layer.effect(
           .pipe(Stream.filter(LLMEvent.is.textDelta), Stream.map((event) => event.text), Stream.mkString, Effect.orDie)
 
         return Judge.parseVerdict(text)
-      }).pipe(Effect.catchCause(() => Effect.succeed(Judge.FAIL_OPEN)))
+      }).pipe(
+        Effect.map((judgement): JudgeResult => ({
+          judgement,
+          ...(judgement === Judge.FAIL_OPEN ? { failure: "parse" as const } : {}),
+        })),
+        // A call that did not answer is a transport failure; the loop counts
+        // consecutive ones so a misconfigured judge cannot burn the budget.
+        Effect.catchCause(() => Effect.succeed({ judgement: Judge.FAIL_OPEN, failure: "transport" as const })),
+      )
     })
 
     return Service.of({ judge })

@@ -32,6 +32,10 @@ export interface Interface {
   readonly get: (sessionID: SessionID) => Effect.Effect<Info | undefined>
   /** The commit gate. Idempotent: an already-authorized goal is left alone. */
   readonly authorize: (sessionID: SessionID) => Effect.Effect<void>
+  /** Replaces the gate list, carrying each gate's retry state. */
+  readonly setGates: (input: { sessionID: SessionID; gates: ReadonlyArray<SessionGoal.Gate> }) => Effect.Effect<void>
+  /** The loop's terminal state: `done` or `blocked`. */
+  readonly setStatus: (input: { sessionID: SessionID; status: SessionGoal.Status }) => Effect.Effect<void>
   /** Records one loop turn: bumps the count and stores the verdict. */
   readonly record: (input: { sessionID: SessionID; verdict: SessionGoal.Verdict }) => Effect.Effect<void>
   readonly clear: (sessionID: SessionID) => Effect.Effect<void>
@@ -105,6 +109,30 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
     })
 
+    const setGates = Effect.fn("Goal.setGates")(function* (input: {
+      sessionID: SessionID
+      gates: ReadonlyArray<SessionGoal.Gate>
+    }) {
+      yield* db
+        .update(GoalTable)
+        .set({ gates: [...input.gates] })
+        .where(eq(GoalTable.session_id, input.sessionID))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const setStatus = Effect.fn("Goal.setStatus")(function* (input: {
+      sessionID: SessionID
+      status: SessionGoal.Status
+    }) {
+      yield* db
+        .update(GoalTable)
+        .set({ status: input.status })
+        .where(eq(GoalTable.session_id, input.sessionID))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
     const record = Effect.fn("Goal.record")(function* (input: {
       sessionID: SessionID
       verdict: SessionGoal.Verdict
@@ -122,7 +150,7 @@ const layer = Layer.effect(
       yield* db.delete(GoalTable).where(eq(GoalTable.session_id, sessionID)).run().pipe(Effect.orDie)
     })
 
-    return Service.of({ set, get, authorize, record, clear })
+    return Service.of({ set, get, authorize, setGates, setStatus, record, clear })
   }),
 )
 
