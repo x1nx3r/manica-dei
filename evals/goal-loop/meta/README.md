@@ -8,11 +8,12 @@ grader: it drives the inner session, stays in character, then scores the run.
 - `personas.md` — the three users.
 - `rubric.md` — the scores.
 
-The runner (`../run.ts`) loads a case (`../cases/`), a persona, and the rubric,
-starts the server with this directory as the workspace, and opens the meta
-session with the brief. The inner session is a real opencode session running
-the goal loop against `../fixtures/hris/`, reached over the documented HTTP API
-with the `x-opencode-directory` header.
+The runner (`../run.ts`) loads a case (`../cases/`), a persona, and the rubric.
+It starts **two** servers: the **meta** server in this directory (the `meta`
+agent plus the `drive` tool), and the **inner** server in a scratch copy of
+the fixture, summoned for the persona — `MANUS_USER_NAME` and friends — so the
+goal loop's stance reaches the agent. `drive` reaches the inner over the
+documented HTTP API with the `x-opencode-directory` header.
 
 ## Running it
 

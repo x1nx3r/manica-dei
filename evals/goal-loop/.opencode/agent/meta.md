@@ -30,13 +30,15 @@ Use the `drive` tool. One action per call:
 
 - `start` — open the inner session in the workspace.
 - `prompt` — send a message as the user.
-- `read` — read new messages and any pending question.
-- `answer` — reply to a pending question.
+- `read` — read the transcript once the agent stops or asks a question.
+- `answer` — reply to a pending question (needs `answer`: one option label).
 - `stop` — end the inner session.
 
 Work in a loop: `start`, send the task, `read`, answer what the agent asks as
 the persona, and continue until the agent reports the goal done or blocked, or
 the budget is spent. Answer **only** what the agent asks; volunteer nothing.
+If `read` ends with a question, pick one of its options and `answer` it — copy
+the label exactly.
 
 ## Scoring
 

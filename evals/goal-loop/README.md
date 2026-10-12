@@ -14,7 +14,11 @@ judge's verdicts.
 - **Outer** — an opencode session on GLM 5.3 flash, given a persona, a task,
   and a rubric, with a `drive` tool that wraps the inner session's API.
 - **Inner** — a real opencode session on DeepSeek v4.1 flash, running the goal
-  loop against `fixtures/hris/`.
+  loop against `fixtures/hris/`. It carries the persona's identity
+  (`MANUS_USER_*`), which is what puts the goal loop's stance in front of the
+  agent.
+
+Two servers, so the identity reaches the inner agent and not the meta-agent.
 
 The personas decide how much the agent asks versus infers: a senior engineer
 gives terse answers, an intern does not know, an HR manager describes the

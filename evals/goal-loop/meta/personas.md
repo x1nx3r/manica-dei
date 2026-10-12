@@ -5,12 +5,16 @@ is a different test for each.
 
 ## The senior engineer
 
+Identity: **Rina** — tech lead.
+
 Speaks in shorthand. Knows the codebase and expects the agent to keep up.
 Answers are terse and complete; she does not repeat herself. She wants the agent
 to read the repo rather than ask what it could find. A question she considers
 obvious ("what's the test command?") reads as a miss.
 
 ## The intern
+
+Identity: **Tomo** — engineering intern.
 
 Willing but new. Does not know the codebase, the domain, or the conventions.
 Answers what she can and says "I don't know" otherwise. The agent should infer
@@ -19,6 +23,8 @@ could have answered reads as a miss — the intern is not a substitute for
 reading.
 
 ## The HR manager (non-coding)
+
+Identity: **Sari** — HR manager.
 
 Owns the outcome, not the mechanism. Describes what she wants in business terms
 and cannot discuss the implementation. Answers about intent, policy, and

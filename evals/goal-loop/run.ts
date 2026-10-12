@@ -3,28 +3,39 @@
  *
  *   MANUS_INTEGRATION=1 bun evals/goal-loop/run.ts --case medium --persona senior
  *
- * It copies the fixture to a scratch directory, starts one opencode server
- * (workspace = this directory, so the `meta` agent and the `drive` tool load),
- * opens the meta session with the case brief, waits for the scorecard, and
- * prints it. It never gates CI: the number is a signal, the transcript is the
- * evidence.
+ * Two servers, two sessions. The **meta** server (this directory) hosts the
+ * simulator/grader with the `drive` tool; the **inner** server (a scratch copy
+ * of the fixture) hosts the session under test, carrying the persona's
+ * identity so the goal loop's stance reaches the agent.
+ *
+ * It never gates CI: the number is a signal, the transcript is the evidence.
  */
 import { spawn } from "node:child_process"
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { watch } from "./watch"
 
 const HERE = import.meta.dir
 const FIXTURE = join(HERE, "fixtures", "hris")
 const SERVER = resolve(HERE, "..", "..", "packages", "opencode", "src", "index.ts")
 
-const PORT = Number(process.env.EVAL_PORT ?? 4097)
+const META_PORT = Number(process.env.EVAL_META_PORT ?? 4097)
+const INNER_PORT = Number(process.env.EVAL_INNER_PORT ?? 4098)
 const PASSWORD = process.env.EVAL_SERVER_PASSWORD ?? "eval"
 const META_MODEL = process.env.EVAL_META_MODEL ?? "opencode-go/glm-5.3-flash"
 const INNER_MODEL = process.env.EVAL_INNER_MODEL ?? "opencode-go/deepseek-v4.1-flash"
 
-const BASE = `http://127.0.0.1:${PORT}`
+const META_BASE = `http://127.0.0.1:${META_PORT}`
+const INNER_BASE = `http://127.0.0.1:${INNER_PORT}`
 const AUTH = { authorization: `Basic ${Buffer.from(`opencode:${PASSWORD}`).toString("base64")}` }
+
+/** The people behind the personas. The inner agent is summoned to work with one. */
+const PEOPLE: Record<string, { name: string; github: string; role: string }> = {
+  senior: { name: "Rina", github: "rina", role: "tech lead" },
+  intern: { name: "Tomo", github: "tomo", role: "engineering intern" },
+  hr: { name: "Sari", github: "sari", role: "HR manager" },
+}
 
 function arg(name: string, fallback: string): string {
   const index = process.argv.indexOf(`--${name}`)
@@ -36,8 +47,14 @@ function model(id: string) {
   return { providerID, modelID: rest.join("/") }
 }
 
-async function call<T = unknown>(method: string, path: string, body?: unknown, directory?: string): Promise<T> {
-  const response = await fetch(`${BASE}${path}`, {
+async function call<T = unknown>(
+  base: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  directory?: string,
+): Promise<T> {
+  const response = await fetch(`${base}${path}`, {
     method,
     headers: {
       "content-type": "application/json",
@@ -51,24 +68,24 @@ async function call<T = unknown>(method: string, path: string, body?: unknown, d
   return (text ? JSON.parse(text) : null) as T
 }
 
-async function waitForHealth(): Promise<void> {
+async function waitForHealth(base: string, label: string): Promise<void> {
   for (let i = 0; i < 120; i++) {
     try {
-      const result = await call<{ healthy?: boolean }>("GET", "/global/health")
+      const result = await call<{ healthy?: boolean }>(base, "GET", "/global/health")
       if (result?.healthy) return
     } catch {
       // not up yet
     }
     await Bun.sleep(500)
   }
-  throw new Error("server never became healthy")
+  throw new Error(`${label} server never became healthy`)
 }
 
 type Message = { info?: { role?: string }; parts?: Array<{ type: string; text?: string }> }
 
-/** The meta-agent's last message, once it parses as a scorecard. */
+/** The meta-agent's final message, once it parses as a scorecard. */
 async function scorecard(session: string): Promise<string | null> {
-  const messages = await call<Message[]>("GET", `/session/${session}/message`, undefined, HERE)
+  const messages = await call<Message[]>(META_BASE, "GET", `/session/${session}/message`, undefined, HERE)
   for (const message of [...messages].reverse()) {
     if (message.info?.role !== "assistant") continue
     const text = (message.parts ?? [])
@@ -95,6 +112,7 @@ async function main(): Promise<void> {
 
   const name = arg("case", "medium")
   const persona = arg("persona", "senior")
+  const person = PEOPLE[persona] ?? PEOPLE.senior!
 
   const scratch = await mkdtemp(join(tmpdir(), "goal-loop-"))
   const workspace = join(scratch, "hris")
@@ -106,33 +124,59 @@ async function main(): Promise<void> {
     readFile(join(HERE, "meta", "rubric.md"), "utf8"),
   ])
 
-  const server = spawn("bun", [SERVER, "serve", "--port", String(PORT)], {
+  // The meta server: this directory, so the `meta` agent and the `drive` tool load.
+  const meta = spawn("bun", [SERVER, "serve", "--port", String(META_PORT)], {
     cwd: HERE,
     stdio: "inherit",
     env: {
       ...process.env,
-      OPENCODE_DB: join(scratch, "opencode.db"),
+      OPENCODE_DB: join(scratch, "meta.db"),
       OPENCODE_SERVER_PASSWORD: PASSWORD,
-      EVAL_SERVER_URL: BASE,
+      EVAL_SERVER_URL: INNER_BASE,
       EVAL_SERVER_PASSWORD: PASSWORD,
       EVAL_INNER_DIR: workspace,
       EVAL_INNER_MODEL: INNER_MODEL,
     },
   })
 
-  try {
-    await waitForHealth()
+  // The inner server: the fixture copy, summoned for the persona.
+  const target = spawn("bun", [SERVER, "serve", "--port", String(INNER_PORT)], {
+    cwd: workspace,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      OPENCODE_DB: join(scratch, "inner.db"),
+      OPENCODE_SERVER_PASSWORD: PASSWORD,
+      MANUS_USER_NAME: person.name,
+      MANUS_USER_GITHUB: person.github,
+      MANUS_USER_ROLE: person.role,
+    },
+  })
 
-    const session = await call<{ id: string }>("POST", "/session", { agent: "meta", model: model(META_MODEL) }, HERE)
+  let watcher: { stop(): void } | null = null
+
+  try {
+    await Promise.all([waitForHealth(META_BASE, "meta"), waitForHealth(INNER_BASE, "inner")])
+
+    watcher = watch({
+      headers: { "content-type": "application/json", ...AUTH },
+      targets: [
+        { label: "meta", base: META_BASE, directory: HERE },
+        { label: "hris", base: INNER_BASE, directory: workspace },
+      ],
+    })
+
+    const session = await call<{ id: string }>(META_BASE, "POST", "/session", { agent: "meta" }, HERE)
 
     const brief = [
-      `## Persona\n\nPlay the **${persona}** persona.\n\n${personas}`,
+      `## Persona\n\nPlay the **${persona}** persona — ${person.name}, ${person.role}.\n\n${personas}`,
       `## Case\n\n${caseFile}`,
       `## Rubric\n\n${rubric}`,
       `Open the inner session, send the task as your persona, and drive it to completion. Score it at the end.`,
     ].join("\n\n---\n\n")
 
     await call(
+      META_BASE,
       "POST",
       `/session/${session.id}/message`,
       { agent: "meta", model: model(META_MODEL), parts: [{ type: "text", text: brief }] },
@@ -149,7 +193,9 @@ async function main(): Promise<void> {
     }
     throw new Error("the meta-agent never returned a scorecard")
   } finally {
-    server.kill()
+    watcher?.stop()
+    meta.kill()
+    target.kill()
     await rm(scratch, { recursive: true, force: true })
   }
 }
