@@ -4,6 +4,7 @@ import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { PlanExitTool } from "./plan"
 import { Session } from "@/session/session"
 import { QuestionTool } from "./question"
+import { GoalTool } from "./goal"
 import { ShellTool } from "./shell"
 import { EditTool } from "./edit"
 import { GlobTool } from "./glob"
@@ -42,6 +43,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { EffectBridge } from "@/effect/bridge"
 import { Question } from "../question"
 import { Todo } from "../session/todo"
+import { Goal } from "../session/goal"
 import { LSP } from "@/lsp/lsp"
 import { Instruction } from "../session/instruction"
 import { FSUtil } from "@opencode-ai/core/fs-util"
@@ -104,6 +106,7 @@ const layer = Layer.effect(
     const task = yield* TaskTool
     const read = yield* ReadTool
     const question = yield* QuestionTool
+    const goaltool = yield* GoalTool
     const todo = yield* TodoWriteTool
     const lsptool = yield* LspTool
     const plan = yield* PlanExitTool
@@ -225,6 +228,7 @@ const layer = Layer.effect(
           patch: Tool.init(patchtool),
           browser: Tool.init(browsertool),
           question: Tool.init(question),
+          goal: Tool.init(goaltool),
           lsp: Tool.init(lsptool),
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
@@ -436,6 +440,7 @@ export const node = LayerNode.make({
     Config.node,
     Plugin.node,
     Question.node,
+    Goal.node,
     Todo.node,
     Agent.node,
     Skill.node,

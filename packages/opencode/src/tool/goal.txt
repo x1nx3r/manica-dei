@@ -1,0 +1,21 @@
+Set the session's goal, and — when the human agrees — authorize it to run unattended.
+
+Call this once, at the end of scoping, when you and the human have agreed what
+the work is and how you will know it is done. Not before: the goal is the
+outcome of the conversation, not its start.
+
+- goal: the goal as you now understand it, in your words — not the human's first
+  message.
+- size: how big the task is — the number and blast radius of the decisions the
+  task leaves undetermined. `small` (the task determines the work), `medium` (a
+  few reversible decisions), `large` (many decisions, some irreversible),
+  `huge` (underspecified past enumeration). Say why in `size_reason`.
+- contract: the five fields. `verification` is the command that proves the
+  outcome — a test, a build, a benchmark. It becomes the gate the loop runs
+  before every judge, so it must be concrete and checkable. A contract with no
+  verification is refused.
+- commit: `false` to write the goal and stop; `true` to ask the human for
+  permission to run unattended now and authorize only on a yes.
+
+A `huge` goal is not one task. This tool returns a split proposal instead of
+setting it — decompose it, then set the first piece.
