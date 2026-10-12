@@ -78,6 +78,7 @@ const decideInput = (sessionID: never, cwd: string) => ({
   providerID: ProviderV2.ID.make("test"),
   modelID: ModelV2.ID.make("judge"),
   lastResponse: "I added the widget.",
+  state: "snap-1",
   failures: { parse: 0, transport: 0 },
 })
 
@@ -162,6 +163,81 @@ describe("session.goal-loop", () => {
       expect(result.decision).toMatchObject({ _tag: "stop" })
       expect((yield* goal.get(info.id))?.status).toBe("done")
       expect((yield* goal.get(info.id))?.last_reason).toBe("the tests pass")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a fresh goal starts in the dev phase with no state handle", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      expect((yield* goal.get(info.id))?.phase).toBe("dev")
+      expect((yield* goal.get(info.id))?.state_hash).toBeNull()
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a continue verdict returns the goal to the dev phase", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      judgeResult = { judgement: { verdict: "continue", reason: "more to do" } }
+
+      const result = yield* loop.decide(decideInput(info.id as never, test.directory))
+      expect(result.decision._tag).toBe("continue")
+      // The judge acted in `judge`; a `continue` sends the loop back to `dev`.
+      expect((yield* goal.get(info.id))?.phase).toBe("dev")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a done verdict is the judge's, and leaves the goal in the judge phase", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      judgeResult = { judgement: { verdict: "done", reason: "the tests pass" } }
+
+      yield* loop.decide(decideInput(info.id as never, test.directory))
+      // `done` is terminal, so the phase stays where the judge acted.
+      expect((yield* goal.get(info.id))?.phase).toBe("judge")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("the workspace state a verdict applied to is recorded", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      judgeResult = { judgement: { verdict: "continue", reason: "more to do" } }
+
+      yield* loop.decide(decideInput(info.id as never, test.directory))
+      // Recorded, not yet enforced against staleness (ADR-0006, "state binding").
+      expect((yield* goal.get(info.id))?.state_hash).toBe("snap-1")
 
       yield* session.remove(info.id)
     }),

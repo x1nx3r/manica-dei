@@ -131,11 +131,16 @@ export const GoalTable = sqliteTable("session_goal", {
   gates: text({ mode: "json" }).notNull().$type<SessionGoal.Gate[]>(),
   // The commit gate: null until a human authorizes the unattended run.
   authorized_at: integer(),
+  // Fork ADR-0006: which role is acting. `dev` until the loop moves the goal on.
+  phase: text().notNull().default("dev").$type<SessionGoal.Phase>(),
   turn_budget: integer().notNull(),
   turns_used: integer().notNull().default(0),
   last_verdict: text().$type<SessionGoal.Verdict>(),
   // Why the judge returned that verdict — the sentence a human reads.
   last_reason: text(),
+  // The workspace state a verdict applied to: the snapshot hash of the message
+  // the judge read. Null before the first verdict. Recorded, not yet enforced.
+  state_hash: text(),
   status: text().notNull().$type<SessionGoal.Status>(),
   ...Timestamps,
 })

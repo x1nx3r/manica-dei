@@ -97,8 +97,10 @@ describe("session.goal", () => {
         contract,
         gates: [gate],
         authorized: false,
+        phase: "dev",
         turn_budget: 12,
         turns_used: 0,
+        state_hash: null,
         status: "active",
       })
 
@@ -158,6 +160,27 @@ describe("session.goal", () => {
       const stored = yield* goal.get(info.id)
       expect(stored?.turns_used).toBe(2)
       expect(stored?.last_verdict).toBe("wait")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("the phase and the state handle persist, and a re-set keeps the phase", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.setPhase({ sessionID: info.id, phase: "qa" })
+      yield* goal.record({ sessionID: info.id, verdict: "continue", state: "hash-1" })
+
+      expect((yield* goal.get(info.id))?.phase).toBe("qa")
+      expect((yield* goal.get(info.id))?.state_hash).toBe("hash-1")
+
+      // Re-setting the goal is not loop progress: the phase must survive it.
+      yield* goal.set({ sessionID: info.id, goal: "add the widget, revised" })
+      expect((yield* goal.get(info.id))?.phase).toBe("qa")
 
       yield* session.remove(info.id)
     }),

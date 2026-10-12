@@ -1,6 +1,7 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { Context, Effect, Layer } from "effect"
 import { GoalJudge as Judge } from "@opencode-ai/core/session/goal/judge"
+import { GoalPhase } from "@opencode-ai/core/session/goal/phase"
 import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { ProviderV2 } from "@opencode-ai/core/provider"
 import type { ModelV2 } from "@opencode-ai/core/model"
@@ -35,6 +36,12 @@ export interface DecideInput {
   readonly lastResponse: string
   /** The assumption ledger, when the scratchpad has one. */
   readonly assumptions?: string
+  /**
+   * The snapshot hash of the message the judge reads: the workspace state a
+   * verdict will bind to (ADR-0006, "state binding"). Read from the message's
+   * own recorded snapshot, not tracked again here.
+   */
+  readonly state?: string
   /** Consecutive judge failures before this call, by kind. */
   readonly failures: { readonly parse: number; readonly transport: number }
 }
@@ -110,6 +117,11 @@ const layer = Layer.effect(
         yield* goals.setGates({ sessionID: input.sessionID, gates: next })
       }
 
+      // Every gate passed, so the judge rules next. The loop enters `judge`
+      // before the call: the phase names the role acting, and only the judge's
+      // phase may conclude a run (ADR-0006).
+      yield* goals.setPhase({ sessionID: input.sessionID, phase: "judge" })
+
       const result = yield* judge.judge({
         sessionID: input.sessionID,
         user: input.user,
@@ -136,8 +148,18 @@ const layer = Layer.effect(
       }
 
       const judgement = result.judgement
-      yield* goals.record({ sessionID: input.sessionID, verdict: judgement.verdict, reason: judgement.reason })
+      yield* goals.record({
+        sessionID: input.sessionID,
+        verdict: judgement.verdict,
+        reason: judgement.reason,
+        state: input.state,
+      })
 
+      // Fork ADR-0006: only the judge may conclude a run, and the loop entered
+      // `judge` immediately before this call — so `done` is honoured here by
+      // construction. The transition order is the rule until QA runs in its own
+      // phase between the work and this point; `GoalPhase.mayConclude` is the
+      // declared rule and is wired in here at that step.
       switch (judgement.verdict) {
         case "done":
           yield* goals.setStatus({ sessionID: input.sessionID, status: "done" })
@@ -150,6 +172,7 @@ const layer = Layer.effect(
             note: `The judge says the run is blocked: ${judgement.reason}`,
           })
         case "wait":
+          yield* goals.setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("wait") ?? "dev" })
           return settled({
             _tag: "wait",
             reason: judgement.reason,
@@ -157,6 +180,7 @@ const layer = Layer.effect(
             note: `The judge says to wait: ${judgement.reason}`,
           })
         case "continue":
+          yield* goals.setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("continue") ?? "dev" })
           return settled({ _tag: "continue", prompt: continuation(goal.goal, judgement.reason) })
       }
     })

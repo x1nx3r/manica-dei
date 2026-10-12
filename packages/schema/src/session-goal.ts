@@ -34,6 +34,15 @@ export const Status = Schema.Literals(["active", "done", "blocked"]).annotate({
 export type Status = typeof Status.Type
 
 /**
+ * Which role is acting: `dev` works, `qa` is a QA pass pending, `judge` is the
+ * judge ruling. Only the judge may conclude a run (ADR-0006).
+ */
+export const Phase = Schema.Literals(["dev", "qa", "judge"]).annotate({
+  identifier: "SessionGoal.Phase",
+})
+export type Phase = typeof Phase.Type
+
+/**
  * The completion contract: the five fields the agent writes at commit.
  * `verification` is the gate — the command that proves the outcome.
  */
@@ -64,10 +73,16 @@ export const Info = Schema.Struct({
   contract: Contract.pipe(optional),
   gates: Schema.Array(Gate),
   authorized: Schema.Boolean.annotate({ description: "The commit gate: false until a human authorizes" }),
+  phase: Phase,
   turn_budget: Schema.Number,
   turns_used: Schema.Number,
   last_verdict: Verdict.pipe(optional),
   last_reason: Schema.String.pipe(optional),
+  /**
+   * The workspace state a verdict applied to: the snapshot hash of the message
+   * the judge read. Null before the first verdict. Recorded, not yet enforced.
+   */
+  state_hash: Schema.NullOr(Schema.String),
   status: Status,
 }).annotate({ identifier: "SessionGoal.Info" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}

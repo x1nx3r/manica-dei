@@ -32,15 +32,22 @@ export interface Interface {
   readonly get: (sessionID: SessionID) => Effect.Effect<Info | undefined>
   /** The commit gate. Idempotent: an already-authorized goal is left alone. */
   readonly authorize: (sessionID: SessionID) => Effect.Effect<void>
+  /** Moves the goal to the phase whose role is now acting (ADR-0006). */
+  readonly setPhase: (input: { sessionID: SessionID; phase: SessionGoal.Phase }) => Effect.Effect<void>
   /** Replaces the gate list, carrying each gate's retry state. */
   readonly setGates: (input: { sessionID: SessionID; gates: ReadonlyArray<SessionGoal.Gate> }) => Effect.Effect<void>
   /** The loop's terminal state: `done` or `blocked`. */
   readonly setStatus: (input: { sessionID: SessionID; status: SessionGoal.Status }) => Effect.Effect<void>
-  /** Records one loop turn: bumps the count and stores the verdict and why. */
+  /**
+   * Records one loop turn: bumps the count and stores the verdict, why, and the
+   * workspace state the verdict applied to.
+   */
   readonly record: (input: {
     sessionID: SessionID
     verdict: SessionGoal.Verdict
     reason?: string
+    /** The snapshot hash of the message the judge read, when there is one. */
+    state?: string
   }) => Effect.Effect<void>
   readonly clear: (sessionID: SessionID) => Effect.Effect<void>
 }
@@ -62,13 +69,16 @@ const layer = Layer.effect(
         gates: [...(input.gates ?? [])],
         turn_budget: input.turnBudget ?? DEFAULT_TURN_BUDGET,
         status: "active" as const,
+        // A fresh goal starts in `dev`. The conflict path below leaves an
+        // existing phase alone, because phase is loop progress.
+        phase: "dev" as const,
       }
       yield* db
         .insert(GoalTable)
         .values(values)
         // Re-setting a goal updates it but must not re-authorize or reset the
-        // loop's progress: `authorized_at`, `turns_used`, and `last_verdict`
-        // stay as they were.
+        // loop's progress: `authorized_at`, `turns_used`, `phase`, and
+        // `last_verdict` stay as they were.
         .onConflictDoUpdate({
           target: GoalTable.session_id,
           set: {
@@ -95,10 +105,12 @@ const layer = Layer.effect(
         ...(row.contract === null ? {} : { contract: row.contract }),
         gates: row.gates,
         authorized: row.authorized_at !== null,
+        phase: row.phase,
         turn_budget: row.turn_budget,
         turns_used: row.turns_used,
         ...(row.last_verdict === null ? {} : { last_verdict: row.last_verdict }),
         ...(row.last_reason === null ? {} : { last_reason: row.last_reason }),
+        state_hash: row.state_hash,
         status: row.status,
       } satisfies Info
     })
@@ -110,6 +122,15 @@ const layer = Layer.effect(
         .update(GoalTable)
         .set({ authorized_at: Date.now() })
         .where(and(eq(GoalTable.session_id, sessionID), isNull(GoalTable.authorized_at)))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const setPhase = Effect.fn("Goal.setPhase")(function* (input: { sessionID: SessionID; phase: SessionGoal.Phase }) {
+      yield* db
+        .update(GoalTable)
+        .set({ phase: input.phase })
+        .where(eq(GoalTable.session_id, input.sessionID))
         .run()
         .pipe(Effect.orDie)
     })
@@ -142,6 +163,7 @@ const layer = Layer.effect(
       sessionID: SessionID
       verdict: SessionGoal.Verdict
       reason?: string
+      state?: string
     }) {
       // Increment in SQL, not read-then-write: two turns must not lose one.
       yield* db
@@ -150,6 +172,9 @@ const layer = Layer.effect(
           turns_used: sql`${GoalTable.turns_used} + 1`,
           last_verdict: input.verdict,
           last_reason: input.reason ?? null,
+          // The workspace state this verdict applied to (ADR-0006, "state
+          // binding"). Recorded here, not yet enforced against staleness.
+          state_hash: input.state ?? null,
         })
         .where(eq(GoalTable.session_id, input.sessionID))
         .run()
@@ -160,7 +185,7 @@ const layer = Layer.effect(
       yield* db.delete(GoalTable).where(eq(GoalTable.session_id, sessionID)).run().pipe(Effect.orDie)
     })
 
-    return Service.of({ set, get, authorize, setGates, setStatus, record, clear })
+    return Service.of({ set, get, authorize, setPhase, setGates, setStatus, record, clear })
   }),
 )
 

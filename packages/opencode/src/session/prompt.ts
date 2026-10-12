@@ -1133,16 +1133,25 @@ const layer = Layer.effect(
             // Fork ADR-0006: the goal loop. Without an authorized goal this is
             // a stop, and the loop exits exactly as it did before — the
             // regression this milestone must not break.
+            const parts = lastAssistantMsg?.parts ?? []
+            // The state handle a verdict binds to: the snapshot hash the message
+            // already recorded at its last step, not one tracked again here
+            // (ADR-0006, "state binding").
+            const state = parts.reduce<string | undefined>(
+              (hash, part) => (part.type === "step-finish" && part.snapshot ? part.snapshot : hash),
+              undefined,
+            )
             const result = yield* goalLoop.decide({
               sessionID,
               cwd: ctx.directory,
               user: lastUser,
               providerID: lastUser.model.providerID,
               modelID: lastUser.model.modelID,
-              lastResponse: (lastAssistantMsg?.parts ?? [])
+              lastResponse: parts
                 .filter((part) => part.type === "text")
                 .map((part) => part.text)
                 .join("\n"),
+              state,
               failures,
             })
             failures = result.failures

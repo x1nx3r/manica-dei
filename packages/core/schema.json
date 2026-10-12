@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "21b6910f-560c-4bc7-9a69-42cae0d39376",
+  "id": "cde7e352-33ee-409f-8231-8ff4a3c95715",
   "prevIds": [
-    "852586bf-45d1-4843-8550-ccfff694c3cd"
+    "21b6910f-560c-4bc7-9a69-42cae0d39376"
   ],
   "ddl": [
     {
@@ -847,6 +847,16 @@
       "table": "session_goal"
     },
     {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'dev'",
+      "generated": null,
+      "name": "phase",
+      "entityType": "columns",
+      "table": "session_goal"
+    },
+    {
       "type": "integer",
       "notNull": true,
       "autoincrement": false,
@@ -883,6 +893,16 @@
       "default": null,
       "generated": null,
       "name": "last_reason",
+      "entityType": "columns",
+      "table": "session_goal"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "state_hash",
       "entityType": "columns",
       "table": "session_goal"
     },
