@@ -1,0 +1,15 @@
+{
+  "name": "hris",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "seed": "bun run src/db/seed.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.13",
+    "typescript": "^5.8.2"
+  }
+}
