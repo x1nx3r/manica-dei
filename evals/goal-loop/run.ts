@@ -196,6 +196,14 @@ async function main(): Promise<void> {
     watcher?.stop()
     meta.kill()
     target.kill()
+    await Bun.sleep(1000)
+
+    // Keep the evidence: the workspace the agent left behind, and both databases.
+    const kept = join(HERE, "runs", `${name}-${persona}`)
+    await rm(kept, { recursive: true, force: true })
+    await cp(scratch, kept, { recursive: true })
+    console.log(`\nrun kept in ${kept}\n`)
+
     await rm(scratch, { recursive: true, force: true })
   }
 }
