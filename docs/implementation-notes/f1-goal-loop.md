@@ -247,47 +247,46 @@ One real run, end to end, behind the existing guard.
 
 ## 7. M7 — The eval harness (the abstract half)
 
-There is no eval infrastructure in the fork today. This milestone adds a
-small one, because **the size rubric, the ask rubric, and the judge's
-judgement are prompt-level and cannot be unit-tested.** A unit test can prove
-the parser handles `blocked`; it cannot prove the judge *recognises* a blocked
-run.
+The size rubric, the ask rubric, and the judge's judgement are prompt-level and
+cannot be unit-tested. A unit test can prove the parser handles `blocked`; it
+cannot prove the judge *recognises* a blocked run. This milestone measures them.
 
-**Files**: `evals/goal-loop/` — a runner, a golden set, a scorer.
+**Files**: `evals/goal-loop/` — a meta-agent, the cases, the fixture, a runner.
 
-**Shape.** Each case is `{ input, expected }`, run against a real model,
-scored. These are evals (probabilistic, scored), not tests (deterministic,
-pass/fail). Run them on model changes and on prompt changes; report the score
-rather than gating CI on a threshold that will flake.
+**Shape.** A **meta-agent** — a user simulator *and* a grader — drives a real
+session against a real codebase, then scores both halves: the agent's scoping
+and the judge's verdicts. It is a guarded integration run, not a CI job: two
+stochastic layers make any threshold a flake generator, so the runner reports
+scores **and the transcript** (the number is the signal, the transcript is the
+evidence).
 
-**The three suites**
+- **Outer**: an opencode session on GLM 5.3 flash, given a persona, a task, and
+  a rubric, with a `drive` tool wrapping the inner session.
+- **Inner**: a real session on DeepSeek v4.1 flash, running the goal loop.
 
-*Size classification* — `{ task statement } → expected size`
-- a fully-specified one-file fix → `small`
-- a feature with a few reversible choices → `medium`
-- a feature touching auth, with a migration → `large`
-- "make the app better" → `huge` (must propose a split, not start)
+**The fixture** (`fixtures/hris/`) is a bespoke HRIS: small enough to run a
+loop over, ambiguous enough to test scoping. Its PRD carries the ask; its
+technical FSD **lies** in four places — a stale carry-over cap, a silent
+part-time fraction, a dead `escalated` transition, a renamed endpoint — each
+contradicted by the code and pinned by a test. A latent weekend-holiday bug is
+the small-task repro.
 
-*Ask rubric* — `{ task statement } → expected questions`
-- a task that determines everything → **zero** questions
-- a task missing one load-bearing fact → exactly one
-- a task requiring an irreversible action → a question, even though the
-  action is inferable
-- a task answerable from the repo alone → zero (the agent reads the repo
-  instead of asking)
+**The cases** (`cases/`) are one task per size, each tied to a lie:
 
-*Judge quality* — `{ contract, transcript } → expected verdict`
-- the deliverable exists and is shown → `done`
-- the agent says "done" but the deliverable is absent → not `done`
-- the agent explains the goal is impossible → `blocked`, not `done`
-- work remains with a clear next step → `continue`
-- the agent is waiting on a build → `wait`
-- the agent is confidently wrong, having declared done with no evidence →
-  not `done` (this is the case the whole loop exists to catch)
+- **small** — a stated day-count repro. Zero questions: the repo determines it.
+- **medium** — build the year-end job. Exactly one question: the cap.
+- **big** — team approval with escalation. Several: the missing semantics.
 
-**Why these three.** They are the three places the feature can be *wrong
-without failing*. Everything else fails loudly; these fail silently, which is
-exactly why the user asked for tests here.
+**The personas** (senior engineer, intern, non-coding HR manager) decide how
+much the agent asks versus infers; the same task is a different test for each.
+
+**The rubric** scores the agent (size, questions, contract, drift), the judge
+(verdict, evidence), and the outcome (gate, cost).
+
+**Why a live run and not three suites.** The three dimensions the plan named —
+size, ask, judge — are still the rubric, but a live session is the only honest
+way to score them: the size is an argument to the `goal` tool, the questions are
+`question` calls, and the judge's verdicts exist only inside a run.
 
 ---
 
