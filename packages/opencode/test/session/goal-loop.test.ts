@@ -132,7 +132,11 @@ describe("session.goal-loop", () => {
 
       const result = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(result.decision._tag).toBe("continue")
-      if (result.decision._tag === "continue") expect(result.decision.prompt).toContain("the tests are not written")
+      if (result.decision._tag === "continue") {
+        expect(result.decision.prompt).toContain("the tests are not written")
+        // The agent is told to show evidence, so the judge can decide on it.
+        expect(result.decision.prompt).toContain("show the evidence")
+      }
       expect((yield* goal.get(info.id))?.last_verdict).toBe("continue")
 
       yield* session.remove(info.id)

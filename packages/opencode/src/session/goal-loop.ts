@@ -168,7 +168,7 @@ export function continuation(goal: string, reason: string): string {
     "",
     reason.length > 0 ? `The judge says the goal is not met yet: ${reason}` : "The judge says the goal is not met yet.",
     "",
-    "Take the next concrete step. If you believe the goal is complete, state so and stop. If you are blocked and need input, say so clearly and stop.",
+    "Take the next concrete step. When you believe the goal is met, show the evidence the verification produced in your reply — the run is judged against the contract, not your word. If you are blocked and need input, say so clearly and stop.",
   ].join("\n")
 }
 

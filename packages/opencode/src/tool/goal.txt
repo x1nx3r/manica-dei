@@ -17,5 +17,9 @@ outcome of the conversation, not its start.
 - commit: `false` to write the goal and stop; `true` to ask the human for
   permission to run unattended now and authorize only on a yes.
 
+When you believe the goal is met, show the evidence the verification produced in
+your reply — the run is judged against the contract, not against your word. If
+the verification has not run, run it.
+
 A `huge` goal is not one task. This tool returns a split proposal instead of
 setting it — decompose it, then set the first piece.
