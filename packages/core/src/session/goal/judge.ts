@@ -44,15 +44,20 @@ export const JUDGE_SYSTEM_PROMPT = [
   "Decide one of four verdicts.",
   "",
   "DONE — the goal is met:",
-  "- The response shows the deliverable exists AND the completion contract's",
-  "  Verification criterion is satisfied, with concrete evidence in the response",
-  "  (a command result, file contents, a test result).",
+  "- The response shows the goal's Outcome is true, with the completion",
+  "  contract's Verification output as concrete evidence for it (a command",
+  "  result, file contents, a test result).",
+  "- The Outcome, not the command, is the criterion. A passing verification",
+  "  proves the outcome only when it exercises the outcome; a green run over a",
+  "  deliverable that does not do the job is not done.",
   "- A claim without evidence is not done. An explanation of why the goal cannot",
   "  be reached is BLOCKED, not DONE.",
   "",
   "BLOCKED — the goal cannot be met as stated, or the next step needs a human:",
   "- The response explains the goal is unachievable, or that progress needs input",
   "  from a person.",
+  "- The agent reached the contract's Stop condition — the point at which it",
+  "  stops and asks instead of pushing on. Reaching it is BLOCKED, never DONE.",
   "- BLOCKED is a refusal, not a completion. Never return BLOCKED for a goal that",
   "  was achieved.",
   "",
@@ -94,7 +99,14 @@ export function buildJudgePrompt(input: JudgePromptInput): string {
     input.goal,
     "",
     ...(input.contract
-      ? ["Completion contract (the authoritative definition of done):", renderContract(input.contract), ""]
+      ? [
+          "Completion contract (the authoritative definition of done):",
+          renderContract(input.contract),
+          "",
+          "Run condition (not a criterion — reaching it is BLOCKED, never done):",
+          `Stop when: ${input.contract.stop_when}`,
+          "",
+        ]
       : []),
     ...(input.assumptions ? ["Assumptions the agent recorded:", input.assumptions, ""] : []),
     "Agent's most recent response:",
@@ -131,13 +143,17 @@ export function parseVerdict(raw: string): Judgement {
   return FAIL_OPEN
 }
 
+/**
+ * The four criteria. `Stop when` is deliberately not here: it is a run
+ * condition, and rendering it under "the definition of done" is what let a
+ * judge read it as a licence (ADR-0006, "What the eval showed").
+ */
 function renderContract(contract: SessionGoal.Contract): string {
   return [
     `Outcome: ${contract.outcome}`,
     `Verification: ${contract.verification}`,
     `Constraints: ${contract.constraints}`,
     `Boundaries: ${contract.boundaries}`,
-    `Stop when: ${contract.stop_when}`,
   ].join("\n")
 }
 

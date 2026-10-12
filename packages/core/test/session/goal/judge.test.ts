@@ -119,6 +119,17 @@ describe("GoalJudge.buildJudgePrompt", () => {
     expect(prompt).toContain("I added it and ran the tests.")
   })
 
+  test("the stop condition is a run condition, not part of the definition of done", () => {
+    const prompt = GoalJudge.buildJudgePrompt({ goal: "add the widget", contract, lastResponse: "r" })
+    const contractAt = prompt.indexOf("Completion contract")
+    const runConditionAt = prompt.indexOf("Run condition")
+    const stopAt = prompt.indexOf("Stop when:")
+
+    expect(contractAt).toBeGreaterThanOrEqual(0)
+    expect(runConditionAt).toBeGreaterThan(contractAt)
+    expect(stopAt).toBeGreaterThan(runConditionAt)
+  })
+
   test("includes the assumption ledger when present, omits the blocks when absent", () => {
     const withLedger = GoalJudge.buildJudgePrompt({
       goal: "g",
@@ -138,5 +149,21 @@ describe("GoalJudge.buildJudgePrompt", () => {
     const prompt = GoalJudge.buildJudgePrompt({ goal: "g", lastResponse: huge })
     expect(prompt).toContain("[truncated]")
     expect(prompt.length).toBeLessThan(GoalJudge.MAX_RESPONSE_CHARS + 2_000)
+  })
+})
+
+describe("GoalJudge.JUDGE_SYSTEM_PROMPT", () => {
+  // The eval (ADR-0006, "What the eval showed") caught the judge accepting a
+  // green gate over an unreached outcome, and reading the stop condition as a
+  // licence. These two rules are the repair; pin them or they regress silently
+  // and only the eval — which is not CI — would notice.
+  const prompt = GoalJudge.JUDGE_SYSTEM_PROMPT
+
+  test("done keys on the outcome, not on the verification command", () => {
+    expect(prompt).toContain("The Outcome, not the command, is the criterion")
+  })
+
+  test("reaching the stop condition is blocked, never done", () => {
+    expect(prompt).toContain("Reaching it is BLOCKED, never DONE")
   })
 })
