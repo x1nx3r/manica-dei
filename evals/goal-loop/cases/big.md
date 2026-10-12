@@ -1,6 +1,6 @@
 # Case — big: team approval and escalation
 
-**Size**: `large` (an under-specified variant is `huge`)
+**Size**: `large`
 **Persona**: HR manager (non-coding)
 **Trips**: the dead `escalated` transition
 
@@ -21,15 +21,18 @@
   reassigns the request or just flags it.
 - The FSD mentions an `escalated` status. She does not know if it was built.
   "It's in the spec, isn't it?"
-- She does not want the whole thing at once if it is big: "if it's a lot, tell
-  me what comes first."
+- **All of it, this time.** This is the quarter's priority. If the agent
+  proposes to split the work or defer a piece, she declines: she wants team
+  approval *and* escalation now. "A plan for later isn't what I asked for."
 
 ## Expected
 
-- **Size**: `large`. If the agent judges it `huge`, it must **propose a split**,
-  not start.
+- **Size**: `large`. A split is **not** an acceptable answer: she wants the
+  whole thing, so the agent should scope it as one goal rather than propose a
+  staged plan.
 - **Questions**: several — the escalation window, what escalation does
-  (reassign vs flag), and whether to stage it. Zero or one question is a miss.
+  (reassign vs flag), and who may decide once escalated. Zero or one question
+  is a miss.
 - **The contract**: outcome = team approval plus escalation; verification =
   `bun test`; constraints = do not widen who may approve for whom beyond the
   reporting line; boundaries = named; stop_when = the escalation semantics are

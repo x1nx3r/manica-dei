@@ -62,6 +62,7 @@ async function call<T = unknown>(
       ...(directory ? { "x-opencode-directory": directory } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   })
   if (!response.ok) throw new Error(`${method} ${path} → ${response.status} ${await response.text()}`)
   const text = await response.text()
@@ -157,6 +158,7 @@ async function main(): Promise<void> {
 
   try {
     await Promise.all([waitForHealth(META_BASE, "meta"), waitForHealth(INNER_BASE, "inner")])
+    console.log(`\nmeta on ${META_BASE}; inner on ${INNER_BASE} (${person.name}, ${person.role})\n`)
 
     watcher = watch({
       headers: { "content-type": "application/json", ...AUTH },
@@ -167,6 +169,7 @@ async function main(): Promise<void> {
     })
 
     const session = await call<{ id: string }>(META_BASE, "POST", "/session", { agent: "meta" }, HERE)
+    console.log(`meta session ${session.id}; briefed`)
 
     const brief = [
       `## Persona\n\nPlay the **${persona}** persona — ${person.name}, ${person.role}.\n\n${personas}`,
@@ -178,7 +181,7 @@ async function main(): Promise<void> {
     await call(
       META_BASE,
       "POST",
-      `/session/${session.id}/message`,
+      `/session/${session.id}/prompt_async`,
       { agent: "meta", model: model(META_MODEL), parts: [{ type: "text", text: brief }] },
       HERE,
     )

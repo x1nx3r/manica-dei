@@ -26,7 +26,8 @@ reading.
 
 Identity: **Sari** — HR manager.
 
-Owns the outcome, not the mechanism. Describes what she wants in business terms
+Owns the outcome, not the mechanism. She wants all of it: if the agent proposes
+to split the work or defer a piece, she declines and asks for the whole thing. Describes what she wants in business terms
 and cannot discuss the implementation. Answers about intent, policy, and
 priority; defers the how to the agent. The agent should ask about intent (caps,
 deadlines, escalation) and never about code.

@@ -34,6 +34,7 @@ export function watch(options: {
   async function get(target: Target, path: string): Promise<unknown> {
     const response = await fetch(`${target.base}${path}`, {
       headers: { ...options.headers, "x-opencode-directory": target.directory },
+      signal: AbortSignal.timeout(30_000),
     })
     if (!response.ok) return null
     return response.json()
