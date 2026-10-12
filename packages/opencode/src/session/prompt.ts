@@ -1147,8 +1147,13 @@ const layer = Layer.effect(
             })
             failures = result.failures
 
-            if (result.decision._tag === "continue") {
-              const continuation: SessionV1.User = {
+            // The loop's verdict belongs to the session: on `continue` it is the
+            // continuation, and on any other outcome it is a note, so the
+            // transcript never goes silent about why the loop stopped.
+            const decision = result.decision
+            const note = decision._tag === "continue" ? decision.prompt : decision.note
+            if (note) {
+              const said: SessionV1.User = {
                 id: MessageID.ascending(),
                 sessionID,
                 role: "user",
@@ -1156,17 +1161,18 @@ const layer = Layer.effect(
                 agent: lastUser.agent,
                 model: lastUser.model,
               }
-              yield* sessions.updateMessage(continuation)
+              yield* sessions.updateMessage(said)
               yield* sessions.updatePart({
                 id: PartID.ascending(),
-                messageID: continuation.id,
+                messageID: said.id,
                 sessionID,
                 type: "text",
-                text: result.decision.prompt,
+                text: note,
                 synthetic: true,
               } satisfies SessionV1.TextPart)
-              continue
             }
+
+            if (decision._tag === "continue") continue
 
             yield* Effect.logInfo("exiting loop", { "session.id": sessionID })
             break

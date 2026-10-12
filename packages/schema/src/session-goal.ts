@@ -67,6 +67,7 @@ export const Info = Schema.Struct({
   turn_budget: Schema.Number,
   turns_used: Schema.Number,
   last_verdict: Verdict.pipe(optional),
+  last_reason: Schema.String.pipe(optional),
   status: Status,
 }).annotate({ identifier: "SessionGoal.Info" })
 export interface Info extends Schema.Schema.Type<typeof Info> {}

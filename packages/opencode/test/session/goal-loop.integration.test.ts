@@ -260,6 +260,13 @@ describe("goal-loop end to end (mock model)", () => {
       const stored = yield* goal.get(session.id)
       expect(stored?.status).toBe("done")
       expect(stored?.last_verdict).toBe("done")
+      expect(stored?.last_reason).toBe("the tests pass")
+      // The verdict is in the session, not just the goal row.
+      const messages = yield* sessions.messages({ sessionID: session.id })
+      const verdict = messages
+        .flatMap((message) => message.parts)
+        .find((part) => part.type === "text" && part.text.includes("The judge says the goal is met"))
+      expect(verdict).toBeDefined()
       // The judge ran once, after the agent's turn.
       expect(yield* llm.hits).toHaveLength(2)
     }),

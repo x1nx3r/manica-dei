@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "852586bf-45d1-4843-8550-ccfff694c3cd",
+  "id": "21b6910f-560c-4bc7-9a69-42cae0d39376",
   "prevIds": [
-    "f14a9b18-8207-487e-a3d3-227e629ba9ad"
+    "852586bf-45d1-4843-8550-ccfff694c3cd"
   ],
   "ddl": [
     {
@@ -873,6 +873,16 @@
       "default": null,
       "generated": null,
       "name": "last_verdict",
+      "entityType": "columns",
+      "table": "session_goal"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "last_reason",
       "entityType": "columns",
       "table": "session_goal"
     },

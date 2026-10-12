@@ -152,8 +152,9 @@ describe("session.goal-loop", () => {
       judgeResult = { judgement: { verdict: "done", reason: "the tests pass" } }
 
       const result = yield* loop.decide(decideInput(info.id as never, test.directory))
-      expect(result.decision).toEqual({ _tag: "stop" })
+      expect(result.decision).toMatchObject({ _tag: "stop" })
       expect((yield* goal.get(info.id))?.status).toBe("done")
+      expect((yield* goal.get(info.id))?.last_reason).toBe("the tests pass")
 
       yield* session.remove(info.id)
     }),
@@ -296,7 +297,7 @@ describe("session.goal-loop", () => {
       yield* goal.record({ sessionID: info.id, verdict: "continue" })
 
       const result = yield* loop.decide(decideInput(info.id as never, test.directory))
-      expect(result.decision).toEqual({ _tag: "stop" })
+      expect(result.decision).toMatchObject({ _tag: "stop" })
       expect(judgeCalls).toBe(0)
 
       yield* session.remove(info.id)
@@ -318,7 +319,7 @@ describe("session.goal-loop", () => {
       const input = { ...decideInput(info.id as never, test.directory), failures: { parse: 2, transport: 0 } }
       const result = yield* loop.decide(input)
 
-      expect(result.decision).toEqual({ _tag: "stop" })
+      expect(result.decision).toMatchObject({ _tag: "stop" })
       expect(result.failures.parse).toBe(3)
 
       yield* session.remove(info.id)

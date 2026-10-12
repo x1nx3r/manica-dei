@@ -134,6 +134,8 @@ export const GoalTable = sqliteTable("session_goal", {
   turn_budget: integer().notNull(),
   turns_used: integer().notNull().default(0),
   last_verdict: text().$type<SessionGoal.Verdict>(),
+  // Why the judge returned that verdict — the sentence a human reads.
+  last_reason: text(),
   status: text().notNull().$type<SessionGoal.Status>(),
   ...Timestamps,
 })

@@ -36,8 +36,12 @@ export interface Interface {
   readonly setGates: (input: { sessionID: SessionID; gates: ReadonlyArray<SessionGoal.Gate> }) => Effect.Effect<void>
   /** The loop's terminal state: `done` or `blocked`. */
   readonly setStatus: (input: { sessionID: SessionID; status: SessionGoal.Status }) => Effect.Effect<void>
-  /** Records one loop turn: bumps the count and stores the verdict. */
-  readonly record: (input: { sessionID: SessionID; verdict: SessionGoal.Verdict }) => Effect.Effect<void>
+  /** Records one loop turn: bumps the count and stores the verdict and why. */
+  readonly record: (input: {
+    sessionID: SessionID
+    verdict: SessionGoal.Verdict
+    reason?: string
+  }) => Effect.Effect<void>
   readonly clear: (sessionID: SessionID) => Effect.Effect<void>
 }
 
@@ -94,6 +98,7 @@ const layer = Layer.effect(
         turn_budget: row.turn_budget,
         turns_used: row.turns_used,
         ...(row.last_verdict === null ? {} : { last_verdict: row.last_verdict }),
+        ...(row.last_reason === null ? {} : { last_reason: row.last_reason }),
         status: row.status,
       } satisfies Info
     })
@@ -136,11 +141,16 @@ const layer = Layer.effect(
     const record = Effect.fn("Goal.record")(function* (input: {
       sessionID: SessionID
       verdict: SessionGoal.Verdict
+      reason?: string
     }) {
       // Increment in SQL, not read-then-write: two turns must not lose one.
       yield* db
         .update(GoalTable)
-        .set({ turns_used: sql`${GoalTable.turns_used} + 1`, last_verdict: input.verdict })
+        .set({
+          turns_used: sql`${GoalTable.turns_used} + 1`,
+          last_verdict: input.verdict,
+          last_reason: input.reason ?? null,
+        })
         .where(eq(GoalTable.session_id, input.sessionID))
         .run()
         .pipe(Effect.orDie)

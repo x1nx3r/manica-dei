@@ -17,10 +17,10 @@ import type { SessionID } from "./schema"
 // deterministic evidence that short-circuits judging entirely.
 
 export type Decision =
-  | { readonly _tag: "stop" }
+  | { readonly _tag: "stop"; readonly note?: string }
   | { readonly _tag: "continue"; readonly prompt: string }
-  | { readonly _tag: "blocked"; readonly reason: string }
-  | { readonly _tag: "wait"; readonly reason: string; readonly wait: Judge.WaitDirective }
+  | { readonly _tag: "blocked"; readonly reason: string; readonly note: string }
+  | { readonly _tag: "wait"; readonly reason: string; readonly wait: Judge.WaitDirective; readonly note: string }
 
 /** Consecutive judge failures of one kind that stop the loop. */
 export const MAX_CONSECUTIVE_FAILURES = 3
@@ -65,7 +65,9 @@ const layer = Layer.effect(
       if (!goal || !goal.authorized || goal.status !== "active") return unchanged({ _tag: "stop" })
 
       // The budget is the floor. When it is spent the loop stops and hands back.
-      if (goal.turns_used >= goal.turn_budget) return unchanged({ _tag: "stop" })
+      if (goal.turns_used >= goal.turn_budget) {
+        return unchanged({ _tag: "stop", note: "The turn budget is spent; the goal stops here." })
+      }
 
       // Gates run before the judge.
       if (goal.gates.length > 0) {
@@ -84,6 +86,7 @@ const layer = Layer.effect(
             return unchanged({
               _tag: "blocked",
               reason: `quality gate exhausted ${gate.max_retries} retries: $ ${gate.command}`,
+              note: `A quality gate cannot pass after ${gate.max_retries} retries: \`${gate.command}\`.`,
             })
           }
           return unchanged({
@@ -122,21 +125,30 @@ const layer = Layer.effect(
         : { parse: 0, transport: 0 }
       const settled = (decision: Decision): DecideResult => ({ decision, failures })
       if (failures.parse >= MAX_CONSECUTIVE_FAILURES || failures.transport >= MAX_CONSECUTIVE_FAILURES) {
-        return settled({ _tag: "stop" })
+        return settled({ _tag: "stop", note: "The judge is unreachable; the goal stops rather than loops blind." })
       }
 
       const judgement = result.judgement
-      yield* goals.record({ sessionID: input.sessionID, verdict: judgement.verdict })
+      yield* goals.record({ sessionID: input.sessionID, verdict: judgement.verdict, reason: judgement.reason })
 
       switch (judgement.verdict) {
         case "done":
           yield* goals.setStatus({ sessionID: input.sessionID, status: "done" })
-          return settled({ _tag: "stop" })
+          return settled({ _tag: "stop", note: `The judge says the goal is met: ${judgement.reason}` })
         case "blocked":
           yield* goals.setStatus({ sessionID: input.sessionID, status: "blocked" })
-          return settled({ _tag: "blocked", reason: judgement.reason })
+          return settled({
+            _tag: "blocked",
+            reason: judgement.reason,
+            note: `The judge says the run is blocked: ${judgement.reason}`,
+          })
         case "wait":
-          return settled({ _tag: "wait", reason: judgement.reason, wait: judgement.wait ?? { seconds: 60 } })
+          return settled({
+            _tag: "wait",
+            reason: judgement.reason,
+            wait: judgement.wait ?? { seconds: 60 },
+            note: `The judge says to wait: ${judgement.reason}`,
+          })
         case "continue":
           return settled({ _tag: "continue", prompt: continuation(goal.goal, judgement.reason) })
       }

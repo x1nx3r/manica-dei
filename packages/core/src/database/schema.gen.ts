@@ -136,6 +136,7 @@ export default {
           \`turn_budget\` integer NOT NULL,
           \`turns_used\` integer DEFAULT 0 NOT NULL,
           \`last_verdict\` text,
+          \`last_reason\` text,
           \`status\` text NOT NULL,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,
