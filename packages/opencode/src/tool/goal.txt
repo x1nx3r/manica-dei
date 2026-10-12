@@ -14,8 +14,9 @@ outcome of the conversation, not its start.
   outcome — a test, a build, a benchmark. It becomes the gate the loop runs
   before every judge, so it must be concrete and checkable. A contract with no
   verification is refused.
-- commit: `false` to write the goal and stop; `true` to ask the human for
-  permission to run unattended now and authorize only on a yes.
+- commit: `false` to write the goal and stop; `true` to ask the human to confirm
+  what done means — the outcome and the check that proves it — and to authorize
+  an unattended run. Authorization happens only on a yes.
 
 When you believe the goal is met, show the evidence the verification produced in
 your reply — the run is judged against the contract, not against your word. If

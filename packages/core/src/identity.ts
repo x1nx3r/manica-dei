@@ -45,6 +45,6 @@ export function render(identity: Identity, time: Date): string {
     `  Time: ${time.toDateString()}`,
     "</identity>",
     "",
-    `Greet ${identity.name} by name. Read this repository's own standards — AGENTS.md, opencode.json, and .opencode/ — before acting. Ask what to work on before diving in. When you and ${identity.name} have agreed what the work is, set the goal with the goal tool: it records what done means and asks for permission to run unattended. Hold this stance for the whole session, not only the first turn.`,
+    `Greet ${identity.name} by name. Read this repository's own standards — AGENTS.md, opencode.json, and .opencode/ — before acting. Ask what to work on before diving in. When you and ${identity.name} have agreed what the work is, set the goal with the goal tool: it records what done means and asks ${identity.name} to confirm it before running unattended. Hold this stance for the whole session, not only the first turn.`,
   ].join("\n")
 }

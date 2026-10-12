@@ -78,7 +78,7 @@ const context = (sessionID: SessionID) => ({
   ask: () => Effect.void,
 })
 
-/** Waits for the commit question the tool asks, and answers it. */
+/** Waits for the commit question the tool asks, answers it, and returns it. */
 const answerCommit = (question: Question.Interface, reply: string) =>
   Effect.gen(function* () {
     const events = yield* EventV2Bridge.Service
@@ -93,7 +93,7 @@ const answerCommit = (question: Question.Interface, reply: string) =>
       const item = (yield* question.list())[0]
       if (item) {
         yield* question.reply({ requestID: item.id, answers: [[reply]] })
-        return
+        return item
       }
       yield* Queue.take(asked).pipe(Effect.timeout("2 seconds"))
     }
@@ -178,7 +178,7 @@ describe("tool.goal", () => {
       const tool = yield* (yield* GoalTool).init()
 
       const fiber = yield* tool.execute(params({ commit: true }), context(info.id)).pipe(Effect.forkScoped)
-      yield* answerCommit(question, "Yes, run it")
+      yield* answerCommit(question, "Yes, that's what I want")
       const result = yield* Fiber.join(fiber)
 
       expect(result.title).toBe("Goal authorized")
@@ -197,13 +197,36 @@ describe("tool.goal", () => {
       const tool = yield* (yield* GoalTool).init()
 
       const fiber = yield* tool.execute(params({ commit: true }), context(info.id)).pipe(Effect.forkScoped)
-      yield* answerCommit(question, "No, not yet")
+      yield* answerCommit(question, "No, let's adjust it")
       const result = yield* Fiber.join(fiber)
 
       expect(result.title).toBe("Not authorized")
       const stored = yield* goal.get(info.id)
       expect(stored?.authorized).toBe(false)
       expect(stored?.goal).toBe("add the widget")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("the commit question shows the outcome and the check before the human agrees", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const question = yield* Question.Service
+      const info = yield* session.create({})
+      const tool = yield* (yield* GoalTool).init()
+
+      const fiber = yield* tool.execute(params({ commit: true }), context(info.id)).pipe(Effect.forkScoped)
+      const request = yield* answerCommit(question, "Yes, that's what I want")
+      yield* Fiber.join(fiber)
+
+      // The human's one chance to agree what done means. Naming each field's
+      // role is the point: a check that does not exercise the outcome has to
+      // look wrong here, not three turns later (ADR-0006).
+      const asked = JSON.stringify(request)
+      expect(asked).toContain("Done means: the widget renders")
+      expect(asked).toContain("I will check it with: bun test widget")
+      expect(asked).toContain("I will stop and ask you if: the spec is ambiguous")
 
       yield* session.remove(info.id)
     }),

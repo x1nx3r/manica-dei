@@ -95,7 +95,7 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
           if (!params.commit) {
             return {
               title: "Goal set",
-              output: `The goal is set but not authorized, so the loop will not run. Ask the human for permission to run unattended, then call this tool again with commit: true.\n\n${renderContract(params.contract)}`,
+              output: `The goal is set but not authorized, so the loop will not run. Ask the human to confirm what done means — the outcome and the check that proves it — and to authorize an unattended run, then call this tool again with commit: true.\n\n${renderContract(params.contract)}`,
               metadata: {},
             }
           }
@@ -105,17 +105,18 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
             sessionID: ctx.sessionID,
             questions: [
               {
-                question: `Run this goal unattended?\n\n${renderContract(params.contract)}`,
-                header: "Run unattended?",
+                question: renderCommitQuestion(params.contract),
+                header: "Confirm what done means?",
                 custom: false,
                 options: [
                   {
-                    label: "Yes, run it",
-                    description: "Authorize the loop to run until the judge says the goal is met or the budget is spent",
+                    label: "Yes, that's what I want",
+                    description:
+                      "Ratify the outcome and the check that proves it, and authorize the loop to run until the judge says it is met or the budget is spent",
                   },
                   {
-                    label: "No, not yet",
-                    description: "Leave the goal set but unauthorized",
+                    label: "No, let's adjust it",
+                    description: "Leave the goal set but unauthorized, and change the outcome or the check first",
                   },
                 ],
               },
@@ -123,11 +124,11 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
             tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
           })
 
-          if (answers[0]?.[0] !== "Yes, run it") {
+          if (answers[0]?.[0] !== "Yes, that's what I want") {
             return {
               title: "Not authorized",
               output:
-                "The human did not authorize an unattended run. The goal stays set and the loop will not run. Ask what to change, or wait for a direct instruction.",
+                "The human did not confirm the contract, so the goal stays set and the loop will not run. Ask what to change about the outcome or the check that proves it, set the goal again, and ask again.",
               metadata: {},
             }
           }
@@ -151,5 +152,27 @@ function renderContract(contract: SessionGoal.Contract): string {
     `Constraints: ${contract.constraints}`,
     `Boundaries: ${contract.boundaries}`,
     `Stop when: ${contract.stop_when}`,
+  ].join("\n")
+}
+
+/**
+ * The commit question. It is not only "may I run?" — it is the human's one
+ * chance to agree what *done* means and how it will be checked, before the loop
+ * trusts a contract the agent wrote (ADR-0006, "The human ratifies the contract
+ * at commit").
+ *
+ * Naming each field's role is the point. "I will check it with … run before I
+ * call it done" makes a check that does not exercise the outcome look wrong
+ * here, where a person can still say so.
+ */
+function renderCommitQuestion(contract: SessionGoal.Contract): string {
+  return [
+    "Confirm what done means, and let the loop run unattended.",
+    "",
+    `Done means: ${contract.outcome}`,
+    `I will check it with: ${contract.verification} — run before I call it done`,
+    `Must not change: ${contract.constraints}`,
+    `In scope: ${contract.boundaries}`,
+    `I will stop and ask you if: ${contract.stop_when}`,
   ].join("\n")
 }

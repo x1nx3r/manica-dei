@@ -59,6 +59,9 @@ describe("Identity.render", () => {
     expect(block).toContain("Ask what to work on before diving in")
     // The stance must point at the kickoff, or the agent just does the task.
     expect(block).toContain("set the goal with the goal tool")
+    // And at the confirmation, so the agent asks the person to agree what done
+    // means rather than only to run unattended (ADR-0006).
+    expect(block).toContain("to confirm it before running unattended")
   })
 
   test("is stable for the same input — no clock read inside", () => {
