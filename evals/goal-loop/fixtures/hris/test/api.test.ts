@@ -14,3 +14,7 @@ test("creating and reading are routed", () => {
   expect(route("POST", "/leave/request")).toEqual({ kind: "create" })
   expect(route("GET", "/leave/balance")).toEqual({ kind: "balance" })
 })
+
+test("the HR queue is routed", () => {
+  expect(route("GET", "/leave/queue")).toEqual({ kind: "queue" })
+})

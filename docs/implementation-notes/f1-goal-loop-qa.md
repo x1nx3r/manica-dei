@@ -53,9 +53,13 @@ QA's system prompt. Plain, imperative, and it sets the aim: the reviewer is
 > - It **reads the effect from the system of record**. A green suite is a silent
 >   signal: a run can be green while the feature is inert. Read the row, the
 >   file, the output, the queue — not the narration of them.
-> - It is **reachable**. A function that exists, is documented and is tested, but
->   that **nothing calls**, does not do anything. For every symbol the change adds
->   or alters, find its caller. If you cannot, that is a finding.
+> - It is **reachable**, and this one is mandatory. For every symbol the change
+>   adds or alters, name its caller. Tests do not count: a test calling a function
+>   proves the function works, not that the application reaches it — and a test
+>   written alongside the change fails on the base for that reason alone, which
+>   proves the test is new, not that the feature is reached. If nothing above it
+>   calls it, that is a finding: "it exists, it is documented and it is tested" is
+>   the description of an inert feature, not a pass.
 >
 > ### Findings
 >

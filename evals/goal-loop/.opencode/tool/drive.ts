@@ -41,7 +41,7 @@ function model(id: string) {
   return { providerID, id: rest.join("/") }
 }
 
-type Action = "start" | "prompt" | "read" | "answer" | "stop"
+type Action = "start" | "prompt" | "read" | "review" | "answer" | "stop"
 type Args = { action: Action; text?: string; answer?: string }
 
 /**
@@ -56,7 +56,7 @@ function normalize(args: Args): Args {
   return { ...args, action, [key!]: raw!.replace(/<\/arg_value>\s*$/, "") } as Args
 }
 
-type Part = { type: string; text?: string; tool?: string; state?: { status?: string } }
+type Part = { type: string; text?: string; tool?: string; state?: { status?: string; input?: Record<string, unknown> } }
 type Message = { info?: { id?: string; role?: string }; parts?: Part[] }
 type Question = {
   id: string
@@ -105,6 +105,84 @@ function renderNew(messages: Message[]): string {
   return lines.join("\n")
 }
 
+function textOf(message: Message | undefined): string {
+  return (message?.parts ?? [])
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("\n")
+}
+
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max)}\n[…truncated ${text.length - max} chars]`
+}
+
+/**
+ * The reviewer's own sessions. The QA pass runs in a child session — a fresh
+ * context is the point — so its id never appears in the inner transcript: the
+ * diet it was given and the record it returned live only here. A child session
+ * is titled `QA the goal (@goal-qa subagent)` by the task tool.
+ */
+type Child = { id: string; title?: string }
+
+async function reviewerSessions(): Promise<string> {
+  if (!inner) throw new Error("no inner session — call start first")
+  const children = await api<Child[]>("GET", `/session/${inner}/children`)
+  if (children.length === 0) return "no child sessions — the reviewer never ran"
+
+  const reviewers = children.filter((child) => (child.title ?? "").includes("goal-qa"))
+  if (reviewers.length === 0) {
+    return ["no reviewer session found. Child sessions:", ...children.map((child) => `- ${child.title ?? child.id}`)].join(
+      "\n",
+    )
+  }
+
+  const blocks: string[] = []
+  for (const child of reviewers) {
+    const messages = await api<Message[]>("GET", `/session/${child.id}/message`)
+    const diet = textOf(messages.find((message) => message.info?.role === "user"))
+    const record = textOf([...messages].reverse().find((message) => message.info?.role === "assistant"))
+
+    // The reviewer's own actions. The record says what it concluded; these say
+    // what it actually ran, and what it reached for on the way — a diet it was
+    // not handed but could still open shows up here.
+    const actions: string[] = []
+    for (const message of messages) {
+      for (const part of message.parts ?? []) {
+        if (part.type !== "tool") continue
+        const input = part.state?.input ?? {}
+        const detail =
+          typeof input["command"] === "string"
+            ? input["command"]
+            : typeof input["filePath"] === "string"
+              ? input["filePath"]
+              : JSON.stringify(input)
+        actions.push(`- \`${part.tool}\`: ${truncate(String(detail).replace(/\s+/g, " "), 220)}`)
+      }
+    }
+
+    blocks.push(
+      [
+        `### reviewer ${child.id} — ${child.title ?? ""}`,
+        "",
+        "**The diet it was given** (truncated):",
+        "",
+        truncate(diet, 4000),
+        "",
+        `scratchpad in the diet: ${diet.includes(".opencode/scratchpads") ? "YES — the diet leaked" : "no"}`,
+        "",
+        `**What it did** — ${actions.length} tool calls, the probes and anything else it reached for:`,
+        "",
+        ...(actions.length > 0 ? actions : ["- (none)"]),
+        "",
+        "**The record it returned:**",
+        "",
+        record.trim().length === 0 ? "(no reply was recorded)" : record,
+      ].join("\n"),
+    )
+  }
+  return blocks.join("\n\n")
+}
+
 /** Spell out a pending question so the meta-agent can answer it. */
 function describe(questions: Question[]): string {
   const lines: string[] = []
@@ -142,10 +220,11 @@ export default tool({
 - start: open the inner session in the workspace
 - prompt: send a message as the user (needs \`text\`)
 - read: wait for the agent to stop or ask a question, then read what is new
+- review: read the reviewer's sessions — the diet it was given and the record it returned
 - answer: reply to a pending question (needs \`answer\` — one option label, exactly as offered)
 - stop: end the inner session`,
   args: {
-    action: tool.schema.enum(["start", "prompt", "read", "answer", "stop"]).describe("what to do"),
+    action: tool.schema.enum(["start", "prompt", "read", "review", "answer", "stop"]).describe("what to do"),
     text: tool.schema.string().optional().describe("the user's message (action: prompt)"),
     answer: tool.schema.string().optional().describe("the option label to select, exactly as offered (action: answer)"),
   },
@@ -177,6 +256,10 @@ export default tool({
             ? `\n\nThe agent is waiting for an answer:\n${describe([question])}`
             : "\n\nThe agent is idle. No pending question.",
         ].join("")
+      }
+
+      case "review": {
+        return reviewerSessions()
       }
 
       case "answer": {

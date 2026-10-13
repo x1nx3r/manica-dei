@@ -8,8 +8,8 @@ a blocked run. This tree measures that.
 ## Shape
 
 A **meta-agent** — a user simulator *and* a grader — drives a real session
-against a real codebase, then scores both halves: the agent's scoping and the
-judge's verdicts.
+against a real codebase, then scores all three halves: the agent's scoping, the
+reviewer's pass, and the judge's verdicts.
 
 - **Outer** — an opencode session on GLM 5.3 flash, given a persona, a task,
   and a rubric, with a `drive` tool that wraps the inner session's API.
@@ -30,10 +30,15 @@ outcome and not the mechanism.
 meta/            the meta-agent prompt, the personas, and the grading rubric
 cases/           the task cases (small / medium / big)
 fixtures/hris/   the codebase under test
-run.ts           the runner
+.opencode/       the `meta` agent and the `drive` tool — the simulator's hands
+run.ts           the runner; watch.ts streams both sessions while it runs
+runs/            kept evidence: the workspace the agent left, and both databases
 ```
 
-Only `fixtures/hris/` exists today.
+The reviewer's pass runs in a **child session** — a fresh context is the point —
+so its diet and its record are not in the inner transcript. The `drive` tool's
+`review` action reads them from `/session/:id/children`, and the rubric's
+reviewer half cannot be scored without them.
 
 ## Why it is scored, not asserted
 

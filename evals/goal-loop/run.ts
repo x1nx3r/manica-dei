@@ -10,6 +10,7 @@
  *
  * It never gates CI: the number is a signal, the transcript is the evidence.
  */
+import { Database } from "bun:sqlite"
 import { spawn } from "node:child_process"
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -17,7 +18,9 @@ import { join, resolve } from "node:path"
 import { watch } from "./watch"
 
 const HERE = import.meta.dir
-const FIXTURE = join(HERE, "fixtures", "hris")
+/** Which fixture the inner session works on: a directory under `fixtures/`. */
+const FIXTURE_NAME = arg("fixture", "hris")
+const FIXTURE = join(HERE, "fixtures", FIXTURE_NAME)
 const SERVER = resolve(HERE, "..", "..", "packages", "opencode", "src", "index.ts")
 
 const META_PORT = Number(process.env.EVAL_META_PORT ?? 4097)
@@ -69,6 +72,26 @@ async function call<T = unknown>(
   return (text ? JSON.parse(text) : null) as T
 }
 
+/**
+ * The loop binds each round to a workspace snapshot, and snapshots are git-only
+ * (`packages/opencode/src/snapshot/index.ts:168`). A workspace with no
+ * repository has no state, so the loop stops — "stops rather than pass
+ * unaudited" — before the gate or the reviewer ever runs. A real workspace is a
+ * repository; the fixture copy is not one, so make it one before the inner
+ * server starts.
+ */
+async function initWorkspace(dir: string): Promise<void> {
+  const run = (args: string[]) =>
+    new Promise<void>((resolve, reject) => {
+      const child = spawn("git", args, { cwd: dir, stdio: "ignore" })
+      child.on("error", reject)
+      child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`git ${args.join(" ")} exited ${code}`))))
+    })
+  await run(["init", "-q"])
+  await run(["add", "-A"])
+  await run(["-c", "user.email=eval@local", "-c", "user.name=eval", "commit", "-qm", "fixture"])
+}
+
 async function waitForHealth(base: string, label: string): Promise<void> {
   for (let i = 0; i < 120; i++) {
     try {
@@ -116,8 +139,9 @@ async function main(): Promise<void> {
   const person = PEOPLE[persona] ?? PEOPLE.senior!
 
   const scratch = await mkdtemp(join(tmpdir(), "goal-loop-"))
-  const workspace = join(scratch, "hris")
+  const workspace = join(scratch, FIXTURE_NAME)
   await cp(FIXTURE, workspace, { recursive: true })
+  await initWorkspace(workspace)
 
   const [caseFile, personas, rubric] = await Promise.all([
     readFile(join(HERE, "cases", `${name}.md`), "utf8"),
@@ -164,7 +188,7 @@ async function main(): Promise<void> {
       headers: { "content-type": "application/json", ...AUTH },
       targets: [
         { label: "meta", base: META_BASE, directory: HERE },
-        { label: "hris", base: INNER_BASE, directory: workspace },
+        { label: FIXTURE_NAME, base: INNER_BASE, directory: workspace },
       ],
     })
 
@@ -175,7 +199,8 @@ async function main(): Promise<void> {
       `## Persona\n\nPlay the **${persona}** persona — ${person.name}, ${person.role}.\n\n${personas}`,
       `## Case\n\n${caseFile}`,
       `## Rubric\n\n${rubric}`,
-      `Open the inner session, send the task as your persona, and drive it to completion. Score it at the end.`,
+      `Open the inner session, send the task as your persona, and drive it to completion.`,
+      `Read the reviewer's passes with \`drive review\` before you score — its diet and its record are not in the inner transcript. Score it at the end.`,
     ].join("\n\n---\n\n")
 
     await call(
@@ -186,15 +211,18 @@ async function main(): Promise<void> {
       HERE,
     )
 
-    for (let i = 0; i < 1200; i++) {
+    // No cap. A case that draws contradictions keeps working, and the watcher
+    // streams both sessions to the log, so progress stays observable. The run
+    // ends when the meta-agent scores — or when someone stops it.
+    for (let waited = 0; ; waited += 2) {
       const result = await scorecard(session.id)
       if (result) {
         console.log(`\n=== scorecard (${name} × ${persona}) ===\n${result}\n`)
         return
       }
+      if (waited > 0 && waited % 300 === 0) console.log(`… still running (${waited / 60} min)`)
       await Bun.sleep(2000)
     }
-    throw new Error("the meta-agent never returned a scorecard")
   } finally {
     watcher?.stop()
     meta.kill()
@@ -206,6 +234,32 @@ async function main(): Promise<void> {
     await rm(kept, { recursive: true, force: true })
     await cp(scratch, kept, { recursive: true })
     console.log(`\nrun kept in ${kept}\n`)
+
+    // The cost, from the system of record rather than from the grader's
+    // self-report: every session row carries its own tokens and dollars, so the
+    // scorecard's `cost` is a claim that can be checked.
+    try {
+      const total = { cost: 0, input: 0, output: 0, reasoning: 0, sessions: 0 }
+      for (const file of [join(kept, "inner.db"), join(kept, "meta.db")]) {
+        const db = new Database(file)
+        const row = db
+          .query(
+            "select count(*) n, coalesce(sum(cost),0) cost, coalesce(sum(tokens_input),0) i, coalesce(sum(tokens_output),0) o, coalesce(sum(tokens_reasoning),0) r from session",
+          )
+          .get() as any
+        db.close()
+        total.cost += row?.cost ?? 0
+        total.input += row?.i ?? 0
+        total.output += row?.o ?? 0
+        total.reasoning += row?.r ?? 0
+        total.sessions += row?.n ?? 0
+      }
+      console.log(
+        `cost (from the databases, ${total.sessions} sessions): $${total.cost.toFixed(4)} — in ${total.input}, out ${total.output}, reasoning ${total.reasoning}\n`,
+      )
+    } catch (error) {
+      console.log(`cost could not be read from the databases: ${error}\n`)
+    }
 
     await rm(scratch, { recursive: true, force: true })
   }

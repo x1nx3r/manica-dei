@@ -149,7 +149,10 @@ decoration; it is the rule, applied recursively.
 
 ### Three diets
 
-Each role is denied exactly what would bias it, and each denial has a source:
+Each role is denied exactly what would bias it, and each denial has a source. The
+denial is a **diet**, not a wall: it governs what a role is *handed* and asked to
+weigh, not what it can *reach* — the worktree is the worktree. The aim is what
+keeps each role honest; see "The scratchpad".
 
 | role | sees | denied | why |
 |---|---|---|---|
@@ -248,7 +251,9 @@ conservative — and what makes it honest is the facts standing around it:
 3. **State binding.** A verdict binds to the code state it reviewed — one
    canonical diff hash. Evidence older than the last edit is stale; a `done` with
    an empty diff is phantom. Without this, an approval survives the edit that
-   invalidates it.
+   invalidates it. The binding needs a **repository**: snapshots are git-only, so
+   a workspace with no `.git` has no state, and the loop stops rather than pass
+   unaudited. Every workspace we summon is a repo, and this is why it must be.
 4. **The budget.** The real backstop. A broken judge must never wedge a run.
 
 And one **escape hatch**, not a floor: an independent, **tool-using** reviewer for
@@ -365,9 +370,17 @@ agent reads its own distillation, not forty turns), and it is **the human's revi
 surface** at handoff. And a fourth that is easy to underrate: **writing it is
 thinking.**
 
-QA does **not** read the scratchpad. It is the author's prose, and the diet rule
-denies QA the author's account; the human reads it, and only its assumption
-ledger — never the prose — may reach the judge.
+The scratchpad is **not handed** to QA. It is the author's prose, and QA's diet is
+the contract, the diff, the gate's output and the artifact — the author's account
+is not in it. Only the assumption ledger, never the prose, may reach the judge.
+
+It is nevertheless **reachable**: it is a file in the worktree, and the reviewer
+reads the worktree with `read` and `bash`. That is deliberate, not an oversight.
+What keeps the review honest is the **aim** — QA is pointed at breaking the work —
+not the absence of the prose. A reviewer that goes looking for the author's
+account is a reviewer doing its job; a diet that merely omits it is a default, not
+a wall. The filter is worth keeping for the same reason: prose should have to be
+*sought*, and the seeking is visible in the transcript.
 
 Sections: goal as understood, size and reason, contract, assumption ledger,
 subgoals and progress, open questions, decisions and rationale. **The assumption

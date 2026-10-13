@@ -52,6 +52,15 @@ annual leave and `annual` for the rest.
 Only the employee's reporting manager may approve or reject. The decision is
 recorded in `decided_by` and `decided_at`.
 
+### The HR queue
+
+The HR manager's view is a queue — `GET /leave/queue`, which `route` maps to
+`{ kind: "queue" }`. It lists the requests that have reached her: a request that
+sat unattended long enough to escalate **appears in this queue**, assigned to
+her, and she may approve or reject it like any other manager. A request that
+escalates and cannot be seen here has not escalated, as far as the business is
+concerned.
+
 ### Accrual
 
 A nightly job credits each active employee on the first day of the month:

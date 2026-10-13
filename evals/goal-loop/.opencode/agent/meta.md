@@ -31,6 +31,9 @@ Use the `drive` tool. One action per call:
 - `start` — open the inner session in the workspace.
 - `prompt` — send a message as the user.
 - `read` — read the transcript once the agent stops or asks a question.
+- `review` — read the reviewer's own sessions: the diet it was given, and the
+  record it returned. They are not in the transcript above, and they are not
+  optional to score.
 - `answer` — reply to a pending question (needs `answer`: one option label).
 - `stop` — end the inner session.
 
@@ -42,14 +45,19 @@ the label exactly.
 
 ## Scoring
 
-When the session ends, score it against the rubric in the brief and reply with
-**only** this JSON:
+When the session ends, call `review` — the reviewer's half cannot be scored from
+the transcript — then score everything against the rubric in the brief and reply
+with **only** this JSON:
 
 ```json
 {
   "case": "…",
   "persona": "…",
-  "scores": { "size": 0, "questions": 0, "contract": 0, "drift": 0, "verdict": 0, "evidence": 0 },
+  "scores": {
+    "size": 0, "questions": 0, "contract": 0, "drift": 0,
+    "derives": 0, "finds": 0,
+    "verdict": 0, "evidence": 0, "moderates": 0
+  },
   "gate": "pass",
   "notes": "one line per score, quoting the transcript",
   "cost": { "tokens": 0, "usd": 0 }
