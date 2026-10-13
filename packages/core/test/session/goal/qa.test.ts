@@ -27,6 +27,9 @@ describe("GoalQa.QA_SYSTEM_PROMPT", () => {
     expect(prompt).toContain("abstaining is not a pass")
     expect(prompt).toContain("It is **executed**")
     expect(prompt).toContain("It is **reachable**")
+    // A test is not a caller: this is the check that neither the gate nor the
+    // test-integrity replay performs.
+    expect(prompt).toContain("Tests do not count")
   })
 })
 
