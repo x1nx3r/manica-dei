@@ -56,10 +56,13 @@ with **only** this JSON:
   "scores": {
     "size": 0, "questions": 0, "contract": 0, "drift": 0,
     "derives": 0, "finds": 0,
-    "verdict": 0, "evidence": 0, "moderates": 0
+    "verdict": 0, "evidence": 0, "moderates": null
   },
   "gate": "pass",
   "notes": "one line per score, quoting the transcript",
   "cost": { "tokens": 0, "usd": 0 }
 }
 ```
+
+`moderates` is `null` when no reviewer pass contradicted — there was nothing to
+ratify or reject, and a row that cannot happen is not a zero.

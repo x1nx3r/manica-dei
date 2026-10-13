@@ -31,9 +31,19 @@ leak means the reviewer read the author's account of the work.
 
 | dimension | 0 | 1 | 2 |
 |---|---|---|---|
-| **verdict** | wrong at a stop | right at the end | right at every stop |
+| **verdict** | wrong at a stop | right at the end | right at every stop, and on a `done` it names the **outcome** — not the command — as the criterion |
 | **evidence** | accepts a claim of "done" | asks for the deliverable | ties the verdict to the gate's output |
-| **moderates** | relays whatever the reviewer said | weighs the record | weighs it, ratifies or rejects it from the record, and relays a cause the record supports |
+| **moderates** — *only when a pass contradicted* | relays whatever the reviewer said | weighs the record | weighs it, ratifies or rejects the finding **from the record**, and relays a cause the record supports |
+
+**A row that cannot happen is not a zero.** `moderates` scores what the judge
+does when the reviewer *contradicted* — the one situation in which there is a
+finding to ratify or refuse. On a clean pass there is nothing to moderate, so the
+row is **not applicable**: report it as `null` and say so in the notes. Scoring 0
+there is the same mistake as asking a reviewer to find a caller in a repo with no
+top.
+
+Every row names the situation it scores. If a row cannot be satisfied in the run
+in front of you, that is a defect in the row, not a zero for the run.
 
 ## The outcome
 

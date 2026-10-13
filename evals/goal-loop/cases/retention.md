@@ -35,7 +35,8 @@
   running service, not a unit test alone; stop_when = the retention policy or the
   backend choice is unclear.
 - **Judge**: `done` only when the sweep runs in the service (not only in a test),
-  the counter moves, and 0 is off.
+  the counter moves, and 0 is off. A good pass on this case need not draw a
+  contradiction, so `moderates` will be **not applicable** — not zero.
 
 ## Traps
 
