@@ -5,7 +5,7 @@ import { optional } from "./schema"
 import { ProviderMetadata, ToolContent } from "./llm"
 import { Model } from "./model"
 import { FileAttachment, Prompt } from "./prompt"
-import { DateTimeUtcFromMillis, RelativePath, statics } from "./schema"
+import { DateTimeUtcFromMillis, NonNegativeInt, RelativePath, statics } from "./schema"
 import { SessionGoal } from "./session-goal"
 import { SessionID } from "./session-id"
 import { ascending } from "./identifier"
@@ -170,13 +170,36 @@ export const AssistantGoalReview = Schema.Struct({
   record: SessionGoal.Record,
 }).annotate({ identifier: "Session.Message.Assistant.GoalReview" })
 
+/**
+ * Fork ADR-0008: a judgement as a typed part, not prose. The round, the
+ * verdict, its reason, and the judge's three-part handoff are fields a surface
+ * renders — the same shape the `goal.verdict` trail event carries, so the
+ * session and the trail agree. `SessionGoal.Verdict` and `SessionGoal.Handoff`
+ * are reused, never copied.
+ */
+export interface AssistantGoalVerdict extends Schema.Schema.Type<typeof AssistantGoalVerdict> {}
+export const AssistantGoalVerdict = Schema.Struct({
+  type: Schema.Literal("goal.verdict"),
+  id: Schema.String,
+  round: NonNegativeInt,
+  verdict: SessionGoal.Verdict,
+  reason: Schema.String,
+  handoff: SessionGoal.Handoff.pipe(optional),
+}).annotate({ identifier: "Session.Message.Assistant.GoalVerdict" })
+
 export const AssistantContent = Schema.Union([
   AssistantText,
   AssistantReasoning,
   AssistantTool,
   AssistantGoalReview,
+  AssistantGoalVerdict,
 ]).pipe(Schema.toTaggedUnion("type"))
-export type AssistantContent = AssistantText | AssistantReasoning | AssistantTool | AssistantGoalReview
+export type AssistantContent =
+  | AssistantText
+  | AssistantReasoning
+  | AssistantTool
+  | AssistantGoalReview
+  | AssistantGoalVerdict
 
 export interface Assistant extends Schema.Schema.Type<typeof Assistant> {}
 export const Assistant = Schema.Struct({

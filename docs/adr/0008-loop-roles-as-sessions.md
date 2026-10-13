@@ -144,6 +144,25 @@ The second consequence is downstream and harder to route around: **the generated
 client and SDK lag the schema**, so the app cannot see the new part until they
 are regenerated. Step 4 depends on that, and it is a prerequisite, not a detail.
 
+**And the judge became a session the hard way.** Step 3 chose the route that
+leaves the loop alone, and it is worth being exact about what that bought and
+what it cost. Bought: the session row, the parent link, the agent, the messages,
+and — the point of the change — the **real spend**, read from the actual call and
+written back as the `step-finish` part the projector already reads to move cost
+onto a session row. A test asserts the judge row holds the tokens and the parent
+row holds none.
+
+Cost: the transcript is written *beside* the model call rather than produced by
+the session engine. No `step-start`, no streaming parts, no snapshot, no title.
+The fuller version — running the judge through `SessionPrompt.prompt` in a child
+session — needs `promptOps` at the call site, which means either a second
+two-phase handshake in the caller (a `judge` variant of the decision, with the
+failure accounting, the record clearing, the `mayConclude` guard and the relay
+surviving the round trip) or splitting a service to break the
+`prompt → goal-loop → goal-judge → prompt` cycle. Both are materially larger, and
+both put behaviour the loop's tests pin at risk. Recorded as the price of the
+smaller route, not as a detail.
+
 ## Open
 
 - The name and shape of the part kind that carries a record or a verdict.

@@ -297,12 +297,14 @@ const layer = Layer.effect(
       yield* sync(sessionID, [
         { type: "session", data: info },
         ...messages.map((item) => ({ type: "message" as const, data: item.info })),
-        // Fork ADR-0008: the review record is a product part the hosted share's
-        // generated SDK `Part` does not know; it is left out of the share.
+        // Fork ADR-0008: the review record and the judge's verdict are product
+        // parts the hosted share's generated SDK `Part` does not know; they are
+        // left out of the share.
         ...messages.flatMap((item) =>
           item.parts
             .filter(
-              (part): part is Exclude<SessionV1.Part, { type: "goal.review" }> => part.type !== "goal.review",
+              (part): part is Exclude<SessionV1.Part, { type: "goal.review" | "goal.verdict" }> =>
+                part.type !== "goal.review" && part.type !== "goal.verdict",
             )
             .map((part) => ({ type: "part" as const, data: part })),
         ),

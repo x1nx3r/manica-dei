@@ -677,7 +677,8 @@ describe("goal-loop end to end (mock model)", () => {
       yield* prompt.loop({ sessionID: session.id })
 
       // The pass ran in a child session; the record is a part on its message.
-      const reviewer = (yield* sessions.children(session.id)).find((child) => child.parentID === session.id)
+      // Named by agent: the judge is a second child now (ADR-0008, step 3).
+      const reviewer = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-qa")
       expect(reviewer).toBeDefined()
       if (!reviewer) return
       const messages = yield* sessions.messages({ sessionID: reviewer.id })
@@ -691,6 +692,74 @@ describe("goal-loop end to end (mock model)", () => {
       expect(review.record.probes[0]?.command).toBe("test -f widget")
       expect(review.record.findings).toEqual([])
       expect(review.record.state).not.toBe("")
+    }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  // Fork ADR-0008 (step 3): the judge is a session, not a bare model call. It
+  // is parented to the session under test, running the hidden `goal-judge`
+  // agent; its transcript holds what it was given and what it returned, as a
+  // typed `goal.verdict` part; and the spend the call reports lands on its own
+  // row, so deusd can report per-role cost.
+  it.instance("a judgement runs as a child session, with its verdict and its spend on its own row", () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig()
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const goal = yield* Goal.Service
+      const session = yield* sessions.create({
+        title: "Goal",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+
+      yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+      yield* goal.authorize(session.id)
+
+      yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "add the widget" }],
+      })
+
+      yield* llm.text("I added the widget.")
+      yield* llm.textMatch(isQa, cleanQa)
+      // The judge's own call reports usage: the spend must land on its row.
+      yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}', {
+        usage: { input: 100, output: 20 },
+      })
+
+      yield* prompt.loop({ sessionID: session.id })
+
+      // The judgement is a session of its own, parented to the session under
+      // test and running the hidden agent for its role.
+      const judge = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-judge")
+      expect(judge).toBeDefined()
+      if (!judge) return
+      expect(judge.parentID).toBe(session.id)
+
+      const messages = yield* sessions.messages({ sessionID: judge.id })
+      const parts = messages.flatMap((message) => message.parts)
+      // What the judge was given: the prompt, with the contract and QA's record.
+      const given = parts.find((part) => part.type === "text" && part.text.includes("Completion contract"))
+      expect(given).toBeDefined()
+      expect(given?.type === "text" && given.text).toContain("QA's record")
+      // What it returned, as a typed part.
+      const verdict = parts.find((part) => part.type === "goal.verdict")
+      expect(verdict).toBeDefined()
+      if (verdict?.type !== "goal.verdict") return
+      expect(verdict.round).toBe(1)
+      expect(verdict.verdict).toBe("done")
+      expect(verdict.reason).toBe("the tests pass")
+
+      // The judgement's spend lands on the judge's row, not the parent's.
+      const bench = yield* sessions.get(judge.id)
+      expect(bench.tokens?.input).toBe(100)
+      expect(bench.tokens?.output).toBe(20)
+      const parent = yield* sessions.get(session.id)
+      expect(parent.tokens?.input).toBe(0)
+      expect(parent.tokens?.output).toBe(0)
     }),
     { git: true },
     { timeout: 30_000 },

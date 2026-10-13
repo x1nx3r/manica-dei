@@ -68,6 +68,7 @@ describe("session.goal-judge", () => {
         providerID: ProviderV2.ID.make("test"),
         modelID: ModelV2.ID.make("judge"),
         goal: "add the widget",
+        round: 1,
       })
 
       expect(result.judgement).toEqual(Judge.FAIL_OPEN)

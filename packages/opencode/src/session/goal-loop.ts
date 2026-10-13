@@ -235,6 +235,9 @@ const layer = Layer.effect(
           providerID: input.providerID,
           modelID: input.modelID,
           goal: goal.goal,
+          // The round the judge weighs: the pre-record `turns_used + 1`, the same
+          // round the verdict event and the `goal.verdict` part carry.
+          round: goal.turns_used + 1,
           contract: goal.contract,
           assumptions: input.assumptions,
           record,

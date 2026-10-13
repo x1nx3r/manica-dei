@@ -102,9 +102,10 @@ const serialize = (message: SessionMessage.Message) => {
       .flatMap((part) => {
         if (part.type === "text") return [`[Assistant]: ${part.text}`]
         if (part.type === "reasoning") return part.text ? [`[Assistant reasoning]: ${part.text}`] : []
-        // Fork ADR-0008: the review record is state, not conversation; it is
-        // never summarized into the compaction.
+        // Fork ADR-0008: a review record and a judgement are state, not
+        // conversation; neither is summarized into the compaction.
         if (part.type === "goal.review") return []
+        if (part.type === "goal.verdict") return []
         const input = typeof part.state.input === "string" ? part.state.input : JSON.stringify(part.state.input)
         if (part.state.status === "completed")
           return [

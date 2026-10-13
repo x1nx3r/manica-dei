@@ -215,6 +215,22 @@ export const GoalReviewPart = Schema.Struct({
 }).annotate({ identifier: "GoalReviewPart" })
 export type GoalReviewPart = Schema.Schema.Type<typeof GoalReviewPart>
 
+/**
+ * Fork ADR-0008: the judge's verdict, carrying the same fields the current
+ * `SessionMessage.AssistantGoalVerdict` part declares. The judge's reply lands
+ * on this (V1) message path — the same rows the QA pass writes — so the verdict
+ * is referenced from the current contract rather than duplicated.
+ */
+export const GoalVerdictPart = Schema.Struct({
+  ...partBase,
+  type: SessionMessage.AssistantGoalVerdict.fields.type,
+  round: SessionMessage.AssistantGoalVerdict.fields.round,
+  verdict: SessionMessage.AssistantGoalVerdict.fields.verdict,
+  reason: SessionMessage.AssistantGoalVerdict.fields.reason,
+  handoff: SessionMessage.AssistantGoalVerdict.fields.handoff,
+}).annotate({ identifier: "GoalVerdictPart" })
+export type GoalVerdictPart = Schema.Schema.Type<typeof GoalVerdictPart>
+
 export const SubtaskPart = Schema.Struct({
   ...partBase,
   type: Schema.Literal("subtask"),
@@ -382,6 +398,7 @@ export const Part = Schema.Union([
   RetryPart,
   CompactionPart,
   GoalReviewPart,
+  GoalVerdictPart,
 ]).annotate({ discriminator: "type", identifier: "Part" })
 export type Part =
   | TextPart
@@ -397,6 +414,7 @@ export type Part =
   | RetryPart
   | CompactionPart
   | GoalReviewPart
+  | GoalVerdictPart
 
 const AssistantErrorSchema = Schema.Union([
   AuthError.EffectSchema,

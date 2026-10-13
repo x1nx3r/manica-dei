@@ -73,8 +73,10 @@ const assistant = (message: SessionMessage.Assistant, model: Model) => {
   const reuseProviderMetadata = sameModel && message.error === undefined
   const content = message.content.flatMap((item): ContentPart[] => {
     if (item.type === "text") return [{ type: "text", text: item.text }]
-    // A review record is state, not model input; it never lowers to a prompt.
+    // A review record or a judgement is state, not model input; neither lowers
+    // to a prompt.
     if (item.type === "goal.review") return []
+    if (item.type === "goal.verdict") return []
     if (item.type === "reasoning")
       return sameModel
         ? [

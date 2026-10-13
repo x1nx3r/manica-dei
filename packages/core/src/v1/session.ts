@@ -16,6 +16,7 @@ export {
   FileSource,
   Format,
   GoalReviewPart,
+  GoalVerdictPart,
   Info,
   MessageID,
   OutputFormatJsonSchema,
