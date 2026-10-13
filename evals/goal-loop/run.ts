@@ -12,7 +12,7 @@
  */
 import { Database } from "bun:sqlite"
 import { spawn } from "node:child_process"
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises"
+import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { watch } from "./watch"
@@ -142,6 +142,18 @@ async function main(): Promise<void> {
   const workspace = join(scratch, FIXTURE_NAME)
   await cp(FIXTURE, workspace, { recursive: true })
   await initWorkspace(workspace)
+
+  // A case may ship a prelude: prose seeded into the worktree as a prior
+  // session's scratchpad, so the reviewer has an author's account to weigh
+  // against the artifact. Written after the base commit, so it reads as
+  // session-local — untracked, like the agent's own.
+  const prelude = await readFile(join(HERE, "cases", `${name}.prelude.md`), "utf8").catch(() => null)
+  if (prelude) {
+    const scratchpads = join(workspace, ".opencode", "scratchpads")
+    await mkdir(scratchpads, { recursive: true })
+    await Bun.write(join(scratchpads, "1791800000000-earlier-attempt.md"), prelude)
+    console.log(`seeded a prior session's scratchpad into ${scratchpads}\n`)
+  }
 
   const [caseFile, personas, rubric] = await Promise.all([
     readFile(join(HERE, "cases", `${name}.md`), "utf8"),

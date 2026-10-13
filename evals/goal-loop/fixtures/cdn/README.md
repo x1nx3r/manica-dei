@@ -13,15 +13,18 @@ Environment variables, or a `.env` beside the binary.
 
 | variable | default | meaning |
 |---|---|---|
-| `STORAGE_BACKEND` | `local` | `local` or `s3` |
+| `STORAGE_BACKEND` | `local` | `local` or `object` |
 | `UPLOAD_DIR` | `./uploads` | where the local backend writes |
+| `OBJECT_DIR` | `./objects` | where the object backend writes |
 | `MAX_UPLOAD_MB` | `10` | upload size ceiling |
 | `SERVER_PORT` | `8080` | listen port |
 | `RETENTION_DAYS` | `30` | how old an upload must be before retention removes it. **`0` disables retention — nothing is ever removed.** |
 | `SWEEP_INTERVAL_MINUTES` | `60` | how often the retention sweep runs |
 
-S3 is selected with `STORAGE_BACKEND=s3`; the service reads
-`S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY` and `S3_SECRET_KEY`.
+`STORAGE_BACKEND=object` selects the object store, which writes to `OBJECT_DIR`.
+It stands in for a remote store — the same interface, the same returned URL, no
+network and no client library — so a deployment can be driven the same way
+whether uploads land on the box or somewhere else.
 
 ## Endpoints
 

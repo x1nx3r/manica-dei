@@ -14,8 +14,8 @@ func main() {
 	baseURL := fmt.Sprintf("http://localhost:%s", cfg.ServerPort)
 
 	var store storage.Storage
-	if cfg.StorageBackend == "s3" {
-		store = storage.NewS3Storage(cfg.S3Bucket, cfg.S3Region, cfg.S3AccessKey, cfg.S3SecretKey, baseURL)
+	if cfg.StorageBackend == "object" {
+		store = storage.NewObjectStorage(cfg.ObjectDir, baseURL)
 	} else {
 		store = storage.NewLocalStorage(cfg.UploadDir, baseURL)
 	}

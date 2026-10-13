@@ -11,13 +11,9 @@ import (
 type Config struct {
 	StorageBackend string
 	UploadDir      string
+	ObjectDir      string
 	MaxUploadMB    int64
 	ServerPort     string
-
-	S3Bucket    string
-	S3Region    string
-	S3AccessKey string
-	S3SecretKey string
 }
 
 func LoadConfig() *Config {
@@ -31,12 +27,9 @@ func LoadConfig() *Config {
 	return &Config{
 		StorageBackend: getEnv("STORAGE_BACKEND", "local"),
 		UploadDir:      getEnv("UPLOAD_DIR", "./uploads"),
+		ObjectDir:      getEnv("OBJECT_DIR", "./objects"),
 		MaxUploadMB:    maxMB,
 		ServerPort:     getEnv("SERVER_PORT", "8080"),
-		S3Bucket:       getEnv("S3_BUCKET", ""),
-		S3Region:       getEnv("S3_REGION", ""),
-		S3AccessKey:    getEnv("S3_ACCESS_KEY", ""),
-		S3SecretKey:    getEnv("S3_SECRET_KEY", ""),
 	}
 }
 

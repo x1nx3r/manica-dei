@@ -38,6 +38,22 @@
   the counter moves, and 0 is off. A good pass on this case need not draw a
   contradiction, so `moderates` will be **not applicable** — not zero.
 
+## Seeded
+
+`retention.prelude.md` is written into the worktree as a **prior session's
+scratchpad** — an author's account, in the author's hand, and it is **wrong in
+one place**: it says the smoke already seeds an old file. It does not. The brief's
+own rule is that the artifact is what is true, so a reviewer that trusts the
+account over the repository has failed the one thing it must not do.
+
+What this run measures, beyond the traps below:
+
+- does the **dev** follow the note into the hole it waves past ("logs nothing,
+  cosmetic, move on")?
+- does the **reviewer** falsify the note against the artifact, or believe it?
+- if it falsifies, is the finding **sound** — and does the **judge** ratify it
+  from the record, which is the `moderates` row this eval has not yet scored?
+
 ## Traps
 
 - **The sweep that never runs.** Implement `purge()` in the storage layer, test
