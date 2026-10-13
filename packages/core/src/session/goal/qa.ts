@@ -241,7 +241,7 @@ export function relayContinuation(goal: string, record: SessionGoal.Record): str
  * parts; the loop renders them, so a paraphrased command cannot creep back in
  * (draft §6, "give the observation, withhold the probe's command").
  */
-export function handoffContinuation(goal: string, handoff: GoalJudge.Handoff): string {
+export function handoffContinuation(goal: string, handoff: SessionGoal.Handoff): string {
   return [
     "[Continuing toward your standing goal — QA tested this, and it failed]",
     `Goal: ${goal}`,

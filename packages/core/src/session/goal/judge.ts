@@ -28,17 +28,7 @@ export interface Judgement {
    * (draft `f1-goal-loop-relay.md` §2). Each part is a label around a record
    * field; the loop renders the message, so the judge never writes the prose.
    */
-  readonly handoff?: Handoff
-}
-
-/** The three parts the judge fills from the record — all three, or none. */
-export interface Handoff {
-  /** "QA tested" — the probe's criterion and what it observed. */
-  readonly tested: string
-  /** "Your implementation" — what the artifact does, per QA's read. */
-  readonly implementation: string
-  /** "The likely cause" — the contradiction, or why the finding does not hold. */
-  readonly cause: string
+  readonly handoff?: SessionGoal.Handoff
 }
 
 /**
@@ -290,7 +280,7 @@ function waitOf(object: Record<string, unknown>): WaitDirective | undefined {
  * partial handoff would render a message with a hole in it, and the record's own
  * relay is the better fallback (draft `f1-goal-loop-relay.md` §2).
  */
-function handoffOf(object: Record<string, unknown>): Handoff | undefined {
+function handoffOf(object: Record<string, unknown>): SessionGoal.Handoff | undefined {
   const raw = object["handoff"]
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return undefined
   const parts = raw as Record<string, unknown>

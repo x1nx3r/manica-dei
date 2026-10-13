@@ -1268,6 +1268,24 @@ const scenarios: Scenario[] = [
       check(stable(body) === stable(ctx.state.todos), "todos should match seeded state")
     }),
   http.protected
+    .get("/session/{sessionID}/goal", "session.goal")
+    .seeded((ctx) =>
+      Effect.gen(function* () {
+        const session = yield* ctx.session({ title: "Goal session" })
+        yield* ctx.goal(session.id, { goal: "cover session goal" })
+        return { session }
+      }),
+    )
+    .at((ctx) => ({
+      path: route("/session/{sessionID}/goal", { sessionID: ctx.state.session.id }),
+      headers: ctx.headers(),
+    }))
+    .json(200, (body) => {
+      object(body)
+      check(isRecord(body) && body.goal === "cover session goal", "goal should match seeded state")
+      check(isRecord(body) && body.phase === "dev", "a fresh goal is in the dev phase")
+    }),
+  http.protected
     .get("/session/{sessionID}/diff", "session.diff")
     .seeded((ctx) => ctx.session({ title: "Diff session" }))
     .at((ctx) => ({ path: route("/session/{sessionID}/diff", { sessionID: ctx.state.id }), headers: ctx.headers() }))

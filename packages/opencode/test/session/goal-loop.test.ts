@@ -9,6 +9,7 @@ import { SessionProjector } from "@opencode-ai/core/session/projector"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import type { SessionGoal } from "@opencode-ai/schema/session-goal"
+import { SessionGoalEvent } from "@opencode-ai/schema/session-goal-event"
 import { Session as SessionNs } from "@/session/session"
 import { Goal } from "@/session/goal"
 import { GoalGate } from "@/session/goal-gate"
@@ -917,6 +918,66 @@ describe("session.goal-loop", () => {
       yield* loop.submitRecord({ sessionID: info.id, record: cleanRecord() })
       const delivered = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(delivered.failures.qa).toBe(0)
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  // Fork ADR-0008 (step 1): the phase is on the wire. The bus carries the
+  // substance — which role is acting, the record QA submitted, and the judge's
+  // verdict — so a consumer of the trail needs no second call and no live
+  // container.
+  it.instance("publishes the phase, review, and verdict events", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const events = yield* EventV2.Service
+      const info = yield* session.create({})
+
+      // `listen` runs inline on publish, so the payloads are complete when the
+      // loop calls return — no fork or sleep to race.
+      const published: EventV2.Payload[] = []
+      const unsubscribe = yield* events.listen((event) =>
+        Effect.sync(() => {
+          published.push(event)
+        }),
+      )
+      yield* Effect.addFinalizer(() => unsubscribe)
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+
+      // One: the loop asks for a QA pass and moves the phase to `qa`.
+      const asked = yield* loop.decide(decideInput(info.id as never, test.directory))
+      expect(asked.decision._tag).toBe("qa")
+      if (asked.decision._tag !== "qa") return
+
+      // Two: QA's record is submitted; the phase moves to `judge`.
+      const record = contradictedRecord(asked.decision.state)
+      yield* loop.submitRecord({ sessionID: info.id, record })
+
+      // Three: the judge weighs it and rules.
+      const handoff = {
+        tested: "the escalation never fires",
+        implementation: "escalateOverdue is never called (src/domain/leave.ts:79)",
+        cause: "the sweep never invokes escalateOverdue",
+      }
+      judgeResult = { judgement: { verdict: "continue", reason: "the finding holds", handoff } }
+      const ruled = yield* loop.decide(decideInput(info.id as never, test.directory))
+      expect(ruled.decision._tag).toBe("continue")
+
+      const data = (type: string) => published.filter((event) => event.type === type).map((event) => event.data)
+      expect(data(SessionGoalEvent.Event.Phase.type)).toEqual([
+        { sessionID: info.id, phase: "qa", status: "active", round: 1 },
+        { sessionID: info.id, phase: "judge", status: "active", round: 1 },
+        { sessionID: info.id, phase: "dev", status: "active", round: 2 },
+      ])
+      expect(data(SessionGoalEvent.Event.Review.type)).toEqual([{ sessionID: info.id, round: 1, record }])
+      expect(data(SessionGoalEvent.Event.Verdict.type)).toEqual([
+        { sessionID: info.id, round: 1, verdict: "continue", reason: "the finding holds", handoff },
+      ])
 
       yield* session.remove(info.id)
     }),

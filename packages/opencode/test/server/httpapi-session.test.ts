@@ -24,6 +24,7 @@ import * as HttpSessionError from "../../src/server/routes/instance/httpapi/hand
 import { ExperimentalPaths } from "../../src/server/routes/instance/httpapi/groups/experimental"
 import { SessionPaths } from "../../src/server/routes/instance/httpapi/groups/session"
 import { Session } from "@/session/session"
+import { Goal } from "@/session/goal"
 import { MessageID, PartID, SessionID, type SessionID as SessionIDType } from "../../src/session/schema"
 import { Database } from "@opencode-ai/core/database/database"
 import { SessionInputTable, SessionMessageTable, SessionTable } from "@opencode-ai/core/session/sql"
@@ -44,7 +45,15 @@ const noopBootstrapLayer = Layer.succeed(
   InstanceBootstrapService.Service.of({ run: Effect.void }),
 )
 const appLayer = AppNodeBuilder.build(
-  LayerNode.group([InstanceStore.node, Project.node, Session.node, Workspace.node, Database.node, Ripgrep.node]),
+  LayerNode.group([
+    InstanceStore.node,
+    Project.node,
+    Session.node,
+    Workspace.node,
+    Database.node,
+    Ripgrep.node,
+    Goal.node,
+  ]),
   [[InstanceStore.bootstrapNode, noopBootstrapLayer]],
 )
 const servedRoutes: Layer.Layer<never, Config.ConfigError, HttpServer.HttpServer> = HttpRouter.serve(
@@ -275,6 +284,10 @@ describe("session HttpApi", () => {
         expect(todo.status).toBe(404)
         expect(yield* responseJson(todo)).toEqual(missingSessionBody)
 
+        const goal = yield* request(pathFor(SessionPaths.goal, { sessionID: missingSession }), { headers })
+        expect(goal.status).toBe(404)
+        expect(yield* responseJson(goal)).toEqual(missingSessionBody)
+
         const messages = yield* request(pathFor(SessionPaths.messages, { sessionID: missingSession }), { headers })
         expect(messages.status).toBe(404)
         expect(yield* responseJson(messages)).toEqual(missingSessionBody)
@@ -384,6 +397,36 @@ describe("session HttpApi", () => {
             headers,
           })).data,
         ).toMatchObject([{ type: "assistant" }])
+      }),
+    { git: true, config: { formatter: false, lsp: false } },
+  )
+
+  it.instance(
+    "serves the goal projection, and 404s when the session has no goal",
+    () =>
+      Effect.gen(function* () {
+        const test = yield* TestInstance
+        const headers = { "x-opencode-directory": test.directory }
+        const session = yield* createSession({ title: "goal" })
+
+        // A session with no goal is a not-found for the projection.
+        const absent = yield* request(pathFor(SessionPaths.goal, { sessionID: session.id }), { headers })
+        expect(absent.status).toBe(404)
+        expect(yield* responseJson(absent)).toEqual({
+          name: "NotFoundError",
+          data: { message: `Goal not found: ${session.id}` },
+        })
+
+        const goal = yield* Goal.Service
+        yield* goal.set({ sessionID: session.id, goal: "add the widget" })
+
+        const projection = yield* requestJson<{
+          goal: string
+          phase: string
+          status: string
+          turns_used: number
+        }>(pathFor(SessionPaths.goal, { sessionID: session.id }), { headers })
+        expect(projection).toMatchObject({ goal: "add the widget", phase: "dev", status: "active", turns_used: 0 })
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )

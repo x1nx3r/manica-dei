@@ -10,6 +10,7 @@ import { SessionStatus } from "@/session/status"
 import { SessionSummary } from "@/session/summary"
 import { Todo } from "@/session/todo"
 import { MessageID, PartID, SessionID } from "@/session/schema"
+import { SessionGoal } from "@opencode-ai/schema/session-goal"
 import { Snapshot } from "@/snapshot"
 import { Schema, Struct } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiError, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/unstable/httpapi"
@@ -81,6 +82,7 @@ export const SessionPaths = {
   get: `${root}/:sessionID`,
   children: `${root}/:sessionID/children`,
   todo: `${root}/:sessionID/todo`,
+  goal: `${root}/:sessionID/goal`,
   diff: `${root}/:sessionID/diff`,
   messages: `${root}/:sessionID/message`,
   message: `${root}/:sessionID/message/:messageID`,
@@ -163,6 +165,22 @@ export const SessionApi = HttpApi.make("session")
             identifier: "session.todo",
             summary: "Get session todos",
             description: "Retrieve the todo list associated with a specific session, showing tasks and action items.",
+          }),
+        ),
+        HttpApiEndpoint.get("goal", SessionPaths.goal, {
+          params: { sessionID: SessionID },
+          query: WorkspaceRoutingQuery,
+          // Every field is a wire-safe schema value. `qa_record.probes[].output`
+          // and `findings[].evidence` carry raw command output; the transcript
+          // already exposes the same, so this is no new leak.
+          success: described(SessionGoal.Info, "Goal projection"),
+          error: [HttpApiError.BadRequest, ApiNotFoundError],
+        }).annotateMerge(
+          OpenApi.annotations({
+            identifier: "session.goal",
+            summary: "Get session goal",
+            description:
+              "Retrieve the goal projection for a session: the contract, the phase, the budget, and the last verdict.",
           }),
         ),
         HttpApiEndpoint.get("diff", SessionPaths.diff, {

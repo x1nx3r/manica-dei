@@ -10,6 +10,8 @@ import type { ModelV2 } from "@opencode-ai/core/model"
 import { GoalGate } from "./goal-gate"
 import { Goal } from "./goal"
 import { GoalJudge } from "./goal-judge"
+import { EventV2Bridge } from "@/event-v2-bridge"
+import { SessionGoalEvent } from "@opencode-ai/schema/session-goal-event"
 import type { SessionID } from "./schema"
 
 // Fork ADR-0006, M4 + the QA loop: the loop's decision. Everything here is one
@@ -107,6 +109,32 @@ const layer = Layer.effect(
     const goals = yield* Goal.Service
     const gates = yield* GoalGate.Service
     const judge = yield* GoalJudge.Service
+    const events = yield* EventV2Bridge.Service
+
+    // Fork ADR-0008: a phase change and its event are one act. The event
+    // carries the goal's standing status and the round in progress
+    // (`turns_used + 1`), so the phase is readable from the trail alone. The
+    // publish goes through the bridge, which attaches the instance location the
+    // `/event` handler filters on.
+    const publishPhase = (sessionID: SessionID) =>
+      Effect.gen(function* () {
+        const goal = yield* goals.get(sessionID)
+        if (!goal) return
+        yield* events.publish(SessionGoalEvent.Event.Phase, {
+          sessionID,
+          phase: goal.phase,
+          status: goal.status,
+          round: goal.turns_used + 1,
+        })
+      })
+
+    const setPhase = Effect.fn("GoalLoop.setPhase")(function* (input: {
+      sessionID: SessionID
+      phase: SessionGoal.Phase
+    }) {
+      yield* goals.setPhase(input)
+      yield* publishPhase(input.sessionID)
+    })
 
     const decide = Effect.fn("GoalLoop.decide")(function* (input: DecideInput) {
       const round = input.state
@@ -136,7 +164,7 @@ const layer = Layer.effect(
         // weighed later; the round goes back to `dev` clean. The round spent a
         // turn even though no judge closed it, like every other non-judge exit.
         yield* goals.clearRecord(input.sessionID)
-        yield* goals.setPhase({ sessionID: input.sessionID, phase: "dev" })
+        yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
         yield* goals.burnTurn(input.sessionID)
         const decision: Decision =
           failures.qa >= MAX_CONSECUTIVE_FAILURES
@@ -171,7 +199,7 @@ const layer = Layer.effect(
         const bound = goal.state_hash
         if (record.state !== round || (bound !== null && record.state !== bound)) {
           yield* goals.clearRecord(input.sessionID)
-          yield* goals.setPhase({ sessionID: input.sessionID, phase: "dev" })
+          yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
           // The round is spent even though no judge closed it.
           yield* goals.burnTurn(input.sessionID)
           return delivered({ _tag: "continue", prompt: Qa.staleContinuation(goal.goal) })
@@ -189,7 +217,7 @@ const layer = Layer.effect(
         const contradicted = record.verdict === "contradicted"
         if (!contradicted && !record.probes.some((probe) => probe.derived)) {
           yield* goals.clearRecord(input.sessionID)
-          yield* goals.setPhase({ sessionID: input.sessionID, phase: "dev" })
+          yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
           // The round is spent even though no judge closed it.
           yield* goals.burnTurn(input.sessionID)
           return delivered({ _tag: "continue", prompt: Qa.abstentionContinuation(goal.goal) })
@@ -247,7 +275,7 @@ const layer = Layer.effect(
         // that never reached `judge` may not conclude either
         // (ADR-0006, GoalPhase.mayConclude).
         if (judgement.verdict === "done" && (contradicted || !GoalPhase.mayConclude(enteredPhase))) {
-          yield* goals.setPhase({ sessionID: input.sessionID, phase: "dev" })
+          yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
           return settled({
             _tag: "continue",
             prompt: contradicted
@@ -262,6 +290,16 @@ const layer = Layer.effect(
           reason: judgement.reason,
           state: input.state,
         })
+        // The verdict carries the substance (ADR-0008): the ruling, why, and the
+        // three-part relay when the judge supplied one. `round` is the round the
+        // judge weighed — the pre-record `turns_used + 1`.
+        yield* events.publish(SessionGoalEvent.Event.Verdict, {
+          sessionID: input.sessionID,
+          round: goal.turns_used + 1,
+          verdict: judgement.verdict,
+          reason: judgement.reason,
+          ...(judgement.handoff ? { handoff: judgement.handoff } : {}),
+        })
 
         switch (judgement.verdict) {
           case "done":
@@ -275,7 +313,7 @@ const layer = Layer.effect(
               note: `The judge says the run is blocked: ${judgement.reason}`,
             })
           case "wait":
-            yield* goals.setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("wait") ?? "dev" })
+            yield* setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("wait") ?? "dev" })
             return settled({
               _tag: "wait",
               reason: judgement.reason,
@@ -283,7 +321,7 @@ const layer = Layer.effect(
               note: `The judge says to wait: ${judgement.reason}`,
             })
           case "continue":
-            yield* goals.setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("continue") ?? "dev" })
+            yield* setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("continue") ?? "dev" })
             return settled({ _tag: "continue", prompt: relay() })
         }
       }
@@ -333,7 +371,7 @@ const layer = Layer.effect(
       // the record, and comes back with it (ADR-0006, "the chain of signatures":
       // nobody signs what they made — the dev cannot sign off on the dev).
       yield* goals.bindState({ sessionID: input.sessionID, state: round })
-      yield* goals.setPhase({ sessionID: input.sessionID, phase: "qa" })
+      yield* setPhase({ sessionID: input.sessionID, phase: "qa" })
       return unchanged({ _tag: "qa", contract: goal.contract, state: round, evidence })
     })
 
@@ -346,6 +384,22 @@ const layer = Layer.effect(
       // `judge` (ADR-0006, GoalPhase.mayConclude).
       yield* goals.setRecord(input)
       yield* goals.setPhase({ sessionID: input.sessionID, phase: "judge" })
+      const goal = yield* goals.get(input.sessionID)
+      if (!goal) return
+      // The record is the substance (ADR-0008): it is what a consumer of the
+      // trail reads without a second call, and it is what the human reads at
+      // handoff. Publish it, then the phase move it caused.
+      yield* events.publish(SessionGoalEvent.Event.Review, {
+        sessionID: input.sessionID,
+        round: goal.turns_used + 1,
+        record: input.record,
+      })
+      yield* events.publish(SessionGoalEvent.Event.Phase, {
+        sessionID: input.sessionID,
+        phase: goal.phase,
+        status: goal.status,
+        round: goal.turns_used + 1,
+      })
     })
 
     return Service.of({ decide, submitRecord })
@@ -355,7 +409,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer,
-  deps: [Goal.node, GoalGate.node, GoalJudge.node],
+  deps: [Goal.node, GoalGate.node, GoalJudge.node, EventV2Bridge.node],
 })
 
 /** The continuation a `continue` verdict produces. */

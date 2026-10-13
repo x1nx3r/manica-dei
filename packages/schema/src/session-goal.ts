@@ -27,6 +27,18 @@ export const Verdict = Schema.Literals(["done", "blocked", "continue", "wait"]).
 })
 export type Verdict = typeof Verdict.Type
 
+/**
+ * The three parts the judge fills from the record — all three, or none. The
+ * loop renders the message (draft `f1-goal-loop-relay.md` §2); the judge supplies
+ * only the parts, so a paraphrased command cannot creep back in.
+ */
+export const Handoff = Schema.Struct({
+  tested: Schema.String.annotate({ description: "The probe's criterion and what it observed" }),
+  implementation: Schema.String.annotate({ description: "What the artifact does, per QA's read — file:line" }),
+  cause: Schema.String.annotate({ description: "The contradiction, or why the finding does not hold" }),
+}).annotate({ identifier: "SessionGoal.Handoff" })
+export interface Handoff extends Schema.Schema.Type<typeof Handoff> {}
+
 /** The loop's lifecycle for one goal. */
 export const Status = Schema.Literals(["active", "done", "blocked"]).annotate({
   identifier: "SessionGoal.Status",
