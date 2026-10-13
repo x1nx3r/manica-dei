@@ -15,6 +15,7 @@ export {
   FilePartSource,
   FileSource,
   Format,
+  GoalReviewPart,
   Info,
   MessageID,
   OutputFormatJsonSchema,

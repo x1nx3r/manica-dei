@@ -126,10 +126,23 @@ action we built for the grader becomes a projection of stored data.
 no tools and takes no snapshot, so it is one prompt and one reply, bounded by the
 turn budget.
 
-**Risks.** Session proliferation — bounded by the budget, and visible if it is
-not. A schema addition that must land in the current contract without dragging V1
-along. Events that must be declared in the protocol manifest, or the SDK and the
-UI cannot subscribe.
+**Risks — and one that materialised.** Session proliferation, bounded by the
+budget and visible if it is not. Events that must be declared in the protocol
+manifest, or the SDK and the UI cannot subscribe.
+
+The schema addition was the third, and it landed the hard way. The canonical
+`goal.review` part is declared in the current message contract, and **V1 was
+dragged along to carry it**: the QA pass runs the V1 message path — the opencode
+prompt writes `SessionV1.Part` rows through the projector, and the current
+message store is fed only by `session.next.*` events, which it does not emit. V1
+references the current definition rather than copying it, so the dependency
+direction is right, but the rule as written was aspirational. The loop's typed
+outputs are V1-shaped until the prompt engine migrates, or until a bridge
+projects V1 messages into the current store. Both are beyond this step.
+
+The second consequence is downstream and harder to route around: **the generated
+client and SDK lag the schema**, so the app cannot see the new part until they
+are regenerated. Step 4 depends on that, and it is a prerequisite, not a detail.
 
 ## Open
 

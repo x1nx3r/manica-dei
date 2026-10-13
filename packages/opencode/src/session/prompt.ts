@@ -520,6 +520,22 @@ const layer = Layer.effect(
       )
 
       const record = Qa.parseRecord(result.output, input.decision.state)
+      // Fork ADR-0008: the record is a typed part, not prose. Attach it to the
+      // QA pass's assistant message in the child session, carrying the same
+      // value handed to `submitRecord`, so a surface reads the record's fields.
+      // `submitRecord` is unchanged: the loop's handoff still owns the record.
+      const qaSessionID = result.metadata.sessionId
+      const qaMessages = yield* sessions.messages({ sessionID: qaSessionID }).pipe(Effect.orDie)
+      const qaMessage = qaMessages.findLast((message) => message.info.role === "assistant")
+      if (qaMessage) {
+        yield* sessions.updatePart({
+          id: PartID.ascending(),
+          sessionID: qaSessionID,
+          messageID: qaMessage.info.id,
+          type: "goal.review",
+          record,
+        } satisfies SessionV1.GoalReviewPart)
+      }
       yield* goalLoop.submitRecord({ sessionID: input.sessionID, record })
     })
 

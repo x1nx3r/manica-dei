@@ -11,6 +11,7 @@ import { Provider } from "@/provider/provider"
 
 import { Session } from "@/session/session"
 import { MessageV2 } from "@/session/message-v2"
+import type { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { SessionID } from "@/session/schema"
 import { Database } from "@opencode-ai/core/database/database"
 import { eq } from "drizzle-orm"
@@ -296,7 +297,15 @@ const layer = Layer.effect(
       yield* sync(sessionID, [
         { type: "session", data: info },
         ...messages.map((item) => ({ type: "message" as const, data: item.info })),
-        ...messages.flatMap((item) => item.parts.map((part) => ({ type: "part" as const, data: part }))),
+        // Fork ADR-0008: the review record is a product part the hosted share's
+        // generated SDK `Part` does not know; it is left out of the share.
+        ...messages.flatMap((item) =>
+          item.parts
+            .filter(
+              (part): part is Exclude<SessionV1.Part, { type: "goal.review" }> => part.type !== "goal.review",
+            )
+            .map((part) => ({ type: "part" as const, data: part })),
+        ),
         { type: "session_diff", data: diffs },
         { type: "model", data: models },
       ])

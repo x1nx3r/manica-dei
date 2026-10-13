@@ -644,4 +644,55 @@ describe("goal-loop end to end (mock model)", () => {
     { git: true },
     { timeout: 30_000 },
   )
+
+  // Fork ADR-0008 (step 2): the record is a typed part on the message that
+  // carries it, not prose parsed out of a reply. The QA pass runs in a child
+  // session, so the reviewer's transcript holds the record a surface renders as
+  // fields — the same value handed to `submitRecord`.
+  it.instance("a QA pass leaves a goal.review part on the child session's message", () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig()
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const goal = yield* Goal.Service
+      const session = yield* sessions.create({
+        title: "Goal",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+
+      yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+      yield* goal.authorize(session.id)
+
+      yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "add the widget" }],
+      })
+
+      yield* llm.text("I added the widget.")
+      yield* llm.textMatch(isQa, cleanQa)
+      yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+
+      yield* prompt.loop({ sessionID: session.id })
+
+      // The pass ran in a child session; the record is a part on its message.
+      const reviewer = (yield* sessions.children(session.id)).find((child) => child.parentID === session.id)
+      expect(reviewer).toBeDefined()
+      if (!reviewer) return
+      const messages = yield* sessions.messages({ sessionID: reviewer.id })
+      const review = messages.flatMap((message) => message.parts).find((part) => part.type === "goal.review")
+      expect(review).toBeDefined()
+      if (review?.type !== "goal.review") return
+      // The fields are the record, not a sentence about it.
+      expect(review.record.verdict).toBe("clean")
+      expect(review.record.probes).toHaveLength(1)
+      expect(review.record.probes[0]?.derived).toBe(true)
+      expect(review.record.probes[0]?.command).toBe("test -f widget")
+      expect(review.record.findings).toEqual([])
+      expect(review.record.state).not.toBe("")
+    }),
+    { git: true },
+    { timeout: 30_000 },
+  )
 })

@@ -6,6 +6,7 @@ import { ProviderMetadata, ToolContent } from "./llm"
 import { Model } from "./model"
 import { FileAttachment, Prompt } from "./prompt"
 import { DateTimeUtcFromMillis, RelativePath, statics } from "./schema"
+import { SessionGoal } from "./session-goal"
 import { SessionID } from "./session-id"
 import { ascending } from "./identifier"
 
@@ -156,10 +157,26 @@ export const AssistantReasoning = Schema.Struct({
   }).pipe(optional),
 }).annotate({ identifier: "Session.Message.Assistant.Reasoning" })
 
-export const AssistantContent = Schema.Union([AssistantText, AssistantReasoning, AssistantTool]).pipe(
-  Schema.toTaggedUnion("type"),
-)
-export type AssistantContent = AssistantText | AssistantReasoning | AssistantTool
+/**
+ * Fork ADR-0008: a QA pass's record as a typed part, not prose. The record is
+ * the substance the judge weighs and the human reads at handoff, so a surface
+ * renders its fields (probes, findings, verdict) instead of parsing a reply.
+ * `SessionGoal.Record` is reused, never copied.
+ */
+export interface AssistantGoalReview extends Schema.Schema.Type<typeof AssistantGoalReview> {}
+export const AssistantGoalReview = Schema.Struct({
+  type: Schema.Literal("goal.review"),
+  id: Schema.String,
+  record: SessionGoal.Record,
+}).annotate({ identifier: "Session.Message.Assistant.GoalReview" })
+
+export const AssistantContent = Schema.Union([
+  AssistantText,
+  AssistantReasoning,
+  AssistantTool,
+  AssistantGoalReview,
+]).pipe(Schema.toTaggedUnion("type"))
+export type AssistantContent = AssistantText | AssistantReasoning | AssistantTool | AssistantGoalReview
 
 export interface Assistant extends Schema.Schema.Type<typeof Assistant> {}
 export const Assistant = Schema.Struct({

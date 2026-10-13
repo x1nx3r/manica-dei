@@ -11,6 +11,7 @@ import { ascending } from "../identifier"
 import { SessionID } from "../session-id"
 import { WorkspaceID } from "../workspace-id"
 import { PermissionV1 } from "./permission"
+import { SessionMessage } from "../session-message"
 
 const Timestamp = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 
@@ -201,6 +202,19 @@ export const CompactionPart = Schema.Struct({
 }).annotate({ identifier: "CompactionPart" })
 export type CompactionPart = Types.DeepMutable<Schema.Schema.Type<typeof CompactionPart>>
 
+/**
+ * Fork ADR-0008: QA's record, carrying the same `SessionGoal.Record` the
+ * current `SessionMessage.AssistantGoalReview` part declares. The QA pass runs
+ * on this (V1) message path, so the record lands here; the type and the payload
+ * are reused from the current contract rather than duplicated.
+ */
+export const GoalReviewPart = Schema.Struct({
+  ...partBase,
+  type: SessionMessage.AssistantGoalReview.fields.type,
+  record: SessionMessage.AssistantGoalReview.fields.record,
+}).annotate({ identifier: "GoalReviewPart" })
+export type GoalReviewPart = Schema.Schema.Type<typeof GoalReviewPart>
+
 export const SubtaskPart = Schema.Struct({
   ...partBase,
   type: Schema.Literal("subtask"),
@@ -367,6 +381,7 @@ export const Part = Schema.Union([
   AgentPart,
   RetryPart,
   CompactionPart,
+  GoalReviewPart,
 ]).annotate({ discriminator: "type", identifier: "Part" })
 export type Part =
   | TextPart
@@ -381,6 +396,7 @@ export type Part =
   | AgentPart
   | RetryPart
   | CompactionPart
+  | GoalReviewPart
 
 const AssistantErrorSchema = Schema.Union([
   AuthError.EffectSchema,
