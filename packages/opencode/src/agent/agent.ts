@@ -15,6 +15,7 @@ import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { JUDGE_SYSTEM_PROMPT } from "@opencode-ai/core/session/goal/judge"
+import { QA_SYSTEM_PROMPT } from "@opencode-ai/core/session/goal/qa"
 import { Permission } from "@/permission"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@opencode-ai/core/global"
@@ -281,6 +282,41 @@ const layer = Layer.effect(
               user,
             ),
             prompt: JUDGE_SYSTEM_PROMPT,
+          },
+          // Fork ADR-0006: the goal loop's QA pass. A hidden, fresh-context
+          // reviewer. It is denied `edit`, `write`, and `patch`, so it cannot
+          // change the thing it reviews through those tools — but `bash` is
+          // allowed because a probe must execute, and a shell can write. The
+          // boundary is therefore "no editing tools", not "read-only", and the
+          // residual risk is a probe that writes to the workspace. The record
+          // binds to the state QA was *given* — before the pass — so it does not
+          // catch that write; the next round's binding is what reflects it.
+          //
+          // Its model is configurable through the operator config, exactly like
+          // any agent:
+          //   { "agent": { "goal-qa": { "model": "provider/model" } } }
+          // Isolation (a fresh context) is always on; a different model family
+          // is the operator's call, because there is no evidence on our stack
+          // that family diversity matters (ADR-0006, "QA's model").
+          "goal-qa": {
+            name: "goal-qa",
+            mode: "subagent",
+            options: {},
+            native: true,
+            hidden: true,
+            temperature: 0,
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                "*": "deny",
+                read: "allow",
+                grep: "allow",
+                glob: "allow",
+                bash: "allow",
+              }),
+              user,
+            ),
+            prompt: QA_SYSTEM_PROMPT,
           },
         }
 

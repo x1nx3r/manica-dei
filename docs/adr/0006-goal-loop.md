@@ -184,7 +184,9 @@ Two consequences follow, and both are design constraints:
 **QA's pass is a record, not an absence.** Per acceptance criterion: the probe,
 and its outcome. Silence is abstention, never a pass — otherwise "it found no
 contradiction" is unfalsifiable, and the rubber stamp has merely moved one layer
-up. There are two kinds of probe:
+up. A pass of only the author's own checks is the same abstention wearing a
+badge: the record is admissible only when it carries at least one probe QA
+derived itself. There are two kinds of probe:
 
 - **the contract's checks** — the commands the dev wrote;
 - **probes QA derives from the user's pinned outcome**, which the dev never saw
@@ -200,6 +202,14 @@ never as the criterion.
 same misreading as the dev, it fails identically. That is *why* QA is denied the
 dev's story: the diet rule is what makes the holdout independent. The two are one
 decision.
+
+**The badge is earned, not claimed.** The loop knows the author's own commands —
+the gates it runs and the contract's verification — so a probe marked `derived`
+whose command matches one of them is read as the author's check. It is a check on
+the label, not on the derivation: it catches a relabel and it does not catch a
+wrapped command (`cd . && bun test`). What QA derives is otherwise taken on trust,
+which is the diet's whole point. The flag is QA's own word, and the loop does not
+take it on the author's checks.
 
 ### What makes a probe count
 
@@ -271,15 +281,18 @@ Three of these are not criteria, and saying so is the point:
 ### Quality gates
 
 A claim of evidence is not evidence. The contract's **Verification** is a command
-and the loop runs it at every turn boundary **before** the judge:
+and the loop runs it once per round, at the round's first decision, **before** the
+QA pass:
 
 - a **failing** gate is not adjudicated; its bounded output *is* the continuation;
 - **retries are capped**; past the cap the loop stops as `blocked`, never `done`;
 - gates run in the **session's workspace**;
-- the gate runs in the **same decision** as the judge, so its result is fresh by
-  construction — there is no window in which a green gate predates the work it
-  certifies. The loop captures the command, its exit code and its output tail and
-  hands them to the judge. The agent cannot shape them and cannot argue with them.
+- it runs **once** per round — the resolve decision that weighs QA's record does
+  not run it again — and the loop captures the command, its exit code and its
+  output tail and hands them to QA and then to the judge. The agent cannot shape
+  them and cannot argue with them. The gate therefore predates QA's pass, and QA's
+  `bash` can write; the honest statement is that the gate result is fresh when QA
+  starts, not when the judge rules.
 
 What a gate does **not** buy: it asks *"does the command pass?"*, not *"is the
 outcome true?"* The two coincide only when the command exercises the outcome —
@@ -339,9 +352,13 @@ The agent keeps a **per-session scratchpad**: a markdown file, the mechanism
 
 It is a file because that buys three things: it **survives compaction** (a file
 is untouched when the message history is pruned), it is **cheap to re-read** (the
-agent reads its own distillation, not forty turns), and it is **the review
-surface** (QA and the human read it). And a fourth that is easy to underrate:
-**writing it is thinking.**
+agent reads its own distillation, not forty turns), and it is **the human's review
+surface** at handoff. And a fourth that is easy to underrate: **writing it is
+thinking.**
+
+QA does **not** read the scratchpad. It is the author's prose, and the diet rule
+denies QA the author's account; the human reads it, and only its assumption
+ledger — never the prose — may reach the judge.
 
 Sections: goal as understood, size and reason, contract, assumption ledger,
 subgoals and progress, open questions, decisions and rationale. **The assumption
@@ -349,7 +366,8 @@ ledger is what makes minimal questions safe** — every inference acted on is
 recorded and surfaced at `done` and on any `blocked`.
 
 It is referenced by path and read on demand, so it stays out of the cached prefix,
-and injected in exactly two places: after compaction, and at judge time.
+and injected at most twice: after compaction, and — the ledger alone — at judge
+time.
 
 #### The plan file folds in
 
@@ -359,10 +377,10 @@ silently.
 
 ### The judge returns one of four verdicts
 
-- **`done`** — the outcome is shown true, the record shows QA tried and found no
-  contradiction, and the state bound to the verdict is current. Not "the command
-  passed". Requires the deliverable to exist; an explanation of why the goal cannot
-  be reached is `blocked`, not `done`.
+- **`done`** — the outcome is shown true, the record shows QA derived a probe and
+  found no contradiction, and the state bound to the verdict is current. Not "the
+  command passed". Requires the deliverable to exist; an explanation of why the
+  goal cannot be reached is `blocked`, not `done`.
 - **`blocked`** — genuinely unachievable, the next step needs a human, **or the
   agent reached the contract's stop condition**. The loop routes it to `question`,
   so the human is asked rather than the run simply ending — via a synthetic
@@ -416,11 +434,14 @@ session-local state, not a task — the task is manus-dei's, per ADR-008.
 The judge uses a configured judge model, **not the session's own by default**: the
 failure this loop exists to catch is the agent confidently wrong about its own
 work, and a model grading itself is the weakest possible check on exactly that.
-QA likewise runs in a **fresh context**, and on a **different model family where
-available** — with the honest caveat that the references disagree on whether
-family diversity is load-bearing or whether isolation alone suffices. We isolate
-always; we take the family difference where we can; and the eval decides whether
-it mattered, because we have no evidence for it on our own stack.
+QA likewise runs in a **fresh context**, and its model is configurable too — the
+`goal-qa` agent's `model`, set by the operator — so QA can be pointed at a
+**different model family where available** — with the honest caveat that the
+references disagree on whether family diversity is load-bearing or whether
+isolation alone suffices. We isolate always; we take the family difference where
+we can; and the eval decides whether it mattered, because we have no evidence for
+it on our own stack. We do **not** force a family: a different model is the
+operator's call, not a default the loop imposes.
 
 ### How we see the loop work
 

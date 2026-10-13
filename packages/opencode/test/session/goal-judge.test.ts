@@ -68,7 +68,6 @@ describe("session.goal-judge", () => {
         providerID: ProviderV2.ID.make("test"),
         modelID: ModelV2.ID.make("judge"),
         goal: "add the widget",
-        lastResponse: "I added it.",
       })
 
       expect(result.judgement).toEqual(Judge.FAIL_OPEN)

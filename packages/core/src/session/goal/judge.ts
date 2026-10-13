@@ -2,8 +2,9 @@ export * as GoalJudge from "./judge"
 
 import type { SessionGoal } from "@opencode-ai/schema/session-goal"
 
-// Fork ADR-0006: the judge. It reads the goal, the completion contract, and the
-// agent's last response — never the whole transcript — and returns one verdict.
+// Fork ADR-0006: the judge. It reads the goal, the completion contract, the
+// gate's captured output, and QA's record — never the agent's account of its
+// own work, and never the whole transcript — and returns one verdict.
 //
 // Everything here is pure: the prompt is a string built from data, and the
 // verdict is parsed from a string. The model call that sits between them is the
@@ -39,14 +40,16 @@ export const FAIL_OPEN: Judgement = {
  */
 export const JUDGE_SYSTEM_PROMPT = [
   "You are a strict judge deciding whether an autonomous coding agent has met",
-  "its goal. You receive the goal, the agent's completion contract, the agent's",
-  "most recent response, and — when present — the assumptions the agent recorded.",
+  "its goal. You receive the goal, the completion contract, the verification",
+  "evidence the loop captured, QA's record, and — when present — the assumptions",
+  "the agent recorded. You do not receive the agent's account of its own work.",
   "Decide one of four verdicts.",
   "",
   "DONE — the goal is met:",
-  "- The response shows the goal's Outcome is true. The verification evidence",
-  "  below is the loop's own capture of the check — judge whether it proves the",
-  "  outcome, not whether a command passed.",
+  "- The record shows QA derived and ran a probe and found no contradiction. A",
+  "  record with no derived probe is an abstention, not a pass.",
+  "- The verification evidence below is the loop's own capture of the check —",
+  "  judge whether it proves the outcome, not whether a command passed.",
   "- The Outcome, not the command, is the criterion. A passing verification",
   "  proves the outcome only when it exercises the outcome; a green run over a",
   "  deliverable that does not do the job is not done.",
@@ -54,8 +57,9 @@ export const JUDGE_SYSTEM_PROMPT = [
   "  be reached is BLOCKED, not DONE.",
   "",
   "BLOCKED — the goal cannot be met as stated, or the next step needs a human:",
-  "- The response explains the goal is unachievable, or that progress needs input",
-  "  from a person.",
+  "- The record shows the goal cannot be reached as stated, or that progress",
+  "  needs input from a person. Do not invent a reason: it must come from the",
+  "  record or the gate's own output.",
   "- The agent reached the contract's Stop condition — the point at which it",
   "  stops and asks instead of pushing on. Reaching it is BLOCKED, never DONE.",
   "- BLOCKED is a refusal, not a completion. Never return BLOCKED for a goal that",
@@ -82,7 +86,11 @@ export interface JudgePromptInput {
   readonly goal: string
   readonly contract?: SessionGoal.Contract
   readonly assumptions?: string
-  readonly lastResponse: string
+  /**
+   * QA's record: the pass that QA ran, and what it found (ADR-0006, "the
+   * record"). It is the evidence that QA tried; the judge weighs it.
+   */
+  readonly record?: SessionGoal.Record
   /**
    * What the loop's gates actually produced, captured by the loop rather than
    * reported by the agent. The judge is only called when every gate passed, so
@@ -98,14 +106,7 @@ export interface GateEvidence {
   readonly output: string
 }
 
-/**
- * How much of the last response the judge sees. The judge reads the last
- * response, not the transcript; the cap is what keeps that true when the
- * response is enormous.
- */
-export const MAX_RESPONSE_CHARS = 8_000
-
-/** The judge's user turn: the goal, the contract, the assumptions, the response. */
+/** The judge's user turn: the goal, the contract, the evidence, the record. */
 export function buildJudgePrompt(input: JudgePromptInput): string {
   return [
     "Goal:",
@@ -124,10 +125,14 @@ export function buildJudgePrompt(input: JudgePromptInput): string {
     ...(input.evidence && input.evidence.length > 0
       ? ["Verification evidence (the loop ran these and captured the output):", renderEvidence(input.evidence), ""]
       : []),
+    ...(input.record
+      ? [
+          "QA's record (the pass QA ran, and what it found — never the author's account):",
+          renderRecord(input.record),
+          "",
+        ]
+      : []),
     ...(input.assumptions ? ["Assumptions the agent recorded:", input.assumptions, ""] : []),
-    "Agent's most recent response:",
-    clip(input.lastResponse, MAX_RESPONSE_CHARS),
-    "",
     "Is the goal met — done, blocked, continue, or wait?",
   ].join("\n")
 }
@@ -189,8 +194,42 @@ function renderEvidence(evidence: ReadonlyArray<GateEvidence>): string {
     .join("\n\n")
 }
 
-function clip(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max)}\n[truncated]`
+/** QA's record, rendered per criterion — the evidence that QA tried. */
+function renderRecord(record: SessionGoal.Record): string {
+  const probes = record.probes.length
+    ? record.probes
+        .map((probe) =>
+          [
+            `- [${probe.result}]${probe.derived ? " (derived)" : ""} ${probe.criterion}`,
+            `  $ ${probe.command}`,
+            ...(probe.output.trim().length === 0 ? [] : indent(probe.output)),
+          ].join("\n"),
+        )
+        .join("\n")
+    : "(no probes were run — an abstention, not a pass)"
+  const derived = record.probes.some((probe) => probe.derived)
+  const findings = record.findings.length
+    ? record.findings.map((finding) => `- ${finding.criterion}: ${finding.detail}\n  evidence: ${finding.evidence}`).join("\n")
+    : "(none)"
+  return [
+    `State reviewed: ${record.state}`,
+    `Verdict: ${record.verdict}`,
+    `Derived probes: ${derived ? "yes" : "no — an abstention, not a pass"}`,
+    "",
+    "Probes:",
+    probes,
+    "",
+    "Findings:",
+    findings,
+  ].join("\n")
+}
+
+function indent(text: string): string {
+  return text
+    .trim()
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n")
 }
 
 function reasonOf(object: Record<string, unknown>): string {
@@ -210,9 +249,10 @@ function waitOf(object: Record<string, unknown>): WaitDirective | undefined {
 
 /**
  * Finds the JSON object in a reply. Models wrap it in a fence, put a sentence
- * in front, or both; all of that is noise around one object.
+ * in front, or both; all of that is noise around one object. Exported so the
+ * QA record parser reads replies the same way.
  */
-function extractObject(raw: string): Record<string, unknown> | undefined {
+export function extractObject(raw: string): Record<string, unknown> | undefined {
   const text = raw.trim()
   if (text.length === 0) return undefined
 

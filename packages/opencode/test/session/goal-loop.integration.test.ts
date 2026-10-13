@@ -59,7 +59,26 @@ const summary = Layer.succeed(
   SessionSummary.Service.of({
     summarize: () => Effect.void,
     diff: () => Effect.succeed([]),
-    computeDiff: () => Effect.succeed([]),
+    // The round's change, including the scratchpad the workspace holds. QA must
+    // see the work and never the author's prose, so the call site filters the
+    // scratchpad out (ADR-0006, "the scratchpad").
+    computeDiff: () =>
+      Effect.succeed([
+        {
+          file: "src/widget.ts",
+          patch: "diff --git a/src/widget.ts b/src/widget.ts\n+the widget renders",
+          additions: 1,
+          deletions: 0,
+          status: "modified" as const,
+        },
+        {
+          file: ".opencode/scratchpads/1-goal.md",
+          patch: "the author's private plan",
+          additions: 1,
+          deletions: 0,
+          status: "modified" as const,
+        },
+      ]),
   }),
 )
 
@@ -164,6 +183,47 @@ const it = testEffect(
   ]),
 )
 
+// The same machinery, but the round's diff cannot be computed. QA cannot review
+// a change it cannot see, so the pass must be inadmissible rather than degrade
+// to "(no diff)" and quietly pass (ADR-0006, "prefer a fact over a rule").
+const failingSummary = Layer.succeed(
+  SessionSummary.Service,
+  SessionSummary.Service.of({
+    summarize: () => Effect.void,
+    diff: () => Effect.succeed([]),
+    computeDiff: () => Effect.die("the round's diff cannot be computed"),
+  }),
+)
+
+// The round ran but changed nothing QA can see. An empty diff is the phantom
+// case — a `done` over it proves nothing — so the pass is inadmissible too.
+const emptySummary = Layer.succeed(
+  SessionSummary.Service,
+  SessionSummary.Service.of({
+    summarize: () => Effect.void,
+    diff: () => Effect.succeed([]),
+    computeDiff: () => Effect.succeed([]),
+  }),
+)
+
+const itFailingDiff = testEffect(
+  LayerNode.compile(LayerNode.group([promptRoot, testLLMServerNode]), [
+    [SessionSummary.node, failingSummary],
+    [LSP.node, lsp],
+    [MCP.node, mcp],
+    [RuntimeFlags.node, runtimeFlags],
+  ]),
+)
+
+const itEmptyDiff = testEffect(
+  LayerNode.compile(LayerNode.group([promptRoot, testLLMServerNode]), [
+    [SessionSummary.node, emptySummary],
+    [LSP.node, lsp],
+    [MCP.node, mcp],
+    [RuntimeFlags.node, runtimeFlags],
+  ]),
+)
+
 // A custom "test" provider whose baseURL is the test LLM server.
 const cfg = {
   provider: {
@@ -185,17 +245,32 @@ const cfg = {
           cost: { input: 0, output: 0 },
           options: {},
         },
+        // A second model an operator can point `goal-qa` at, so the QA pass runs
+        // on a different model than the session (ADR-0006, "QA's model").
+        "qa-model": {
+          id: "qa-model",
+          name: "QA Model",
+          attachment: false,
+          reasoning: false,
+          temperature: false,
+          tool_call: true,
+          release_date: "2025-01-01",
+          limit: { context: 100_000, output: 10_000 },
+          cost: { input: 0, output: 0 },
+          options: {},
+        },
       },
       options: { apiKey: "test-key", baseURL: "http://localhost:1/v1" },
     },
   },
 }
 
-const useServerConfig = Effect.fn("test.useServerConfig")(function* () {
+const useServerConfig = Effect.fn("test.useServerConfig")(function* (extra: Partial<ConfigV1.Info> = {}) {
   const { directory: dir } = yield* TestInstance
   const llm = yield* TestLLMServer
   const config = {
     ...cfg,
+    ...extra,
     provider: {
       ...cfg.provider,
       test: { ...cfg.provider.test, options: { ...cfg.provider.test.options, baseURL: llm.url } },
@@ -211,6 +286,24 @@ const useServerConfig = Effect.fn("test.useServerConfig")(function* () {
 
 /** The judge's call is the one whose body carries the judge system prompt. */
 const isJudge = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body).includes("strict judge")
+
+/** QA's call carries the QA brief. */
+const isQa = (hit: { body: Record<string, unknown> }) => JSON.stringify(hit.body).includes("You are the reviewer")
+
+/** A clean QA record — one derived probe, no contradiction. */
+const cleanQa = JSON.stringify({
+  verdict: "clean",
+  probes: [
+    {
+      criterion: "the widget renders",
+      derived: true,
+      command: "test -f widget",
+      output: "ok",
+      result: "pass",
+    },
+  ],
+  findings: [],
+})
 
 const contract = {
   outcome: "the widget renders",
@@ -251,8 +344,9 @@ describe("goal-loop end to end (mock model)", () => {
         parts: [{ type: "text", text: "add the widget" }],
       })
 
-      // The agent's work turn, then the judge's verdict.
+      // The agent's work turn, then QA's pass, then the judge's verdict.
       yield* llm.text("I added the widget and ran the tests.")
+      yield* llm.textMatch(isQa, cleanQa)
       yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
 
       yield* prompt.loop({ sessionID: session.id })
@@ -267,9 +361,17 @@ describe("goal-loop end to end (mock model)", () => {
         .flatMap((message) => message.parts)
         .find((part) => part.type === "text" && part.text.includes("The judge says the goal is met"))
       expect(verdict).toBeDefined()
-      // The judge ran once, after the agent's turn.
-      expect(yield* llm.hits).toHaveLength(2)
+      // QA ran before the judge, and the judge ran once.
+      expect((yield* llm.hits).filter(isQa)).toHaveLength(1)
+      expect((yield* llm.hits).filter(isJudge)).toHaveLength(1)
+      // QA's diet is the round's change, and never the author's scratchpad.
+      const qaBody = JSON.stringify((yield* llm.hits).find(isQa)?.body ?? {})
+      expect(qaBody).toContain("src/widget.ts")
+      expect(qaBody).not.toContain("scratchpads")
+      expect(qaBody).not.toContain("private plan")
     }),
+    { git: true },
+    { timeout: 30_000 },
   )
 
   it.instance("a continue verdict runs another turn, then done stops", () =>
@@ -294,8 +396,10 @@ describe("goal-loop end to end (mock model)", () => {
       })
 
       yield* llm.text("first attempt")
+      yield* llm.textMatch(isQa, cleanQa)
       yield* llm.textMatch(isJudge, '{"verdict":"continue","reason":"the tests are not written"}')
       yield* llm.text("second attempt, with tests")
+      yield* llm.textMatch(isQa, cleanQa)
       yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
 
       yield* prompt.loop({ sessionID: session.id })
@@ -304,6 +408,8 @@ describe("goal-loop end to end (mock model)", () => {
       expect(stored?.status).toBe("done")
       expect(stored?.turns_used).toBe(2)
     }),
+    { git: true },
+    { timeout: 30_000 },
   )
 
   it.instance("a blocked verdict stops the loop as blocked, not done", () =>
@@ -328,6 +434,7 @@ describe("goal-loop end to end (mock model)", () => {
       })
 
       yield* llm.text("I cannot: the API key is missing.")
+      yield* llm.textMatch(isQa, cleanQa)
       yield* llm.textMatch(isJudge, '{"verdict":"blocked","reason":"needs an API key"}')
 
       yield* prompt.loop({ sessionID: session.id })
@@ -336,5 +443,190 @@ describe("goal-loop end to end (mock model)", () => {
       expect(stored?.status).toBe("blocked")
       expect(stored?.last_verdict).toBe("blocked")
     }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  it.instance(
+    "a contradicted QA round returns to dev, then a clean pass reaches the judge",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate], turnBudget: 10 })
+        yield* goal.authorize(session.id)
+
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
+
+        // Round one: the dev's turn, then QA contradicts it. No judge.
+        yield* llm.text("first attempt")
+        yield* llm.textMatch(
+          isQa,
+          JSON.stringify({
+            verdict: "contradicted",
+            probes: [
+              {
+                criterion: "the widget renders",
+                derived: true,
+                command: "bun test widget",
+                output: "0 pass, 1 fail",
+                result: "fail",
+              },
+            ],
+            findings: [
+              {
+                criterion: "the widget renders",
+                detail: "the widget does not render: the test fails.",
+                evidence: "src/widget.ts:1",
+              },
+            ],
+          }),
+        )
+        // Round two: the dev's turn, a clean QA pass, then the judge.
+        yield* llm.text("second attempt, fixed")
+        yield* llm.textMatch(isQa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+
+        yield* prompt.loop({ sessionID: session.id })
+
+        const stored = yield* goal.get(session.id)
+        expect(stored?.status).toBe("done")
+        expect(stored?.turns_used).toBe(2)
+        // The contradicted round never reached the judge; QA ran once per round.
+        expect((yield* llm.hits).filter(isQa)).toHaveLength(2)
+        expect((yield* llm.hits).filter(isJudge)).toHaveLength(1)
+      }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  it.instance(
+    "the QA model is configurable, and runs on a different model than the session",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig({ agent: { "goal-qa": { model: "test/qa-model" } } })
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+        yield* goal.authorize(session.id)
+
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
+
+        yield* llm.text("I added the widget.")
+        yield* llm.textMatch(isQa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+
+        yield* prompt.loop({ sessionID: session.id })
+
+        const qa = (yield* llm.hits).find(isQa)
+        expect(qa?.body["model"]).toBe("qa-model")
+      }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  itEmptyDiff.instance(
+    "an empty diff is inadmissible — a phantom change is never certified",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate], turnBudget: 5 })
+        yield* goal.authorize(session.id)
+
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
+
+        // The dev answers, but the round changed nothing QA can see.
+        yield* llm.text("I added the widget.")
+
+        yield* prompt.loop({ sessionID: session.id })
+
+        // Inadmissible: no QA call, no done, and the failure is visible.
+        expect((yield* goal.get(session.id))?.status).toBe("active")
+        expect((yield* llm.hits).filter(isQa)).toHaveLength(0)
+        const messages = yield* sessions.messages({ sessionID: session.id })
+        const note = messages
+          .flatMap((message) => message.parts)
+          .find((part) => part.type === "text" && part.text.includes("QA pass could not run"))
+        expect(note).toBeDefined()
+      }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  itFailingDiff.instance(
+    "a diff that cannot be computed makes the pass inadmissible",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate], turnBudget: 5 })
+        yield* goal.authorize(session.id)
+
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
+
+        // The dev answers; QA never runs because the diff fails first.
+        yield* llm.text("I added the widget.")
+
+        yield* prompt.loop({ sessionID: session.id })
+
+        // The pass was inadmissible: no QA call, no done, and a visible note.
+        expect((yield* goal.get(session.id))?.status).toBe("active")
+        expect((yield* llm.hits).filter(isQa)).toHaveLength(0)
+        const messages = yield* sessions.messages({ sessionID: session.id })
+        const note = messages
+          .flatMap((message) => message.parts)
+          .find((part) => part.type === "text" && part.text.includes("QA pass could not run"))
+        expect(note).toBeDefined()
+      }),
+    { git: true },
+    { timeout: 30_000 },
   )
 })

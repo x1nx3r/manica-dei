@@ -34,10 +34,24 @@ export interface Interface {
   readonly authorize: (sessionID: SessionID) => Effect.Effect<void>
   /** Moves the goal to the phase whose role is now acting (ADR-0006). */
   readonly setPhase: (input: { sessionID: SessionID; phase: SessionGoal.Phase }) => Effect.Effect<void>
+  /** Binds the current round to the workspace state it is decided against. */
+  readonly bindState: (input: { sessionID: SessionID; state?: string }) => Effect.Effect<void>
+  /** Stores QA's record for the round the loop is deciding. */
+  readonly setRecord: (input: { sessionID: SessionID; record: SessionGoal.Record }) => Effect.Effect<void>
+  /** Clears QA's record once the loop has weighed it. */
+  readonly clearRecord: (sessionID: SessionID) => Effect.Effect<void>
   /** Replaces the gate list, carrying each gate's retry state. */
   readonly setGates: (input: { sessionID: SessionID; gates: ReadonlyArray<SessionGoal.Gate> }) => Effect.Effect<void>
   /** The loop's terminal state: `done` or `blocked`. */
   readonly setStatus: (input: { sessionID: SessionID; status: SessionGoal.Status }) => Effect.Effect<void>
+  /**
+   * Counts one round against the budget when no judge verdict closes it — a
+   * QA contradiction, an abstention, a stale record, or a QA pass that could
+   * not run. Without this the turn budget would only count rounds the judge
+   * saw, and a contradicting QA loop would escape the floor (ADR-0006, "the
+   * loop has a floor").
+   */
+  readonly burnTurn: (sessionID: SessionID) => Effect.Effect<void>
   /**
    * Records one loop turn: bumps the count and stores the verdict, why, and the
    * workspace state the verdict applied to.
@@ -110,6 +124,7 @@ const layer = Layer.effect(
         turns_used: row.turns_used,
         ...(row.last_verdict === null ? {} : { last_verdict: row.last_verdict }),
         ...(row.last_reason === null ? {} : { last_reason: row.last_reason }),
+        ...(row.qa_record === null ? {} : { qa_record: row.qa_record }),
         state_hash: row.state_hash,
         status: row.status,
       } satisfies Info
@@ -131,6 +146,36 @@ const layer = Layer.effect(
         .update(GoalTable)
         .set({ phase: input.phase })
         .where(eq(GoalTable.session_id, input.sessionID))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const bindState = Effect.fn("Goal.bindState")(function* (input: { sessionID: SessionID; state?: string }) {
+      yield* db
+        .update(GoalTable)
+        .set({ state_hash: input.state ?? null })
+        .where(eq(GoalTable.session_id, input.sessionID))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const setRecord = Effect.fn("Goal.setRecord")(function* (input: {
+      sessionID: SessionID
+      record: SessionGoal.Record
+    }) {
+      yield* db
+        .update(GoalTable)
+        .set({ qa_record: input.record })
+        .where(eq(GoalTable.session_id, input.sessionID))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const clearRecord = Effect.fn("Goal.clearRecord")(function* (sessionID: SessionID) {
+      yield* db
+        .update(GoalTable)
+        .set({ qa_record: null })
+        .where(eq(GoalTable.session_id, sessionID))
         .run()
         .pipe(Effect.orDie)
     })
@@ -173,10 +218,21 @@ const layer = Layer.effect(
           last_verdict: input.verdict,
           last_reason: input.reason ?? null,
           // The workspace state this verdict applied to (ADR-0006, "state
-          // binding"). Recorded here, not yet enforced against staleness.
+          // binding"). Recorded here, and enforced by the record's own binding.
           state_hash: input.state ?? null,
         })
         .where(eq(GoalTable.session_id, input.sessionID))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const burnTurn = Effect.fn("Goal.burnTurn")(function* (sessionID: SessionID) {
+      // A round the judge never closed still spent a turn; the budget is the
+      // floor and must count it (ADR-0006, "the loop has a floor").
+      yield* db
+        .update(GoalTable)
+        .set({ turns_used: sql`${GoalTable.turns_used} + 1` })
+        .where(eq(GoalTable.session_id, sessionID))
         .run()
         .pipe(Effect.orDie)
     })
@@ -185,7 +241,7 @@ const layer = Layer.effect(
       yield* db.delete(GoalTable).where(eq(GoalTable.session_id, sessionID)).run().pipe(Effect.orDie)
     })
 
-    return Service.of({ set, get, authorize, setPhase, setGates, setStatus, record, clear })
+    return Service.of({ set, get, authorize, setPhase, bindState, setRecord, clearRecord, setGates, setStatus, burnTurn, record, clear })
   }),
 )
 

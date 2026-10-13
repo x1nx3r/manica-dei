@@ -27,7 +27,8 @@ export interface JudgeInput {
   readonly goal: string
   readonly contract?: SessionGoal.Contract
   readonly assumptions?: string
-  readonly lastResponse: string
+  /** QA's record, the pass the judge weighs (ADR-0006, "the record"). */
+  readonly record?: SessionGoal.Record
   /** What the gates produced, captured by the loop — not the agent's summary. */
   readonly evidence?: ReadonlyArray<Judge.GateEvidence>
 }

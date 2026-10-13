@@ -138,6 +138,7 @@ export default {
           \`turns_used\` integer DEFAULT 0 NOT NULL,
           \`last_verdict\` text,
           \`last_reason\` text,
+          \`qa_record\` text,
           \`state_hash\` text,
           \`status\` text NOT NULL,
           \`time_created\` integer NOT NULL,

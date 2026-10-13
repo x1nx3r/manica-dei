@@ -98,13 +98,17 @@ describe("GoalJudge.buildJudgePrompt", () => {
     boundaries: "packages/widget",
     stop_when: "the spec is ambiguous",
   }
+  const record = {
+    state: "snap-1",
+    verdict: "clean" as const,
+    probes: [
+      { criterion: "the widget renders", derived: true, command: "bun run render", output: "ok", result: "pass" as const },
+    ],
+    findings: [],
+  }
 
-  test("carries the goal, the contract verbatim, and the response", () => {
-    const prompt = GoalJudge.buildJudgePrompt({
-      goal: "add the widget",
-      contract,
-      lastResponse: "I added it and ran the tests.",
-    })
+  test("carries the goal and the contract verbatim", () => {
+    const prompt = GoalJudge.buildJudgePrompt({ goal: "add the widget", contract })
 
     expect(prompt).toContain("Goal:\nadd the widget")
     for (const line of [
@@ -116,11 +120,17 @@ describe("GoalJudge.buildJudgePrompt", () => {
     ]) {
       expect(prompt).toContain(line)
     }
-    expect(prompt).toContain("I added it and ran the tests.")
+  })
+
+  test("never carries the agent's own account of the work", () => {
+    // The judge's diet narrows to facts: the contract, the evidence, the
+    // record. The author's prose is denied (ADR-0006, "Three diets").
+    const prompt = GoalJudge.buildJudgePrompt({ goal: "g", contract, record })
+    expect(prompt).not.toContain("Agent's most recent response")
   })
 
   test("the stop condition is a run condition, not part of the definition of done", () => {
-    const prompt = GoalJudge.buildJudgePrompt({ goal: "add the widget", contract, lastResponse: "r" })
+    const prompt = GoalJudge.buildJudgePrompt({ goal: "add the widget", contract })
     const contractAt = prompt.indexOf("Completion contract")
     const runConditionAt = prompt.indexOf("Run condition")
     const stopAt = prompt.indexOf("Stop when:")
@@ -134,7 +144,6 @@ describe("GoalJudge.buildJudgePrompt", () => {
     const prompt = GoalJudge.buildJudgePrompt({
       goal: "g",
       contract,
-      lastResponse: "r",
       evidence: [{ command: "bun test widget", exitCode: 0, output: "12 pass, 0 fail" }],
     })
     expect(prompt).toContain("Verification evidence (the loop ran these and captured the output):")
@@ -143,29 +152,43 @@ describe("GoalJudge.buildJudgePrompt", () => {
   })
 
   test("omits the evidence block when the loop supplied none", () => {
-    const prompt = GoalJudge.buildJudgePrompt({ goal: "g", contract, lastResponse: "r" })
+    const prompt = GoalJudge.buildJudgePrompt({ goal: "g", contract })
     expect(prompt).not.toContain("Verification evidence")
   })
 
-  test("includes the assumption ledger when present, omits the blocks when absent", () => {
-    const withLedger = GoalJudge.buildJudgePrompt({
+  test("carries QA's record as the thing it weighs, and omits it otherwise", () => {
+    const withRecord = GoalJudge.buildJudgePrompt({ goal: "g", contract, record })
+    expect(withRecord).toContain("QA's record")
+    expect(withRecord).toContain("State reviewed: snap-1")
+    expect(withRecord).toContain("$ bun run render")
+    expect(withRecord).toContain("Derived probes: yes")
+
+    const bare = GoalJudge.buildJudgePrompt({ goal: "g", contract })
+    expect(bare).not.toContain("QA's record")
+  })
+
+  test("a record with no derived probe reads as an abstention", () => {
+    const prompt = GoalJudge.buildJudgePrompt({
       goal: "g",
-      lastResponse: "r",
-      assumptions: "- the API is stable",
+      contract,
+      record: {
+        state: "snap-1",
+        verdict: "clean",
+        probes: [{ criterion: "c", derived: false, command: "c", output: "ok", result: "pass" }],
+        findings: [],
+      },
     })
+    expect(prompt).toContain("Derived probes: no — an abstention, not a pass")
+  })
+
+  test("includes the assumption ledger when present, omits the blocks when absent", () => {
+    const withLedger = GoalJudge.buildJudgePrompt({ goal: "g", assumptions: "- the API is stable" })
     expect(withLedger).toContain("Assumptions the agent recorded:")
     expect(withLedger).toContain("- the API is stable")
 
-    const bare = GoalJudge.buildJudgePrompt({ goal: "g", lastResponse: "r" })
+    const bare = GoalJudge.buildJudgePrompt({ goal: "g" })
     expect(bare).not.toContain("Assumptions the agent recorded:")
     expect(bare).not.toContain("Completion contract")
-  })
-
-  test("bounds the response — the judge never sees the whole transcript", () => {
-    const huge = "x".repeat(GoalJudge.MAX_RESPONSE_CHARS * 4)
-    const prompt = GoalJudge.buildJudgePrompt({ goal: "g", lastResponse: huge })
-    expect(prompt).toContain("[truncated]")
-    expect(prompt.length).toBeLessThan(GoalJudge.MAX_RESPONSE_CHARS + 2_000)
   })
 })
 
@@ -182,5 +205,14 @@ describe("GoalJudge.JUDGE_SYSTEM_PROMPT", () => {
 
   test("reaching the stop condition is blocked, never done", () => {
     expect(prompt).toContain("Reaching it is BLOCKED, never DONE")
+  })
+
+  test("done requires a derived probe; the author's checks are not a pass", () => {
+    expect(prompt).toContain("record with no derived probe is an abstention, not a pass")
+  })
+
+  test("blocked comes from the record or the gate's output, not the agent's story", () => {
+    expect(prompt).toContain("You do not receive the agent's account of its own work.")
+    expect(prompt).toContain("Do not invent a reason")
   })
 })

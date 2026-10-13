@@ -30,8 +30,9 @@ QA's system prompt. Plain, imperative, and it sets the aim: the reviewer is
 > A **record**. Not an opinion — a record. For every acceptance criterion in the
 > contract: the probe you ran, and what it produced.
 >
-> If you ran nothing, you have not reviewed. You have abstained, and abstaining
-> is not a pass.
+> If you derived nothing of your own, you have not reviewed. You have abstained,
+> and abstaining is not a pass. Running only the author's own checks is not a
+> review — the author wrote them to pass.
 >
 > ### Two kinds of probe
 >
@@ -133,16 +134,25 @@ fires:
 
 | record | the loop |
 |---|---|
-| `clean`, **no probes** | **abstention, not a pass.** Back to `dev` with a continuation demanding a probe. The judge never sees it. |
-| `clean`, probes present | the phase moves to `judge`; the judge weighs the record. |
+| `clean`, **no derived probes** | **abstention, not a pass.** The author's own checks are not a review. Back to `dev` with a continuation demanding a derived probe. The judge never sees it. |
+| `clean`, a derived probe present | the phase moves to `judge`; the judge weighs the record. |
 | `contradicted` | back to `dev`, with the findings reported as **symptoms** — never as the criterion. |
 | `state` ≠ the round's state | **stale.** The record cannot be weighed; the work moved after it was made. Back to `dev`. |
+
+The first two rows are read off a **corrected** record: before weighing it, the
+loop attributes each probe to its author. A probe marked `derived` whose command
+is one of the author's own — a gate or the contract's verification — is read as
+the author's check, so a relabel does not satisfy the holdout rule
+(`GoalQa.attributeProbes`).
 
 And the two rules step 1 left unwired:
 
 - **`mayConclude` gains teeth here.** The loop enters `judge` only *after* a QA
-  pass, so a `done` arriving while the phase is `dev` or `qa` is refused by
-  construction — and re-admitted only by a round that had its QA.
+  pass, and `submitRecord` writes the record and that phase move together, so a
+  `done` arriving while the phase is `dev` or `qa` is refused. The reachable case
+  is a **torn handoff** — the record persisted, the phase move did not, as a crash
+  between the two writes leaves it — and the guard is what stops that record
+  concluding.
 - **`state_hash` becomes an enforcement.** The record's `state` must equal the
   state the judge will bind to.
 

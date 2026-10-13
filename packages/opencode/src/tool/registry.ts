@@ -274,7 +274,10 @@ const layer = Layer.effect(
     })
 
     const describeTask = Effect.fn("ToolRegistry.describeTask")(function* (agent: Agent.Info) {
-      const items = (yield* agents.list()).filter((item) => item.mode !== "primary")
+      // A hidden subagent is internal to the loop and is never advertised: the
+      // QA reviewer must not appear in the dev's task list, where the model
+      // could summon it outside the loop's control (ADR-0006, "the pass").
+      const items = (yield* agents.list()).filter((item) => item.mode !== "primary" && item.hidden !== true)
       const filtered = items.filter(
         (item) => Permission.evaluate("task", item.name, agent.permission).action !== "deny",
       )

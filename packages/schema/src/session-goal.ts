@@ -66,6 +66,42 @@ export const Gate = Schema.Struct({
 }).annotate({ identifier: "SessionGoal.Gate" })
 export interface Gate extends Schema.Schema.Type<typeof Gate> {}
 
+/**
+ * One probe from a QA pass: an executed observation against the artifact.
+ * `derived` marks QA's own probe — the holdout the author never saw — while
+ * false marks the author's own check.
+ */
+export const Probe = Schema.Struct({
+  criterion: Schema.String.annotate({ description: "Which clause of the contract this probes" }),
+  derived: Schema.Boolean.annotate({ description: "true = QA's own probe (the holdout); false = the author's check" }),
+  command: Schema.String.annotate({ description: "What was executed" }),
+  output: Schema.String.annotate({ description: "The captured tail of the command's output" }),
+  result: Schema.Literals(["pass", "fail", "could-not-run"]),
+}).annotate({ identifier: "SessionGoal.Probe" })
+export interface Probe extends Schema.Schema.Type<typeof Probe> {}
+
+/** A contradiction between the contract and the artifact, with its evidence. */
+export const Finding = Schema.Struct({
+  criterion: Schema.String.annotate({ description: "The clause of the contract this contradicts" }),
+  detail: Schema.String.annotate({ description: "The contradiction, in one or two sentences" }),
+  evidence: Schema.String.annotate({ description: "file:line, or the command and its output" }),
+}).annotate({ identifier: "SessionGoal.Finding" })
+export interface Finding extends Schema.Schema.Type<typeof Finding> {}
+
+/**
+ * QA's pass: a record, not an absence. Per acceptance criterion, the probe and
+ * its outcome. `state` binds the record to the workspace state it reviewed; a
+ * record whose state does not match the round is stale and cannot be weighed
+ * (ADR-0006, "state binding").
+ */
+export const Record = Schema.Struct({
+  state: Schema.String.annotate({ description: "The snapshot hash reviewed — the record's binding" }),
+  verdict: Schema.Literals(["clean", "contradicted"]),
+  probes: Schema.Array(Probe),
+  findings: Schema.Array(Finding),
+}).annotate({ identifier: "SessionGoal.Record" })
+export interface Record extends Schema.Schema.Type<typeof Record> {}
+
 export const Info = Schema.Struct({
   goal: Schema.String.annotate({ description: "The goal as the agent restated it at commit" }),
   size: Size.pipe(optional),
@@ -79,8 +115,16 @@ export const Info = Schema.Struct({
   last_verdict: Verdict.pipe(optional),
   last_reason: Schema.String.pipe(optional),
   /**
-   * The workspace state a verdict applied to: the snapshot hash of the message
-   * the judge read. Null before the first verdict. Recorded, not yet enforced.
+   * QA's record for the round it reviewed (ADR-0006, "the record"). Present
+   * only between a QA pass and the loop weighing it; the judge reads it, and it
+   * is what makes "no contradiction found" mean something. Absent before the
+   * first pass and after it was weighed.
+   */
+  qa_record: Record.pipe(optional),
+  /**
+   * The workspace state the round binds to: the snapshot hash of the message
+   * the round is decided against. The record's `state` must equal it, or the
+   * record is stale (ADR-0006, "state binding").
    */
   state_hash: Schema.NullOr(Schema.String),
   status: Status,

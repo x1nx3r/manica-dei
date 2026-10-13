@@ -15,6 +15,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { GoalLoop } from "./goal-loop"
+import { GoalQa as Qa } from "@opencode-ai/core/session/goal/qa"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@opencode-ai/core/session/runner/max-steps"
@@ -448,6 +449,78 @@ const layer = Layer.effect(
         text: "Summarize the task tool output above and continue with your task.",
         synthetic: true,
       } satisfies SessionV1.TextPart)
+    })
+
+    /**
+     * Runs one QA pass. The loop decided it is due; this is the surface that
+     * has the subagent plumbing (`promptOps`) and runs it. The pass is a fresh
+     * child session — no dev context, no transcript, no scratchpad — whose
+     * diet is the contract, the round's diff, and the gate's captured output.
+     * Its toolset is no-edit plus execution: `edit`, `write`, and `patch` are
+     * denied, but `bash` stays so a probe can run, and a shell can write. Its
+     * record is persisted for the loop to weigh (ADR-0006, "the chain of
+     * signatures").
+     */
+    const runQa = Effect.fn("SessionPrompt.runQa")(function* (input: {
+      sessionID: SessionID
+      user: SessionV1.User
+      msgs: SessionV1.WithParts[]
+      assistantMessage?: SessionV1.WithParts
+      decision: Extract<GoalLoop.Decision, { _tag: "qa" }>
+    }) {
+      const promptOps = yield* ops()
+      const { task: taskTool } = yield* registry.named()
+      const parent = yield* sessions.get(input.sessionID).pipe(Effect.orDie)
+      // The reviewer's own ruleset: QA's `ask` decisions are the agent's, not
+      // the dev session's, exactly as any other task call merges them.
+      const qaAgent = yield* agents.get("goal-qa")
+
+      // QA's diet. The diff is the round's change, computed from the round's own
+      // message snapshots — never the cumulative session diff, and never the
+      // agent's account of it. `lastResponse` is never passed: the reviewer that
+      // reads the author's prose is the reviewer that agrees with it. The
+      // scratchpad is filtered by `Qa.renderDiff`, not by a gitignore.
+      const round = Qa.roundMessages(input.msgs, input.user.id)
+      const diff = yield* summary.computeDiff({ messages: round })
+      // An empty diff is the phantom case: QA cannot review a change it cannot
+      // see, so the pass is inadmissible rather than certified (ADR-0006).
+      if (!Qa.isReviewableDiff(diff)) {
+        return yield* Effect.fail(new Error("the round produced no reviewable diff"))
+      }
+      const prompt = Qa.buildQaPrompt({
+        contract: input.decision.contract,
+        state: input.decision.state,
+        diff: Qa.renderDiff(diff),
+        evidence: input.decision.evidence,
+      })
+
+      const result = yield* taskTool.execute(
+        { prompt, description: "QA the goal", subagent_type: "goal-qa" },
+        {
+          agent: input.user.agent,
+          messageID: input.assistantMessage?.info.id ?? input.user.id,
+          sessionID: input.sessionID,
+          abort: new AbortController().signal,
+          callID: ulid(),
+          extra: { bypassAgentCheck: true, promptOps },
+          // The round's messages, not the session's: `task.ts` ignores this
+          // today, and the diet forbids the transcript reaching QA, so the
+          // field carries only what QA is allowed to see.
+          messages: round,
+          metadata: () => Effect.void,
+          ask: (req: any) =>
+            permission
+              .ask({
+                ...req,
+                sessionID: input.sessionID,
+                ruleset: Permission.merge(qaAgent?.permission ?? [], parent.permission ?? []),
+              })
+              .pipe(Effect.orDie),
+        },
+      )
+
+      const record = Qa.parseRecord(result.output, input.decision.state)
+      yield* goalLoop.submitRecord({ sessionID: input.sessionID, record })
     })
 
     const shellImpl = Effect.fn("SessionPrompt.shellImpl")(function* (input: ShellInput, ready?: Latch.Latch) {
@@ -1085,8 +1158,8 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
-        // Consecutive judge failures for the circuit breaker, for this run.
-        let failures: { parse: number; transport: number } = { parse: 0, transport: 0 }
+        // Consecutive judge and QA failures for the circuit breakers, this run.
+        let failures: GoalLoop.FailureCounts = { parse: 0, transport: 0, qa: 0 }
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1134,32 +1207,61 @@ const layer = Layer.effect(
             // a stop, and the loop exits exactly as it did before — the
             // regression this milestone must not break.
             const parts = lastAssistantMsg?.parts ?? []
-            // The state handle a verdict binds to: the snapshot hash the message
+            // The state handle a round binds to: the snapshot hash the message
             // already recorded at its last step, not one tracked again here
             // (ADR-0006, "state binding").
             const state = parts.reduce<string | undefined>(
               (hash, part) => (part.type === "step-finish" && part.snapshot ? part.snapshot : hash),
               undefined,
             )
-            const result = yield* goalLoop.decide({
-              sessionID,
-              cwd: ctx.directory,
-              user: lastUser,
-              providerID: lastUser.model.providerID,
-              modelID: lastUser.model.modelID,
-              lastResponse: parts
-                .filter((part) => part.type === "text")
-                .map((part) => part.text)
-                .join("\n"),
-              state,
-              failures,
-            })
-            failures = result.failures
+
+            // The loop decides *that* QA is due; this call site runs the pass and
+            // hands the record back. The pass runs in a child session, so the
+            // parent's last assistant message is unchanged and the loop can
+            // resolve without running the dev model again. At most two decides
+            // per round: one to request QA, one to weigh what came back — a
+            // failed QA fails open to `dev` on the second.
+            let decision: GoalLoop.Decision
+            let evidence: Extract<GoalLoop.Decision, { _tag: "qa" }>["evidence"] | undefined
+            let qaFailed = false
+            while (true) {
+              const result = yield* goalLoop.decide({
+                sessionID,
+                cwd: ctx.directory,
+                user: lastUser,
+                providerID: lastUser.model.providerID,
+                modelID: lastUser.model.modelID,
+                state,
+                ...(evidence ? { evidence } : {}),
+                ...(qaFailed ? { qaFailure: true } : {}),
+                failures,
+              })
+              failures = result.failures
+              decision = result.decision
+              if (decision._tag !== "qa") break
+              evidence = decision.evidence
+              qaFailed = false
+              const qa = yield* runQa({
+                sessionID,
+                user: lastUser,
+                msgs,
+                assistantMessage: lastAssistantMsg,
+                decision,
+              }).pipe(Effect.exit)
+              if (Exit.isFailure(qa)) {
+                // Fail-open: the loop moves back to `dev` and counts the failure,
+                // stopping after a run of them (ADR-0006, "the loop has a floor").
+                qaFailed = true
+                yield* Effect.logWarning("QA pass failed", {
+                  "session.id": sessionID,
+                  cause: Cause.pretty(qa.cause),
+                })
+              }
+            }
 
             // The loop's verdict belongs to the session: on `continue` it is the
             // continuation, and on any other outcome it is a note, so the
             // transcript never goes silent about why the loop stopped.
-            const decision = result.decision
             const note = decision._tag === "continue" ? decision.prompt : decision.note
             if (note) {
               const said: SessionV1.User = {

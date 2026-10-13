@@ -18,9 +18,9 @@ outcome of the conversation, not its start.
   what done means — the outcome and the check that proves it — and to authorize
   an unattended run. Authorization happens only on a yes.
 
-When you believe the goal is met, show the evidence the verification produced in
-your reply — the run is judged against the contract, not against your word. If
-the verification has not run, run it.
+When you believe the goal is met, run the verification and leave the change in
+the workspace — the run is judged against the contract and the artifact, not
+against your word. If the verification has not run, run it.
 
 A `huge` goal is not one task. This tool returns a split proposal instead of
 setting it — decompose it, then set the first piece.
