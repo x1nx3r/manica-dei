@@ -163,11 +163,21 @@ surviving the round trip) or splitting a service to break the
 both put behaviour the loop's tests pin at risk. Recorded as the price of the
 smaller route, not as a detail.
 
-## Open
+## Settled, and by what
 
-- The name and shape of the part kind that carries a record or a verdict.
-- Whether the phase lives on the goal or the session. My lean is both: the goal
-  owns it, the session exposes it.
-- Whether a judgement needs its own transcript at all, or a one-message session
-  is enough ceremony. My lean is that one message is enough, and the point is
-  that it exists.
+The three questions this ADR left open were answered by landing the steps rather
+than by argument:
+
+- the part kinds are `goal.review` and `goal.verdict`, mirroring the events;
+- the phase lives on the goal, is exposed on `GET /session/:id/goal`, and is
+  announced as an event — the session does not carry it;
+- a judgement gets one message rather than a transcript, and that message is
+  written beside the model call instead of by the session engine. That is the
+  step-3 compromise, and its price is recorded above.
+
+## Status
+
+Steps 1 to 3 are in (commits `b82729524`, `261931213`, `60fabf146`): the phase and
+the roles on the wire, the record as a part, the judge as a session. Step 4 — the
+UI — is not started, and it cannot start until the generated client and SDK are
+regenerated, because the app cannot see either new part until they are.
