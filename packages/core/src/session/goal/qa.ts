@@ -44,7 +44,7 @@ If you derived nothing of your own, you have not reviewed. You have abstained, a
 
 A finding is a **contradiction** between the contract and the artifact: a clause of the outcome that is not true, a constraint that is violated, a boundary that was crossed — or an outcome nobody can reach.
 
-Every finding carries its evidence: the file and line, or the command and its output. A suspicion is not a finding. Do not report style, taste, or the work you would have done differently. Do not invent findings to look thorough — a manufactured finding costs the author a round and is worse than silence.
+Every finding carries its evidence: the file and line, or what you observed — never the command you ran it with, which the dev is not given. A suspicion is not a finding. Do not report style, taste, or the work you would have done differently. Do not invent findings to look thorough — a manufactured finding costs the author a round and is worse than silence.
 
 ### The one thing you must not do
 
@@ -56,7 +56,7 @@ const RECORD_SHAPE = [
   '{"state":"<the state you were given, echoed>","verdict":"clean"|"contradicted",',
   ' "probes":[{"criterion":"<contract clause>","derived":true|false,"command":"<what you ran>",',
   '            "output":"<captured tail>","result":"pass"|"fail"|"could-not-run"}],',
-  ' "findings":[{"criterion":"<contract clause>","detail":"<the contradiction>","evidence":"<file:line, or the command and its output>"}]}',
+  ' "findings":[{"criterion":"<contract clause>","detail":"<the contradiction>","evidence":"<file:line, or what you observed — never the command>"}]}',
 ].join("\n")
 
 export interface QaPromptInput {
@@ -212,9 +212,10 @@ function normalizeCommand(command: string): string {
 }
 
 /**
- * The continuation after a QA pass that contradicted the work. The findings go
- * to the dev verbatim, but each probe's `command` is withheld: the dev needs
- * the observation to find the cause, not the command it can tune to (draft §6).
+ * The fallback relay: the record's own findings, used when the judge supplied no
+ * three-part handoff — it failed open, or its reply was partial. Each probe's
+ * `command` is withheld: the dev needs the observation to find the cause, not
+ * the command it can tune to (draft §6).
  */
 export function relayContinuation(goal: string, record: SessionGoal.Record): string {
   const findings = record.findings.map((finding) =>
@@ -230,6 +231,29 @@ export function relayContinuation(goal: string, record: SessionGoal.Record): str
     "",
     "What QA observed (the probe's command is withheld):",
     observations.length > 0 ? observations.join("\n") : "(no probes were recorded)",
+    "",
+    "Check it. If the cause is right, fix it. If it is wrong, say why, with the evidence — the record will be weighed again.",
+  ].join("\n")
+}
+
+/**
+ * The continuation the judge's three-part handoff produces. The judge frames the
+ * parts; the loop renders them, so a paraphrased command cannot creep back in
+ * (draft §6, "give the observation, withhold the probe's command").
+ */
+export function handoffContinuation(goal: string, handoff: GoalJudge.Handoff): string {
+  return [
+    "[Continuing toward your standing goal — QA tested this, and it failed]",
+    `Goal: ${goal}`,
+    "",
+    "QA tested:",
+    `  ${handoff.tested}`,
+    "",
+    "Your implementation:",
+    `  ${handoff.implementation}`,
+    "",
+    "The likely cause:",
+    `  ${handoff.cause}`,
     "",
     "Check it. If the cause is right, fix it. If it is wrong, say why, with the evidence — the record will be weighed again.",
   ].join("\n")

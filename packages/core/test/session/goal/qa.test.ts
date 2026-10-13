@@ -148,6 +148,21 @@ describe("GoalQa.relayContinuation", () => {
   })
 })
 
+describe("GoalQa.handoffContinuation", () => {
+  test("renders the judge's three parts as labels the dev reads", () => {
+    const prompt = GoalQa.handoffContinuation("add escalation", {
+      tested: "a request pending 7+ days reaches the HR manager — the queue is empty",
+      implementation: "escalateOverdue is never called (src/domain/leave.ts:79)",
+      cause: "the sweep never invokes escalateOverdue",
+    })
+    expect(prompt).toContain("QA tested this, and it failed")
+    expect(prompt).toContain("QA tested:\n  a request pending 7+ days reaches the HR manager — the queue is empty")
+    expect(prompt).toContain("Your implementation:\n  escalateOverdue is never called (src/domain/leave.ts:79)")
+    expect(prompt).toContain("The likely cause:\n  the sweep never invokes escalateOverdue")
+    expect(prompt).toContain("the record will be weighed again")
+  })
+})
+
 describe("GoalQa.abstentionContinuation", () => {
   test("demands a probe", () => {
     expect(GoalQa.abstentionContinuation("add escalation")).toContain("silence is not a pass")

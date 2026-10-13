@@ -23,6 +23,21 @@ describe("GoalJudge.parseVerdict — accepted shapes", () => {
     })
   })
 
+  test("a three-part handoff is carried, and a partial one is dropped", () => {
+    const handoff = { tested: "t", implementation: "i", cause: "c" }
+    expect(verdict(JSON.stringify({ verdict: "continue", reason: "r", handoff }))).toEqual({
+      verdict: "continue",
+      reason: "r",
+      handoff,
+    })
+    // A partial relay would render a message with a hole in it; the record's own
+    // relay is the better fallback.
+    expect(verdict(JSON.stringify({ verdict: "continue", reason: "r", handoff: { tested: "t" } }))).toEqual({
+      verdict: "continue",
+      reason: "r",
+    })
+  })
+
   test("wait carries exactly what it waits on", () => {
     expect(verdict('{"verdict":"wait","wait_on_session":"ses_1","reason":"ci"}')).toEqual({
       verdict: "wait",
@@ -156,12 +171,14 @@ describe("GoalJudge.buildJudgePrompt", () => {
     expect(prompt).not.toContain("Verification evidence")
   })
 
-  test("carries QA's record as the thing it weighs, and omits it otherwise", () => {
+  test("carries QA's record as the thing it weighs, with the probe's command withheld", () => {
     const withRecord = GoalJudge.buildJudgePrompt({ goal: "g", contract, record })
     expect(withRecord).toContain("QA's record")
     expect(withRecord).toContain("State reviewed: snap-1")
-    expect(withRecord).toContain("$ bun run render")
     expect(withRecord).toContain("Derived probes: yes")
+    // The command is withheld: the judge relays to the dev, and a relayed
+    // command is the thing the dev can tune to (draft §6).
+    expect(withRecord).not.toContain("bun run render")
 
     const bare = GoalJudge.buildJudgePrompt({ goal: "g", contract })
     expect(bare).not.toContain("QA's record")

@@ -494,6 +494,20 @@ describe("goal-loop end to end (mock model)", () => {
             ],
           }),
         )
+        // The judge weighs the contradiction and frames the relay back to the
+        // dev: the QA→dev edge is signed (step 3).
+        yield* llm.textMatch(
+          isJudge,
+          JSON.stringify({
+            verdict: "continue",
+            reason: "the finding holds",
+            handoff: {
+              tested: "the widget renders — 0 pass, 1 fail",
+              implementation: "the widget does not render (src/widget.ts:1)",
+              cause: "the widget is never mounted",
+            },
+          }),
+        )
         // Round two: the dev's turn, a clean QA pass, then the judge.
         yield* llm.text("second attempt, fixed")
         yield* llm.textMatch(isQa, cleanQa)
@@ -504,9 +518,10 @@ describe("goal-loop end to end (mock model)", () => {
         const stored = yield* goal.get(session.id)
         expect(stored?.status).toBe("done")
         expect(stored?.turns_used).toBe(2)
-        // The contradicted round never reached the judge; QA ran once per round.
+        // The contradicted round went to the judge and back to dev; QA ran once
+        // per round, and the judge weighed both (step 3).
         expect((yield* llm.hits).filter(isQa)).toHaveLength(2)
-        expect((yield* llm.hits).filter(isJudge)).toHaveLength(1)
+        expect((yield* llm.hits).filter(isJudge)).toHaveLength(2)
       }),
     { git: true },
     { timeout: 30_000 },

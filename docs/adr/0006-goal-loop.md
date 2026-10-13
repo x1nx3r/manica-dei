@@ -198,6 +198,15 @@ a later dev pass could tune to it — so it is re-derived each round, and failur
 are reported to the dev as **symptoms** ("returns 200 when 429 was expected"),
 never as the criterion.
 
+**A contradiction is weighed, not passed on.** The judge signs QA's *clean*
+passes and its *contradictions* alike: a finding reaches the dev only after the
+judge has read it. The relay is three parts — what QA tested, what the artifact
+does, the likely cause — and each is a **label around the record's own fields**,
+never a paraphrase, so "the judge lied" is a defect rather than a temptation. A
+fabricated finding can be rejected with the reason it does not hold. Without
+this, the one edge where QA *produces* something is the one edge with no signer,
+and the chain rule is decoration.
+
 **A derived probe is only as good as its derivation.** If QA derives it from the
 same misreading as the dev, it fails identically. That is *why* QA is denied the
 dev's story: the diet rule is what makes the holdout independent. The two are one

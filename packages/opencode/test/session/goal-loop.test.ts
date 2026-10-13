@@ -13,6 +13,7 @@ import { Session as SessionNs } from "@/session/session"
 import { Goal } from "@/session/goal"
 import { GoalGate } from "@/session/goal-gate"
 import { GoalJudge } from "@/session/goal-judge"
+import { GoalJudge as JudgeCore } from "@opencode-ai/core/session/goal/judge"
 import { GoalLoop } from "@/session/goal-loop"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -234,7 +235,7 @@ describe("session.goal-loop", () => {
     }),
   )
 
-  it.instance("a contradicted record goes back to dev with the findings, minus the probe's command", () =>
+  it.instance("a contradicted record goes to the judge, which relays the findings to the dev", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
       const session = yield* SessionNs.Service
@@ -249,13 +250,106 @@ describe("session.goal-loop", () => {
       const result = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(result.decision._tag).toBe("continue")
       if (result.decision._tag === "continue") {
+        // The fake judge supplies no handoff, so the record's own relay carries
+        // the findings — and still withholds the command.
         expect(result.decision.prompt).toContain("escalateOverdue is defined and tested but nothing calls it.")
         expect(result.decision.prompt).toContain("queue: (empty)")
-        // The probe's command is withheld: it is the thing the dev could tune to.
         expect(result.decision.prompt).not.toContain("bun run sweep")
       }
-      expect(judgeCalls).toBe(0)
+      // QA made the record; the judge signs it. The contradiction no longer goes
+      // to the dev unweighed.
+      expect(judgeCalls).toBe(1)
+      expect(judgeInput?.record?.verdict).toBe("contradicted")
       expect((yield* goal.get(info.id))?.phase).toBe("dev")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("the judge's three-part handoff is what the dev receives", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add escalation" })
+      yield* goal.authorize(info.id)
+      yield* loop.submitRecord({ sessionID: info.id, record: contradictedRecord() })
+      judgeResult = {
+        judgement: {
+          verdict: "continue",
+          reason: "the finding holds",
+          handoff: {
+            tested: "a request pending 7+ days reaches the HR manager — the queue is empty",
+            implementation: "escalateOverdue is defined and tested but nothing calls it (src/domain/leave.ts:79)",
+            cause: "the sweep never invokes escalateOverdue",
+          },
+        },
+      }
+
+      const result = yield* loop.decide(decideInput(info.id as never, test.directory))
+      expect(result.decision._tag).toBe("continue")
+      if (result.decision._tag === "continue") {
+        expect(result.decision.prompt).toContain("QA tested this, and it failed")
+        expect(result.decision.prompt).toContain(
+          "QA tested:\n  a request pending 7+ days reaches the HR manager — the queue is empty",
+        )
+        expect(result.decision.prompt).toContain(
+          "Your implementation:\n  escalateOverdue is defined and tested but nothing calls it (src/domain/leave.ts:79)",
+        )
+        expect(result.decision.prompt).toContain("The likely cause:\n  the sweep never invokes escalateOverdue")
+      }
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a done off a contradicted record is refused — the judge may not conclude it", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add escalation" })
+      yield* goal.authorize(info.id)
+      yield* loop.submitRecord({ sessionID: info.id, record: contradictedRecord() })
+      judgeResult = { judgement: { verdict: "done", reason: "the tests pass" } }
+
+      const result = yield* loop.decide(decideInput(info.id as never, test.directory))
+      expect(result.decision._tag).toBe("continue")
+      if (result.decision._tag === "continue") expect(result.decision.prompt).toContain("QA tested this, and it failed")
+      expect((yield* goal.get(info.id))?.status).toBe("active")
+      expect((yield* goal.get(info.id))?.phase).toBe("dev")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a judge that fails open preserves the findings", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add escalation" })
+      yield* goal.authorize(info.id)
+      yield* loop.submitRecord({ sessionID: info.id, record: contradictedRecord() })
+      // The judge's reply could not be read: fail-open, with no handoff.
+      judgeResult = { judgement: JudgeCore.FAIL_OPEN, failure: "parse" }
+
+      const result = yield* loop.decide(decideInput(info.id as never, test.directory))
+      expect(result.decision._tag).toBe("continue")
+      if (result.decision._tag === "continue") {
+        expect(result.decision.prompt).toContain("escalateOverdue is defined and tested but nothing calls it.")
+        expect(result.decision.prompt).not.toContain("bun run sweep")
+      }
+      expect(result.failures.parse).toBe(1)
 
       yield* session.remove(info.id)
     }),

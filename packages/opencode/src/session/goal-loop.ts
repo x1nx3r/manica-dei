@@ -177,20 +177,17 @@ const layer = Layer.effect(
           return delivered({ _tag: "continue", prompt: Qa.staleContinuation(goal.goal) })
         }
 
-        // A contradiction returns to the dev with the findings relayed verbatim,
-        // minus each probe's command (draft §6).
-        if (record.verdict === "contradicted") {
-          yield* goals.clearRecord(input.sessionID)
-          yield* goals.setPhase({ sessionID: input.sessionID, phase: "dev" })
-          // The round is spent even though no judge closed it.
-          yield* goals.burnTurn(input.sessionID)
-          return delivered({ _tag: "continue", prompt: Qa.relayContinuation(goal.goal, record) })
-        }
-
-        // A clean record with no derived probe is an abstention, never a pass.
-        // The author's own checks are exactly what the derived probe stands
-        // apart from; the judge never sees it.
-        if (!record.probes.some((probe) => probe.derived)) {
+        // A contradiction is not signed off here: QA produced the record, so the
+        // judge weighs it like any other — that is the link the chain was
+        // missing, and it is how a manufactured finding is caught rather than
+        // charged to the dev (ADR-0006, "nobody signs what they made").
+        //
+        // A *clean* record with no derived probe is an abstention, never a pass:
+        // the author's own checks are exactly what the derived probe stands
+        // apart from. A contradiction is not held to that — its findings are the
+        // substance, and the judge decides whether they hold.
+        const contradicted = record.verdict === "contradicted"
+        if (!contradicted && !record.probes.some((probe) => probe.derived)) {
           yield* goals.clearRecord(input.sessionID)
           yield* goals.setPhase({ sessionID: input.sessionID, phase: "dev" })
           // The round is spent even though no judge closed it.
@@ -198,9 +195,9 @@ const layer = Layer.effect(
           return delivered({ _tag: "continue", prompt: Qa.abstentionContinuation(goal.goal) })
         }
 
-        // An admissible pass. The judge weighs the record against the evidence
-        // the round captured, and consuming the record keeps it from being
-        // weighed twice.
+        // An admissible record. The judge weighs it against the evidence the
+        // round captured, and consuming the record keeps it from being weighed
+        // twice.
         const evidence = input.evidence ?? []
         yield* goals.clearRecord(input.sessionID)
 
@@ -232,16 +229,30 @@ const layer = Layer.effect(
 
         const judgement = result.judgement
 
-        // Only the judge may conclude a run. `submitRecord` writes the record and
-        // moves the phase to `judge` as one handoff, and the guard reads the
-        // phase the round *entered* with. What it catches is a torn handoff: the
-        // record persisted, the phase move did not, and the round would otherwise
-        // conclude without ever reaching `judge` (ADR-0006, GoalPhase.mayConclude).
-        if (judgement.verdict === "done" && !GoalPhase.mayConclude(enteredPhase)) {
+        // What the dev is told. A contradicted round is relayed through the
+        // judge's three-part handoff; when the judge could not supply one — it
+        // failed open, or the reply was partial — the record's own relay carries
+        // the findings, so a broken judge never swallows QA's work (draft §2).
+        const relay = (): string =>
+          !contradicted
+            ? continuation(goal.goal, judgement.reason)
+            : judgement.handoff
+              ? Qa.handoffContinuation(goal.goal, judgement.handoff)
+              : Qa.relayContinuation(goal.goal, record)
+
+        // Only the judge may conclude a run, and a contradiction is never a
+        // completion: no clean pass was admitted, so `done` is refused whatever
+        // the judge says. The other refusal is a torn handoff — `submitRecord`
+        // writes the record and moves the phase to `judge` together, so a round
+        // that never reached `judge` may not conclude either
+        // (ADR-0006, GoalPhase.mayConclude).
+        if (judgement.verdict === "done" && (contradicted || !GoalPhase.mayConclude(enteredPhase))) {
           yield* goals.setPhase({ sessionID: input.sessionID, phase: "dev" })
           return settled({
             _tag: "continue",
-            prompt: continuation(goal.goal, "no QA pass admitted this round, so the outcome cannot be concluded"),
+            prompt: contradicted
+              ? relay()
+              : continuation(goal.goal, "no QA pass admitted this round, so the outcome cannot be concluded"),
           })
         }
 
@@ -273,7 +284,7 @@ const layer = Layer.effect(
             })
           case "continue":
             yield* goals.setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("continue") ?? "dev" })
-            return settled({ _tag: "continue", prompt: continuation(goal.goal, judgement.reason) })
+            return settled({ _tag: "continue", prompt: relay() })
         }
       }
 
