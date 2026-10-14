@@ -4,6 +4,18 @@ A plan, not a decision. **An avenue, not a prerequisite.** Nothing in the goal
 loop or its UI waits on this; ADR-0008's step 4 can finish without it, at the cost
 of one cast per new surface.
 
+## The boundary, so this is not read as broader than it is
+
+The app has **two client-shaped dependencies**, and only one of them is behind.
+
+- `@opencode-ai/sdk` is a `workspace:*` package and is current. It carries the
+  endpoints, with full types — `session.goal` is in it, generated from the route
+  step 1 added, and present in the app's installed tree. **The goal panel and the
+  phase chip do not need this plan.**
+- `@opencode-ai/client` is the vendored V1 surface, and it is what carries
+  **messages and events**. That is why the review and verdict cards needed a cast,
+  and that is all this plan is about.
+
 ## What the app is, which this plan first got wrong
 
 The app is **mid-migration and speaks both surfaces** — V1 and v2 — which is what a
