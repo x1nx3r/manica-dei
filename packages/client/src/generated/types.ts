@@ -652,6 +652,34 @@ export type SessionsContextOutput = {
                 readonly pruned?: number
               }
             }
+          | {
+              readonly type: "goal.review"
+              readonly id: string
+              readonly record: {
+                readonly state: string
+                readonly verdict: "clean" | "contradicted"
+                readonly probes: ReadonlyArray<{
+                  readonly criterion: string
+                  readonly derived: boolean
+                  readonly command: string
+                  readonly output: string
+                  readonly result: "pass" | "fail" | "could-not-run"
+                }>
+                readonly findings: ReadonlyArray<{
+                  readonly criterion: string
+                  readonly detail: string
+                  readonly evidence: string
+                }>
+              }
+            }
+          | {
+              readonly type: "goal.verdict"
+              readonly id: string
+              readonly round: number
+              readonly verdict: "done" | "blocked" | "continue" | "wait"
+              readonly reason: string
+              readonly handoff?: { readonly tested: string; readonly implementation: string; readonly cause: string }
+            }
         >
         readonly snapshot?: { readonly start?: string; readonly end?: string; readonly files?: ReadonlyArray<string> }
         readonly finish?: string
@@ -1730,6 +1758,34 @@ export type SessionsMessageOutput = {
                 readonly pruned?: number
               }
             }
+          | {
+              readonly type: "goal.review"
+              readonly id: string
+              readonly record: {
+                readonly state: string
+                readonly verdict: "clean" | "contradicted"
+                readonly probes: ReadonlyArray<{
+                  readonly criterion: string
+                  readonly derived: boolean
+                  readonly command: string
+                  readonly output: string
+                  readonly result: "pass" | "fail" | "could-not-run"
+                }>
+                readonly findings: ReadonlyArray<{
+                  readonly criterion: string
+                  readonly detail: string
+                  readonly evidence: string
+                }>
+              }
+            }
+          | {
+              readonly type: "goal.verdict"
+              readonly id: string
+              readonly round: number
+              readonly verdict: "done" | "blocked" | "continue" | "wait"
+              readonly reason: string
+              readonly handoff?: { readonly tested: string; readonly implementation: string; readonly cause: string }
+            }
         >
         readonly snapshot?: { readonly start?: string; readonly end?: string; readonly files?: ReadonlyArray<string> }
         readonly finish?: string
@@ -1901,6 +1957,34 @@ export type MessagesListOutput = {
                 readonly completed?: number
                 readonly pruned?: number
               }
+            }
+          | {
+              readonly type: "goal.review"
+              readonly id: string
+              readonly record: {
+                readonly state: string
+                readonly verdict: "clean" | "contradicted"
+                readonly probes: ReadonlyArray<{
+                  readonly criterion: string
+                  readonly derived: boolean
+                  readonly command: string
+                  readonly output: string
+                  readonly result: "pass" | "fail" | "could-not-run"
+                }>
+                readonly findings: ReadonlyArray<{
+                  readonly criterion: string
+                  readonly detail: string
+                  readonly evidence: string
+                }>
+              }
+            }
+          | {
+              readonly type: "goal.verdict"
+              readonly id: string
+              readonly round: number
+              readonly verdict: "done" | "blocked" | "continue" | "wait"
+              readonly reason: string
+              readonly handoff?: { readonly tested: string; readonly implementation: string; readonly cause: string }
             }
         >
         readonly snapshot?: { readonly start?: string; readonly end?: string; readonly files?: ReadonlyArray<string> }

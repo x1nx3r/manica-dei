@@ -48,6 +48,9 @@ export type Event =
   | EventSessionNextRevertStaged
   | EventSessionNextRevertCleared
   | EventSessionNextRevertCommitted
+  | EventSessionGoalPhase
+  | EventSessionGoalReview
+  | EventSessionGoalVerdict
   | EventMessagePartDelta
   | EventSessionDiff
   | EventSessionError
@@ -624,6 +627,25 @@ export type CompactionPart = {
   tail_start_id?: string
 }
 
+export type GoalReviewPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "goal.review"
+  record: SessionGoalRecord
+}
+
+export type GoalVerdictPart = {
+  id: string
+  sessionID: string
+  messageID: string
+  type: "goal.verdict"
+  round: number
+  verdict: SessionGoalVerdict2
+  reason: string
+  handoff?: SessionGoalHandoff
+}
+
 export type Part =
   | TextPart
   | SubtaskPart
@@ -637,6 +659,8 @@ export type Part =
   | AgentPart
   | RetryPart
   | CompactionPart
+  | GoalReviewPart
+  | GoalVerdictPart
 
 export type Prompt = {
   text: string
@@ -1188,6 +1212,36 @@ export type GlobalEvent = {
           timestamp: number
           sessionID: string
           messageID: string
+        }
+      }
+    | {
+        id: string
+        type: "session.goal.phase"
+        properties: {
+          sessionID: string
+          phase: SessionGoalPhase2
+          status: SessionGoalStatus
+          round: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+        }
+      }
+    | {
+        id: string
+        type: "session.goal.review"
+        properties: {
+          sessionID: string
+          round: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          record: SessionGoalRecord
+        }
+      }
+    | {
+        id: string
+        type: "session.goal.verdict"
+        properties: {
+          sessionID: string
+          round: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+          verdict: SessionGoalVerdict2
+          reason: string
+          handoff?: SessionGoalHandoff
         }
       }
     | {
@@ -2133,16 +2187,6 @@ export type ExperimentalCapabilities = {
   backgroundSubagents: boolean
 }
 
-export type ConsoleState = {
-  consoleManagedProviders: Array<string>
-  activeOrgName?: string
-  switchableOrgCount: number
-}
-
-export type EffectHttpApiErrorInternalServerError = {
-  _tag: "InternalServerError"
-}
-
 export type ToolListItem = {
   id: string
   description: string
@@ -2550,6 +2594,10 @@ export type NotFoundError = {
   }
 }
 
+export type EffectHttpApiErrorInternalServerError = {
+  _tag: "InternalServerError"
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -2800,6 +2848,47 @@ export type OutputFormat1 =
       retryCount?: number
     }
 
+export type SessionGoalPhase = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.goal.phase"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    phase: SessionGoalPhase2
+    status: SessionGoalStatus
+    round: number | "NaN" | "Infinity" | "-Infinity"
+  }
+}
+
+export type SessionGoalVerdict = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.goal.verdict"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    round: number | "NaN" | "Infinity" | "-Infinity"
+    verdict: SessionGoalVerdict2
+    reason: string
+    handoff?: SessionGoalHandoff
+  }
+}
+
 export type SessionStatus2 = {
   id: string
   metadata?: {
@@ -2899,6 +2988,9 @@ export type V2Event =
   | SessionNextRevertStaged
   | SessionNextRevertCleared
   | SessionNextRevertCommitted
+  | SessionGoalPhase
+  | SessionGoalReview
+  | SessionGoalVerdict
   | MessagePartDelta
   | SessionDiff
   | SessionError
@@ -3038,6 +3130,68 @@ export type MoveSessionDestination = {
   directory: string
 }
 
+export type SessionGoalProbe = {
+  /**
+   * Which clause of the contract this probes
+   */
+  criterion: string
+  /**
+   * true = QA's own probe (the holdout); false = the author's check
+   */
+  derived: boolean
+  /**
+   * What was executed
+   */
+  command: string
+  /**
+   * The captured tail of the command's output
+   */
+  output: string
+  result: "pass" | "fail" | "could-not-run"
+}
+
+export type SessionGoalFinding = {
+  /**
+   * The clause of the contract this contradicts
+   */
+  criterion: string
+  /**
+   * The contradiction, in one or two sentences
+   */
+  detail: string
+  /**
+   * file:line, or the command and its output
+   */
+  evidence: string
+}
+
+export type SessionGoalRecord = {
+  /**
+   * The snapshot hash reviewed — the record's binding
+   */
+  state: string
+  verdict: "clean" | "contradicted"
+  probes: Array<SessionGoalProbe>
+  findings: Array<SessionGoalFinding>
+}
+
+export type SessionGoalVerdict2 = "done" | "blocked" | "continue" | "wait"
+
+export type SessionGoalHandoff = {
+  /**
+   * The probe's criterion and what it observed
+   */
+  tested: string
+  /**
+   * What the artifact does, per QA's read — file:line
+   */
+  implementation: string
+  /**
+   * The contradiction, or why the finding does not hold
+   */
+  cause: string
+}
+
 export type ModelRef = {
   id: string
   providerID: string
@@ -3121,6 +3275,10 @@ export type RevertState = {
   diff?: string
   files?: Array<FileDiff>
 }
+
+export type SessionGoalPhase2 = "dev" | "qa" | "judge"
+
+export type SessionGoalStatus = "active" | "done" | "blocked"
 
 export type PermissionV2Source = {
   type: "tool"
@@ -3857,6 +4015,63 @@ export type PtyTicketConnectToken = {
   expires_in: number
 }
 
+export type SessionGoalSize = "small" | "medium" | "large" | "huge"
+
+export type SessionGoalContract = {
+  /**
+   * The single end state that must be true when done
+   */
+  outcome: string
+  /**
+   * The command that proves the outcome
+   */
+  verification: string
+  /**
+   * What must not change or regress
+   */
+  constraints: string
+  /**
+   * Files, directories, tools, systems in scope
+   */
+  boundaries: string
+  /**
+   * When to stop and ask instead of pushing on
+   */
+  stop_when: string
+}
+
+export type SessionGoalGate = {
+  command: string
+  timeout_seconds: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  max_retries: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  attempts: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  last_exit_code: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  last_output_tail: string
+}
+
+export type SessionGoalInfo = {
+  /**
+   * The goal as the agent restated it at commit
+   */
+  goal: string
+  size?: SessionGoalSize
+  size_reason?: string
+  contract?: SessionGoalContract
+  gates: Array<SessionGoalGate>
+  /**
+   * The commit gate: false until a human authorizes
+   */
+  authorized: boolean
+  phase: SessionGoalPhase2
+  turn_budget: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  turns_used: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
+  last_verdict?: SessionGoalVerdict2
+  last_reason?: string
+  qa_record?: SessionGoalRecord
+  state_hash: string
+  status: SessionGoalStatus
+}
+
 export type WorkspaceEventConnectionStatus = {
   workspaceID: string
   status: "connected" | "connecting" | "disconnected" | "error"
@@ -4109,6 +4324,21 @@ export type SessionMessageAssistantTool = {
   }
 }
 
+export type SessionMessageAssistantGoalReview = {
+  type: "goal.review"
+  id: string
+  record: SessionGoalRecord
+}
+
+export type SessionMessageAssistantGoalVerdict = {
+  type: "goal.verdict"
+  id: string
+  round: number
+  verdict: SessionGoalVerdict2
+  reason: string
+  handoff?: SessionGoalHandoff
+}
+
 export type SessionMessageAssistant = {
   id: string
   metadata?: {
@@ -4121,7 +4351,13 @@ export type SessionMessageAssistant = {
   type: "assistant"
   agent: string
   model: ModelRef
-  content: Array<SessionMessageAssistantText | SessionMessageAssistantReasoning | SessionMessageAssistantTool>
+  content: Array<
+    | SessionMessageAssistantText
+    | SessionMessageAssistantReasoning
+    | SessionMessageAssistantTool
+    | SessionMessageAssistantGoalReview
+    | SessionMessageAssistantGoalVerdict
+  >
   snapshot?: {
     start?: string
     end?: string
@@ -5300,6 +5536,25 @@ export type SessionNextCompactionDelta = {
     sessionID: string
     messageID: string
     text: string
+  }
+}
+
+export type SessionGoalReview = {
+  id: string
+  metadata?: {
+    [key: string]: unknown
+  }
+  type: "session.goal.review"
+  durable?: {
+    aggregateID: string
+    seq: number
+    version: number
+  }
+  location?: LocationRef
+  data: {
+    sessionID: string
+    round: number | "NaN" | "Infinity" | "-Infinity"
+    record: SessionGoalRecord
   }
 }
 
@@ -6655,6 +6910,39 @@ export type EventSessionNextRevertCommitted = {
   }
 }
 
+export type EventSessionGoalPhase = {
+  id: string
+  type: "session.goal.phase"
+  properties: {
+    sessionID: string
+    phase: SessionGoalPhase2
+    status: SessionGoalStatus
+    round: number | "NaN" | "Infinity" | "-Infinity"
+  }
+}
+
+export type EventSessionGoalReview = {
+  id: string
+  type: "session.goal.review"
+  properties: {
+    sessionID: string
+    round: number | "NaN" | "Infinity" | "-Infinity"
+    record: SessionGoalRecord
+  }
+}
+
+export type EventSessionGoalVerdict = {
+  id: string
+  type: "session.goal.verdict"
+  properties: {
+    sessionID: string
+    round: number | "NaN" | "Infinity" | "-Infinity"
+    verdict: SessionGoalVerdict2
+    reason: string
+    handoff?: SessionGoalHandoff
+  }
+}
+
 export type EventMessagePartDelta = {
   id: string
   type: "message.part.delta"
@@ -7354,41 +7642,6 @@ export type GlobalDisposeResponses = {
 
 export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
 
-export type GlobalUpgradeData = {
-  body?: {
-    target: string
-  }
-  path?: never
-  query?: never
-  url: "/global/upgrade"
-}
-
-export type GlobalUpgradeErrors = {
-  /**
-   * BadRequest | InvalidRequestError
-   */
-  400: EffectHttpApiErrorBadRequest | InvalidRequestError
-}
-
-export type GlobalUpgradeError = GlobalUpgradeErrors[keyof GlobalUpgradeErrors]
-
-export type GlobalUpgradeResponses = {
-  /**
-   * Upgrade result
-   */
-  200:
-    | {
-        success: true
-        version: string
-      }
-    | {
-        success: false
-        error: string
-      }
-}
-
-export type GlobalUpgradeResponse = GlobalUpgradeResponses[keyof GlobalUpgradeResponses]
-
 export type EventSubscribeData = {
   body?: never
   path?: never
@@ -7526,104 +7779,6 @@ export type ExperimentalCapabilitiesGetResponses = {
 
 export type ExperimentalCapabilitiesGetResponse =
   ExperimentalCapabilitiesGetResponses[keyof ExperimentalCapabilitiesGetResponses]
-
-export type ExperimentalConsoleGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    workspace?: string
-  }
-  url: "/experimental/console"
-}
-
-export type ExperimentalConsoleGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * InternalServerError
-   */
-  500: EffectHttpApiErrorInternalServerError
-}
-
-export type ExperimentalConsoleGetError = ExperimentalConsoleGetErrors[keyof ExperimentalConsoleGetErrors]
-
-export type ExperimentalConsoleGetResponses = {
-  /**
-   * Active Console provider metadata
-   */
-  200: ConsoleState
-}
-
-export type ExperimentalConsoleGetResponse = ExperimentalConsoleGetResponses[keyof ExperimentalConsoleGetResponses]
-
-export type ExperimentalConsoleListOrgsData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    workspace?: string
-  }
-  url: "/experimental/console/orgs"
-}
-
-export type ExperimentalConsoleListOrgsErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * InternalServerError
-   */
-  500: EffectHttpApiErrorInternalServerError
-}
-
-export type ExperimentalConsoleListOrgsError =
-  ExperimentalConsoleListOrgsErrors[keyof ExperimentalConsoleListOrgsErrors]
-
-export type ExperimentalConsoleListOrgsResponses = {
-  /**
-   * Switchable Console orgs
-   */
-  200: {
-    orgs: Array<{
-      accountID: string
-      accountEmail: string
-      accountUrl: string
-      orgID: string
-      orgName: string
-      active: boolean
-    }>
-  }
-}
-
-export type ExperimentalConsoleListOrgsResponse =
-  ExperimentalConsoleListOrgsResponses[keyof ExperimentalConsoleListOrgsResponses]
-
-export type ExperimentalConsoleSwitchOrgData = {
-  body?: {
-    accountID: string
-    orgID: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    workspace?: string
-  }
-  url: "/experimental/console/switch"
-}
-
-export type ExperimentalConsoleSwitchOrgResponses = {
-  /**
-   * Switch success
-   */
-  200: boolean
-}
-
-export type ExperimentalConsoleSwitchOrgResponse =
-  ExperimentalConsoleSwitchOrgResponses[keyof ExperimentalConsoleSwitchOrgResponses]
 
 export type ToolListData = {
   body?: never
@@ -9723,6 +9878,40 @@ export type SessionTodoResponses = {
 }
 
 export type SessionTodoResponse = SessionTodoResponses[keyof SessionTodoResponses]
+
+export type SessionGoalData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/session/{sessionID}/goal"
+}
+
+export type SessionGoalErrors = {
+  /**
+   * BadRequest | InvalidRequestError
+   */
+  400: EffectHttpApiErrorBadRequest | InvalidRequestError
+  /**
+   * NotFoundError
+   */
+  404: NotFoundError
+}
+
+export type SessionGoalError = SessionGoalErrors[keyof SessionGoalErrors]
+
+export type SessionGoalResponses = {
+  /**
+   * Goal projection
+   */
+  200: SessionGoalInfo
+}
+
+export type SessionGoalResponse = SessionGoalResponses[keyof SessionGoalResponses]
 
 export type SessionDiffData = {
   body?: never
