@@ -178,6 +178,24 @@ than by argument:
 ## Status
 
 Steps 1 to 3 are in (commits `b82729524`, `261931213`, `60fabf146`): the phase and
-the roles on the wire, the record as a part, the judge as a session. Step 4 — the
-UI — is not started, and it cannot start until the generated client and SDK are
-regenerated, because the app cannot see either new part until they are.
+the roles on the wire, the record as a part, the judge as a session.
+
+Step 4 — the UI — is partly in: the review card and the verdict card render, and
+they read the parts through one documented cast. **They are not blocked on
+regenerating the client or the SDK, and an earlier version of this section said
+they were.** Everything the rest of step 4 needs is already reachable — the parts
+arrive in the message list, `session.goal.phase` arrives on `/event` because the
+handler streams every EventV2 event, and `GET /session/:id/goal` is a fetch on a
+client the app already has. What is missing is *types*, and types are casts.
+
+Two things do remain, and neither is the client:
+
+- the **role sessions need a pointer**. The verdict event carries the session
+  under test, not the judge's, so a client can render the verdict and cannot link
+  to the transcript it came from. Carrying the role session's id on both events is
+  a few lines, and it replaces the heavier idea of writing a synthetic row into
+  the parent's transcript.
+- the **casts accumulate**, one per new surface, until an avenue moves the app
+  onto the current client. That avenue is planned separately
+  (`docs/implementation-notes/app-joins-the-current-contract.md`) and is not a
+  prerequisite for finishing this ADR.

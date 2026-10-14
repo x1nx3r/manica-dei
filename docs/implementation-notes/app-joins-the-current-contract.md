@@ -1,7 +1,20 @@
 # The app joins the current contract
 
-A plan, not a decision. It exists because ADR-0008's step 4 hit a wall that is not
-about the goal loop, and the wall will stop the next addition too.
+A plan, not a decision. **An avenue, not a prerequisite.** Nothing in the goal
+loop or its UI waits on this; ADR-0008's step 4 can finish without it, at the cost
+of one cast per new surface.
+
+## What the app is, which this plan first got wrong
+
+The app is **mid-migration and speaks both surfaces** — V1 and v2 — which is what a
+clone taken mid-version-change looks like. Its forty-odd `/promise` imports are
+not legacy debt to be migrated off; they are one half of a client that
+deliberately has two. The current client is the other half, and they are meant to
+coexist.
+
+So the work is not "migrate the app off V1". It is "give the app the current client
+**beside** the vendored one, and let the v2 half grow" — which is smaller, safer,
+and needs no reducer rewrite to begin.
 
 ## Why this exists
 
@@ -55,21 +68,41 @@ server still has an MCP route group.
 
 ## The size
 
-- **Imports and type names**: 46 statements across 42 files (37 in `app`, 5 in
-  `session-ui`). One bare import, 45 through `/promise`. Each needs a specifier
-  change *and* a name remap, because the workspace `.` is neither `/promise` nor
-  those names. Estimate 120–200 lines, and the types ripple into the values used
-  at those sites.
-- **The event layer, which is the bulk.** `server-session-v2-reducer.ts` (509
-  lines, ~30 switch cases), `server-session.ts` (`applyV2`, `:946-983`),
-  `server-sdk.tsx` (`CurrentDelta`), `server-compat.ts` (built end to end on the
-  tarball's shapes). Several hundred lines across roughly six files.
-- **The missing surfaces**: either the protocol regains them or the app keeps a
-  fallback for them. Additional work, not a rename.
+Two sizes, and the distinction is the point: the **avenue** adds a second client
+beside the first, and the **full migration** retires V1. Only the first is needed
+for anything to work.
 
-The riskiest part is not the code. It is that **the server's coverage of those
-groups is not determinable from this repository** — the current protocol omits
-them, and no server-side catalog argument was found to regenerate from.
+**The avenue — add the current client, use it for what is new.** A dependency, one
+client instance, and a typed wrapper for the endpoints that are new. Nothing
+existing moves. This is what the goal loop's UI needs, and it is small.
+
+**The full migration — retire V1.** This is where the reconnaissance' numbers
+belong, and they are the reason the two sizes must not be confused:
+
+- **Imports and type names**: 46 statements across 42 files, each needing a
+  specifier change *and* a name remap, because the workspace `.` is neither
+  `/promise` nor those names. Roughly 120–200 lines, and the types ripple into the
+  values used at those sites.
+- **The event layer**: `server-session-v2-reducer.ts` (509 lines, ~30 switch
+  cases), `server-session.ts` (`applyV2`, `:946-983`), `server-sdk.tsx`
+  (`CurrentDelta`), `server-compat.ts`. Several hundred lines across roughly six
+  files. This is the cost of *retiring* `session.*`, not of adding a v2 path — the
+  app can keep the V1 names and grow the other half beside them.
+- **The missing surfaces**: `mcp`, `catalog`, `command`, `shell`, `rename`,
+  `remove`, `fork`. Either the protocol regains them or the app falls back to the
+  V1 SDK for them.
+
+**The coverage question is determinable, and an earlier version of this note said
+it was not.** The server's route groups are in this repository
+(`packages/opencode/src/server/routes/instance/httpapi/groups/`, including `mcp`),
+the protocol is in `packages/protocol/src/api.ts`, and the app's calls are counted.
+Reading those three against each other is the first step, and it is an audit
+rather than an unknown.
+
+It also has a **product face** the audit must answer: if the server no longer
+serves some of what the app presents, then the app is offering affordances that do
+nothing — and the question becomes "prune the app" or "restore the server",
+which changes what gets migrated at all.
 
 ## The two decisions
 
@@ -82,13 +115,14 @@ My lean: extend the protocol, because the client is *generated* from it, so
 coverage is the protocol's business. Before that is possible: confirm which of
 those the server actually serves today. The MCP group exists; the rest is unknown.
 
-**2. The event surface.** Does the app's reducer migrate to `session.next.*`, or
-does the server keep emitting the V1 names the app speaks today?
+**2. The event surface — a decision only for the full migration.** The avenue keeps
+the V1 names and grows a v2 path beside them; the reducer rewrite is the price of
+*retiring* V1, not of adding v2. If and when V1 is retired, the question is
+whether the app's reducer moves to `session.next.*` first, or the server keeps
+emitting both names until the app is on v2 everywhere.
 
-My lean: migrate. The goal is one contract, and the V1 subtree is explicitly
-temporary. But this is the several-hundred-line piece, so it is also the decision
-that sets the phase's length — and it interacts with decision 1: whichever event
-surface the app lands on is the API whose coverage has to be settled.
+My lean for that phase: keep both until then, and drop V1 last. One contract is
+the destination, not the first step.
 
 ## The phase, in order
 
