@@ -20,6 +20,8 @@ import {
   AgentPart,
   AssistantMessage,
   FilePart,
+  GoalReviewPart,
+  GoalVerdictPart,
   Message as MessageType,
   Part as PartType,
   ReasoningPart,
@@ -1649,6 +1651,156 @@ export function MessageDivider(props: { label: string }) {
 PART_MAPPING["compaction"] = function CompactionPartDisplay() {
   const i18n = useI18n()
   return <MessageDivider label={i18n.t("ui.messagePart.compaction")} />
+}
+
+// Fork ADR-0008: the reviewer's record and the judge's verdict are typed parts,
+// so the card renders their fields — the probe table the eval read out of JSON
+// blobs, and the verdict's reason and three-part handoff. Same shape as a tool
+// part so the two roles read like any other row in the transcript.
+
+function goalReviewResultLabel(i18n: ReturnType<typeof useI18n>, result: GoalReviewPart["record"]["probes"][number]["result"]) {
+  switch (result) {
+    case "pass":
+      return i18n.t("ui.messagePart.goal.review.result.pass")
+    case "fail":
+      return i18n.t("ui.messagePart.goal.review.result.fail")
+    case "could-not-run":
+      return i18n.t("ui.messagePart.goal.review.result.couldNotRun")
+  }
+}
+
+PART_MAPPING["goal.review"] = function GoalReviewPartDisplay(props) {
+  const i18n = useI18n()
+  const part = () => props.part as GoalReviewPart
+  const record = () => part().record
+  const subtitle = createMemo(() =>
+    i18n.t(
+      record().verdict === "clean"
+        ? "ui.messagePart.goal.review.verdict.clean"
+        : "ui.messagePart.goal.review.verdict.contradicted",
+    ),
+  )
+
+  return (
+    <div
+      data-component="goal-review-part"
+      data-timeline-part-id={part().id}
+      data-verdict={record().verdict}
+    >
+      <BasicTool
+        icon="glasses"
+        defaultOpen
+        trigger={{
+          title: i18n.t("ui.messagePart.goal.review.title"),
+          subtitle: subtitle(),
+        }}
+      >
+        <Show when={record().probes.length > 0}>
+          <div data-component="goal-review-probes">
+            <span data-slot="goal-review-section">{i18n.t("ui.messagePart.goal.review.probes")}</span>
+            <For each={record().probes}>
+              {(probe) => (
+                <div data-slot="goal-review-probe" data-result={probe.result}>
+                  <div data-slot="goal-review-probe-head">
+                    <span data-slot="goal-review-probe-criterion">{probe.criterion}</span>
+                    <span data-slot="goal-review-probe-origin" data-derived={probe.derived ? "true" : "false"}>
+                      {i18n.t(
+                        probe.derived
+                          ? "ui.messagePart.goal.review.probe.holdout"
+                          : "ui.messagePart.goal.review.probe.author",
+                      )}
+                    </span>
+                    <span data-slot="goal-review-probe-result">{goalReviewResultLabel(i18n, probe.result)}</span>
+                  </div>
+                  <code data-slot="goal-review-probe-command">{probe.command}</code>
+                  <Show when={probe.output.trim()}>
+                    <pre data-slot="goal-review-probe-output">{probe.output}</pre>
+                  </Show>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+        <Show when={record().findings.length > 0}>
+          <div data-component="goal-review-findings">
+            <span data-slot="goal-review-section">{i18n.t("ui.messagePart.goal.review.findings")}</span>
+            <For each={record().findings}>
+              {(finding) => (
+                <div data-slot="goal-review-finding">
+                  <span data-slot="goal-review-finding-criterion">{finding.criterion}</span>
+                  <span data-slot="goal-review-finding-detail">{finding.detail}</span>
+                  <span data-slot="goal-review-finding-evidence">{finding.evidence}</span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </BasicTool>
+    </div>
+  )
+}
+
+function goalVerdictLabel(i18n: ReturnType<typeof useI18n>, verdict: GoalVerdictPart["verdict"]) {
+  switch (verdict) {
+    case "done":
+      return i18n.t("ui.messagePart.goal.verdict.done")
+    case "blocked":
+      return i18n.t("ui.messagePart.goal.verdict.blocked")
+    case "continue":
+      return i18n.t("ui.messagePart.goal.verdict.continue")
+    case "wait":
+      return i18n.t("ui.messagePart.goal.verdict.wait")
+  }
+}
+
+PART_MAPPING["goal.verdict"] = function GoalVerdictPartDisplay(props) {
+  const i18n = useI18n()
+  const part = () => props.part as GoalVerdictPart
+  const subtitle = createMemo(
+    () =>
+      `${i18n.t("ui.messagePart.goal.verdict.round", { round: part().round })} \u00B7 ${goalVerdictLabel(i18n, part().verdict)}`,
+  )
+
+  return (
+    <div data-component="goal-verdict-part" data-timeline-part-id={part().id} data-verdict={part().verdict}>
+      <BasicTool
+        icon="brain"
+        defaultOpen
+        trigger={{
+          title: i18n.t("ui.messagePart.goal.verdict.title"),
+          subtitle: subtitle(),
+        }}
+      >
+        <div data-component="goal-verdict-body">
+          <div data-slot="goal-verdict-reason">
+            <span data-slot="goal-verdict-label">{i18n.t("ui.messagePart.goal.verdict.reason")}</span>
+            <span data-slot="goal-verdict-value">{part().reason}</span>
+          </div>
+          <Show when={part().handoff}>
+            {(handoff) => (
+              <div data-component="goal-verdict-handoff">
+                <span data-slot="goal-verdict-label">{i18n.t("ui.messagePart.goal.verdict.handoff")}</span>
+                <div data-slot="goal-verdict-handoff-item">
+                  <span data-slot="goal-verdict-handoff-key">{i18n.t("ui.messagePart.goal.verdict.handoff.tested")}</span>
+                  <span data-slot="goal-verdict-handoff-value">{handoff().tested}</span>
+                </div>
+                <div data-slot="goal-verdict-handoff-item">
+                  <span data-slot="goal-verdict-handoff-key">
+                    {i18n.t("ui.messagePart.goal.verdict.handoff.implementation")}
+                  </span>
+                  <span data-slot="goal-verdict-handoff-value">{handoff().implementation}</span>
+                </div>
+                <div data-slot="goal-verdict-handoff-item">
+                  <span data-slot="goal-verdict-handoff-key">{i18n.t("ui.messagePart.goal.verdict.handoff.cause")}</span>
+                  <span data-slot="goal-verdict-handoff-value">{handoff().cause}</span>
+                </div>
+              </div>
+            )}
+          </Show>
+        </div>
+      </BasicTool>
+    </div>
+  )
 }
 
 PART_MAPPING["text"] = function TextPartDisplay(props) {

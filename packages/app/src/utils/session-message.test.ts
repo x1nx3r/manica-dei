@@ -153,6 +153,100 @@ describe("normalizeSessionMessages", () => {
     ])
   })
 
+  // The vendored `@opencode-ai/client` snapshot predates the ADR-0008 parts, so
+  // the fixture is cast: the current contract the server sends carries them.
+  test("projects the reviewer's record and the judge's verdict as typed parts", () => {
+    const source = [
+      { id: "msg_user", type: "user", text: "purge old uploads", time: { created: 1 } },
+      {
+        id: "msg_assistant",
+        type: "assistant",
+        agent: "goal-qa",
+        model: { id: "model", providerID: "provider" },
+        content: [
+          {
+            type: "goal.review",
+            id: "part_review",
+            record: {
+              state: "snap-1",
+              verdict: "contradicted",
+              probes: [
+                {
+                  criterion: "old uploads are gone",
+                  derived: true,
+                  command: "bash scripts/smoke.sh",
+                  output: "missing",
+                  result: "fail",
+                },
+              ],
+              findings: [
+                {
+                  criterion: "old uploads are gone",
+                  detail: "the sweep is not wired",
+                  evidence: "cmd/server/main.go:12",
+                },
+              ],
+            },
+          },
+          {
+            type: "goal.verdict",
+            id: "part_verdict",
+            round: 2,
+            verdict: "continue",
+            reason: "the sweep is unbuilt",
+            handoff: {
+              tested: "old uploads are gone",
+              implementation: "no sweep in main.go",
+              cause: "the route exists but the handler does not",
+            },
+          },
+        ],
+        time: { created: 2, completed: 3 },
+      },
+    ] as unknown as SessionMessageInfo[]
+
+    const result = normalizeSessionMessages("ses_1", source)
+
+    expect(result.parts.get("msg_assistant")).toMatchObject([
+      {
+        id: "part_review",
+        type: "goal.review",
+        record: {
+          verdict: "contradicted",
+          probes: [{ criterion: "old uploads are gone", derived: true, result: "fail" }],
+          findings: [{ criterion: "old uploads are gone", evidence: "cmd/server/main.go:12" }],
+        },
+      },
+      {
+        id: "part_verdict",
+        type: "goal.verdict",
+        round: 2,
+        verdict: "continue",
+        reason: "the sweep is unbuilt",
+        handoff: { tested: "old uploads are gone" },
+      },
+    ])
+  })
+
+  test("omits the handoff on a verdict that carries none", () => {
+    const source = [
+      { id: "msg_user", type: "user", text: "goal", time: { created: 1 } },
+      {
+        id: "msg_assistant",
+        type: "assistant",
+        agent: "goal-judge",
+        model: { id: "model", providerID: "provider" },
+        content: [{ type: "goal.verdict", id: "part_verdict", round: 1, verdict: "done", reason: "the gate is green" }],
+        time: { created: 2, completed: 3 },
+      },
+    ] as unknown as SessionMessageInfo[]
+
+    const verdict = normalizeSessionMessages("ses_1", source).parts.get("msg_assistant")?.[0]
+
+    expect(verdict).toMatchObject({ type: "goal.verdict", verdict: "done", reason: "the gate is green" })
+    expect(verdict).not.toHaveProperty("handoff")
+  })
+
   test("adapts current edit fields for the legacy edit renderer", () => {
     const source = [
       { id: "msg_user", type: "user", text: "edit it", time: { created: 1 } },

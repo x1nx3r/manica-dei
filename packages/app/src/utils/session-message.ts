@@ -5,7 +5,18 @@ import type {
   SessionMessageShell,
   SessionMessageUser,
 } from "@opencode-ai/client/promise"
-import type { AssistantMessage, FilePart, Message, Part, ToolPart, UserMessage } from "@opencode-ai/sdk/v2"
+import type {
+  AssistantMessage,
+  FilePart,
+  GoalReviewPart,
+  GoalVerdictPart,
+  Message,
+  Part,
+  SessionMessageAssistantGoalReview,
+  SessionMessageAssistantGoalVerdict,
+  ToolPart,
+  UserMessage,
+} from "@opencode-ai/sdk/v2"
 import { Option, Schema } from "effect"
 
 const emptyTokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } }
@@ -285,8 +296,57 @@ function assistantParts(sessionID: string, message: SessionMessageAssistant): Pa
       }
       return content.text.trim() ? [part] : []
     }
+    const goal = goalContent(content)
+    if (goal?.type === "goal.review") return [goalReviewPart(sessionID, message.id, goal)]
+    if (goal?.type === "goal.verdict") return [goalVerdictPart(sessionID, message.id, goal)]
     return [toolPart(sessionID, message.id, content)]
   })
+}
+
+/**
+ * ADR-0008: the reviewer's record and the judge's verdict are typed parts, not
+ * prose, so a card renders their fields. The vendored `@opencode-ai/client`
+ * snapshot in `packages/app/vendor` predates them: its assistant-content union
+ * stops at `tool`, and a literal guard on the new kinds has no overlap
+ * (TS2367). The regenerated current contract in `@opencode-ai/sdk/v2` carries
+ * them, so read the two goal kinds through that instead of the stale snapshot.
+ */
+type GoalContent = SessionMessageAssistantGoalReview | SessionMessageAssistantGoalVerdict
+
+function goalContent(content: { type: string }): GoalContent | undefined {
+  if (content.type === "goal.review" || content.type === "goal.verdict") return content as GoalContent
+  return undefined
+}
+
+function goalReviewPart(
+  sessionID: string,
+  messageID: string,
+  content: SessionMessageAssistantGoalReview,
+): GoalReviewPart {
+  return {
+    id: content.id,
+    sessionID,
+    messageID,
+    type: "goal.review",
+    record: content.record,
+  }
+}
+
+function goalVerdictPart(
+  sessionID: string,
+  messageID: string,
+  content: SessionMessageAssistantGoalVerdict,
+): GoalVerdictPart {
+  return {
+    id: content.id,
+    sessionID,
+    messageID,
+    type: "goal.verdict",
+    round: content.round,
+    verdict: content.verdict,
+    reason: content.reason,
+    ...(content.handoff ? { handoff: content.handoff } : {}),
+  }
 }
 
 function textPart(sessionID: string, messageID: string, ordinal: number, text: string, synthetic?: boolean): Part {
