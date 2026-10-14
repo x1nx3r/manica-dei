@@ -32,11 +32,18 @@ export const Review = define({
   },
 })
 
-/** The judge's ruling: the verdict, why, and the three-part relay when present. */
+/**
+ * The judge's ruling: the verdict, why, and the three-part relay when present.
+ *
+ * `roleSessionID` is the judge's own session — the pointer a client needs to link
+ * the verdict to the transcript it came from. `sessionID` is the session under
+ * test, which is a different thing and was the only id here before.
+ */
 export const Verdict = define({
   type: "session.goal.verdict",
   schema: {
     sessionID: SessionID,
+    roleSessionID: SessionID.pipe(optional),
     round: Schema.Number,
     verdict: SessionGoal.Verdict,
     reason: Schema.String,

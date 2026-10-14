@@ -17,6 +17,7 @@ import { GoalJudge } from "@/session/goal-judge"
 import { GoalJudge as JudgeCore } from "@opencode-ai/core/session/goal/judge"
 import { GoalLoop } from "@/session/goal-loop"
 import { EventV2Bridge } from "@/event-v2-bridge"
+import { SessionID } from "@/session/schema"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { InstanceStore } from "@/project/instance-store"
 import { InstanceBootstrap } from "@/project/bootstrap"
@@ -964,7 +965,10 @@ describe("session.goal-loop", () => {
         implementation: "escalateOverdue is never called (src/domain/leave.ts:79)",
         cause: "the sweep never invokes escalateOverdue",
       }
-      judgeResult = { judgement: { verdict: "continue", reason: "the finding holds", handoff } }
+      // The judge's own session — the pointer the verdict event must carry, so a
+      // client can link the ruling to its transcript (ADR-0008, "the seam").
+      const judgeSession = SessionID.make("ses_judge_1")
+      judgeResult = { judgement: { verdict: "continue", reason: "the finding holds", handoff }, roleSessionID: judgeSession }
       const ruled = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(ruled.decision._tag).toBe("continue")
 
@@ -976,7 +980,14 @@ describe("session.goal-loop", () => {
       ])
       expect(data(SessionGoalEvent.Event.Review.type)).toEqual([{ sessionID: info.id, round: 1, record }])
       expect(data(SessionGoalEvent.Event.Verdict.type)).toEqual([
-        { sessionID: info.id, round: 1, verdict: "continue", reason: "the finding holds", handoff },
+        {
+          sessionID: info.id,
+          roleSessionID: judgeSession,
+          round: 1,
+          verdict: "continue",
+          reason: "the finding holds",
+          handoff,
+        },
       ])
 
       yield* session.remove(info.id)

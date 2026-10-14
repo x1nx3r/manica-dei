@@ -298,6 +298,9 @@ const layer = Layer.effect(
         // judge weighed — the pre-record `turns_used + 1`.
         yield* events.publish(SessionGoalEvent.Event.Verdict, {
           sessionID: input.sessionID,
+          // The judge's own session, so a client can link the ruling to the
+          // transcript it came from (ADR-0008, "the seam").
+          ...(result.roleSessionID ? { roleSessionID: result.roleSessionID } : {}),
           round: goal.turns_used + 1,
           verdict: judgement.verdict,
           reason: judgement.reason,

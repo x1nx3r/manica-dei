@@ -40,6 +40,12 @@ export interface JudgeInput {
 export interface JudgeResult {
   readonly judgement: Judge.Judgement
   /**
+   * The judge's own session, when one was created. The loop publishes it on the
+   * verdict event so a client can link the ruling to its transcript (ADR-0008,
+   * "the seam"). Absent only when the call never reached a session.
+   */
+  readonly roleSessionID?: SessionID
+  /**
    * Why the judgement is a fail-open fallback rather than a verdict the model
    * returned: the reply could not be parsed (`parse`) or the call did not
    * answer (`transport`). The loop counts these to trip its circuit breaker.
@@ -175,10 +181,11 @@ const layer = Layer.effect(
           } satisfies SessionV1.StepFinishPart)
         }
 
-        return judgement
+        return { judgement, roleSessionID: bench.id }
       }).pipe(
-        Effect.map((judgement): JudgeResult => ({
+        Effect.map(({ judgement, roleSessionID }): JudgeResult => ({
           judgement,
+          roleSessionID,
           ...(judgement === Judge.FAIL_OPEN ? { failure: "parse" as const } : {}),
         })),
         // A call that did not answer is a transport failure; the loop counts
