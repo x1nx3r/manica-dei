@@ -180,22 +180,39 @@ than by argument:
 Steps 1 to 3 are in (commits `b82729524`, `261931213`, `60fabf146`): the phase and
 the roles on the wire, the record as a part, the judge as a session.
 
-Step 4 — the UI — is partly in: the review card and the verdict card render, and
-they read the parts through one documented cast. **They are not blocked on
-regenerating the client or the SDK, and an earlier version of this section said
-they were.** Everything the rest of step 4 needs is already reachable — the parts
-arrive in the message list, `session.goal.phase` arrives on `/event` because the
-handler streams every EventV2 event, and `GET /session/:id/goal` is a fetch on a
-client the app already has. What is missing is *types*, and types are casts.
+Step 4 — the UI — is in, in the fork's session view:
+
+- the **review card** and the **verdict card** render each pass and each
+  judgement, reading the parts through one documented cast;
+- the **verdict event carries the judge's own session** (`d518bb6be`), so a
+  judgement can be opened at its source;
+- the **goal strip** (`packages/app/src/pages/session/session-goal-strip.tsx`)
+  is the phase chip, the goal panel and the handoff view in one. Collapsed it
+  says which role is acting, the round, and the turn against the budget. Expanded
+  it shows the contract, the gate, and the run read from the end — the judgement,
+  the three-part relay, and the judge's session to open. It sits between the
+  timeline and the composer, outside the timeline's scroller, so it renders
+  without moving a row, and it exists only for a session with a goal.
+
+Its state comes from the projection, not from the payloads: `goal.phase`,
+`goal.review` and `goal.verdict` make it refetch `GET /session/:id/goal`, so the
+panel shows what the server holds. The one thing the projection does not carry is
+the handoff, and that is why the verdict payload is kept beside the fetch — a
+client that arrives after the fact still gets the verdict and its reason, but not
+the relay and not the judge's session. The response is checked rather than
+trusted: a body that is not a projection reads as no goal, because the strip
+renders on fields and must not render on a body that lacks them.
 
 Two things do remain, and neither is the client:
 
-- the **role sessions need a pointer**. The verdict event carries the session
-  under test, not the judge's, so a client can render the verdict and cannot link
-  to the transcript it came from. Carrying the role session's id on both events is
-  a few lines, and it replaces the heavier idea of writing a synthetic row into
-  the parent's transcript.
+- the **pointers on the parts**. The events carry the role session's id; the
+  `goal.review` and `goal.verdict` parts do not, so a card in the timeline still
+  cannot link to the session it came from. `goal.review` also has no id at all
+  yet — the QA child's session is known at the call site
+  (`packages/opencode/src/session/prompt.ts`, `runQa`) and is simply not passed.
+  Adding both, and regenerating, is one patch.
 - the **casts accumulate**, one per new surface, until an avenue moves the app
-  onto the current client. That avenue is planned separately
+  onto the current client — the verdict event's `roleSessionID` is read through
+  one today. That avenue is planned separately
   (`docs/implementation-notes/app-joins-the-current-contract.md`) and is not a
-  prerequisite for finishing this ADR.
+  prerequisite for this ADR.

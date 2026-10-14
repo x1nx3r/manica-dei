@@ -76,6 +76,8 @@ import { MessageTimeline } from "@/pages/session/timeline/message-timeline"
 import { createTimelineModel } from "@/pages/session/timeline/model"
 import { type DiffStyle, SessionReviewTab, type SessionReviewTabProps } from "@/pages/session/review-tab"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { createSessionGoal } from "@/pages/session/session-goal"
+import { SessionGoalStrip } from "@/pages/session/session-goal-strip"
 import { restorePromptModel, syncPromptModel, syncSessionModel } from "@/pages/session/session-model-helpers"
 import {
   clampSessionPanelWidth,
@@ -504,6 +506,16 @@ export default function Page() {
     return `calc(100% - ${layout.fileTree.width()}px)`
   })
   const centered = createMemo(() => isDesktop() && (newSessionDesign() || !desktopReviewOpen()))
+  // Fork ADR-0008: the goal loop's state for the header chip and the goal panel.
+  // The fetch is the state and the events are the trigger, so the panel shows
+  // what the server holds rather than an accumulation of payloads.
+  const goal = createSessionGoal(() => params.id)
+  const [goalView, setGoalView] = persisted(Persist.global("goal-strip"), createStore({ collapsed: true }))
+  const openRoleSession = (id: string) => {
+    navigate(
+      params.serverKey ? sessionHref(requireServerKey(params.serverKey), id) : legacySessionHref(sdk().directory, id),
+    )
+  }
   const desktopV2PanelLayout = createMemo(() =>
     sessionPanelLayout({
       review: desktopV2ReviewOpen(),
@@ -2127,6 +2139,22 @@ export default function Page() {
           </Match>
         </Switch>
       </div>
+
+      {/* Fork ADR-0008: the goal strip sits between the timeline and the
+          composer, outside the timeline's scroller, so showing it cannot move a
+          row. It renders only for a session the loop has run on. */}
+      <Show when={params.id && !mobileChanges() ? goal.info() : undefined}>
+        {(info) => (
+          <SessionGoalStrip
+            goal={info()}
+            ruling={goal.ruling()}
+            collapsed={goalView.collapsed}
+            onToggle={() => setGoalView("collapsed", !goalView.collapsed)}
+            centered={centered()}
+            onOpenRoleSession={openRoleSession}
+          />
+        )}
+      </Show>
 
       <Show when={(params.id || !newSessionDesign()) && !mobileChanges()}>
         {(_) => {

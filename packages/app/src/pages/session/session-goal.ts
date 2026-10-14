@@ -1,0 +1,141 @@
+import type { SessionGoalHandoff, SessionGoalInfo } from "@opencode-ai/sdk/v2/client"
+import { type Accessor, createEffect, createMemo, createResource, onCleanup } from "solid-js"
+import { createStore } from "solid-js/store"
+import { useSDK } from "@/context/sdk"
+import { useServerSDK } from "@/context/server-sdk"
+
+/**
+ * The judge's four verdicts — `done | blocked | continue | wait` (ADR-0006).
+ *
+ * Read off the projection rather than named: the generated surface calls the
+ * event `SessionGoalVerdict` and the verdict `SessionGoalVerdict2`, and the
+ * second name does not survive the SDK's next regeneration.
+ */
+export type GoalVerdict = NonNullable<SessionGoalInfo["last_verdict"]>
+
+/**
+ * Fork ADR-0008: the last judgement as the trail carried it.
+ *
+ * `GET /session/:id/goal` holds the verdict and its reason, but not the judge's
+ * three-part handoff and not the judge's own session. Those ride the
+ * `session.goal.verdict` event, so they are kept here beside the fetch rather
+ * than asked of the projection twice.
+ */
+export type SessionGoalRuling = {
+  round?: number
+  verdict: GoalVerdict
+  reason: string
+  handoff?: SessionGoalHandoff
+  /** The judge's session: the pointer the event was shipped with. */
+  roleSessionID?: string
+}
+
+/**
+ * How the run ended, from either source.
+ *
+ * A client that was present when the judge ruled has the ruling the trail
+ * carried. A client that arrived after the fact has only the projection, which
+ * holds the verdict and its reason — and neither the handoff nor the judge's
+ * session, which is the difference the caller can see.
+ */
+export function goalConclusion(
+  info: SessionGoalInfo,
+  ruling: SessionGoalRuling | undefined,
+): SessionGoalRuling | undefined {
+  if (ruling) return ruling
+  if (!info.last_verdict) return undefined
+  return { verdict: info.last_verdict, reason: info.last_reason ?? "" }
+}
+
+/**
+ * The goal's session id, read off the verdict event.
+ *
+ * The event carries it (ADR-0008, "the seam") and the generated type predates
+ * the field, so this is one narrow cast in the same spirit as the message
+ * parts': the wire has it, the type does not, and the type is regenerated on
+ * its own schedule.
+ */
+const roleSessionID = (properties: object) => (properties as { roleSessionID?: string }).roleSessionID
+
+/**
+ * A goal projection, or nothing.
+ *
+ * The route answers 404 for a session the loop has not run on. It is not the only
+ * way to get a body that is not a projection — a stub, a proxy or a version skew
+ * can answer 200 with something else — and the strip renders on fields it needs,
+ * so a body without them must read as "no goal" rather than as an empty one.
+ */
+export function goalProjection(value: unknown): SessionGoalInfo | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const info = value as Partial<SessionGoalInfo>
+  if (typeof info.goal !== "string" || typeof info.phase !== "string" || !Array.isArray(info.gates)) return undefined
+  return info as SessionGoalInfo
+}
+
+/**
+ * The goal loop's state for one session, for the header chip and the goal panel.
+ *
+ * The events are the *trigger*, not the state. A phase move, an admitted pass or
+ * a judgement makes the loop refetch the projection, so the panel shows what the
+ * server holds rather than an accumulation of event payloads. The one thing the
+ * projection cannot give is the handoff, which is why the verdict payload is
+ * kept as the ruling.
+ *
+ * A session the loop never ran on has no goal: the route answers 404, which is a
+ * fact about the session and not an error to surface.
+ */
+export function createSessionGoal(sessionID: Accessor<string | undefined>) {
+  const sdk = useSDK()
+  const serverSDK = useServerSDK()
+  const [store, setStore] = createStore<{ ruling: SessionGoalRuling | undefined }>({ ruling: undefined })
+
+  const [goal, { refetch }] = createResource(
+    () => sessionID(),
+    async (id): Promise<SessionGoalInfo | undefined> => {
+      const result = await serverSDK().client.session.goal({ sessionID: id, directory: sdk().directory })
+      if (result.error) return undefined
+      return goalProjection(result.data)
+    },
+  )
+
+  createEffect(() => {
+    const events = sdk().event
+    const id = sessionID()
+    // Another session is another goal, and another goal's ruling.
+    setStore("ruling", undefined)
+    if (!id) return
+
+    const refresh = (event: { properties: { sessionID: string } }) => {
+      if (event.properties.sessionID !== id) return
+      void refetch()
+    }
+
+    const offs = [
+      events.on("session.goal.phase", refresh),
+      events.on("session.goal.review", refresh),
+      events.on("session.goal.verdict", (event) => {
+        if (event.properties.sessionID !== id) return
+        const properties = event.properties
+        const role = roleSessionID(properties)
+        setStore("ruling", {
+          round: Number(properties.round),
+          verdict: properties.verdict,
+          reason: properties.reason,
+          ...(properties.handoff ? { handoff: properties.handoff } : {}),
+          ...(role ? { roleSessionID: role } : {}),
+        })
+        void refetch()
+      }),
+    ]
+    onCleanup(() => offs.forEach((off) => off()))
+  })
+
+  const info = createMemo(() => goal())
+
+  return {
+    /** The projection, or `undefined` for a session the loop has not run on. */
+    info,
+    /** The last judgement, when the trail delivered one to this client. */
+    ruling: () => store.ruling,
+  }
+}
