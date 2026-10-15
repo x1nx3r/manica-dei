@@ -5,6 +5,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { BackgroundJob } from "@/background/job"
 import { Session } from "@/session/session"
 import { SessionID, MessageID } from "../session/schema"
+import { Metadata } from "@/session/session"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
 import { deriveSubagentSessionPermission } from "../agent/subagent-permissions"
@@ -159,6 +160,10 @@ export const TaskTool = Tool.define(
           parentID: ctx.sessionID,
           title: params.description + ` (@${next.name} subagent)`,
           agent: next.name,
+          // Fork ADR-0008: a caller that knows what the child is labels it at
+          // creation, so a client can list the run's roles while a pass is still
+          // in flight — "The Run" was named only at the handoff before this.
+          ...(ctx.extra?.metadata ? { metadata: ctx.extra.metadata as typeof Metadata.Type } : {}),
           permission: [
             ...childPermission,
             ...childToolDenies.filter(

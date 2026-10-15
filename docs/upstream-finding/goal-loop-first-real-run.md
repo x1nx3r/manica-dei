@@ -40,11 +40,25 @@ done`, `turns_used 2` — the budget counted both certified rounds.
    the chip, the strip's contract/gate, "The Run" rows, and narration. The human
    watched a certification with nothing to click on. Two honest routes:
    render a _link row_ in the parent pointing at the child's
-   `goal.review` part (the parent already has the pointer: the loop's `roleSessionID`
-   on the review event — round-2's is the QA child), or surface the record
-   under the strip's "The Run" section. The ADR's own fix list
+   `goal.review` part (the parent already has the pointer: the loop's
+   `roleSessionID` on the review event — round-2's is the QA child), or surface
+   the record under the strip's "The Run" section. The ADR's own fix list
    ("the events carry a role session's id and the parts do not") is a
    prerequisite.
+
+   **Fixed since this note was written, in two pieces.** The chips landed first:
+   the review and verdict events announce their `roleSessionID`, the client keeps
+   them, and "The Run" renders each role's own word beside its row (the judge's
+   also synthesizes from the projection, so a finished run shows `done` without
+   the events). The _in-flight_ row is the second piece, from the wallpaper run's
+   round 3: the QA child exists on disk with a 38-message transcript while
+   `session_goal`'s children route reports it unlabeled, because `runQa` stamped
+   `goal_role` only at the handoff — "The Run" filters to labeled children, so a
+   live pass was invisible exactly while it was running. The label is stamped at
+   the task tool's child creation now (`extra.metadata`, `tool/task.ts`), with the
+   handoff stamp kept and merging, so the round number attaches before the first
+   probe and the row deep-links to the transcript the moment the pass starts.
+
 2. **The strip's live-arrival leg is unverified.** A client that was open when
    the goal was set showed no strip; a client that reloaded showed it, which
    localizes the suspect to the event→refetch path (`session.goal.phase` →

@@ -502,7 +502,16 @@ const layer = Layer.effect(
           sessionID: input.sessionID,
           abort: new AbortController().signal,
           callID: ulid(),
-          extra: { bypassAgentCheck: true, promptOps },
+          extra: {
+            bypassAgentCheck: true,
+            promptOps,
+            // Fork ADR-0008: the run's roles are labeled at *creation*, not only
+            // at the handoff, so "The Run" can show a pass while it is in
+            // flight — a `session.goal.review` event comes only after the pass
+            // completes, and the loop's phases before that say nothing about
+            // which pass the child belongs to.
+            metadata: { goal_role: "qa", goal_round: input.decision.round },
+          },
           // The round's messages, not the session's: `task.ts` ignores this
           // today, and the diet forbids the transcript reaching QA, so the
           // field carries only what QA is allowed to see.
@@ -527,11 +536,17 @@ const layer = Layer.effect(
       const qaSessionID = result.metadata.sessionId
       // The run's roles are labeled on their own sessions (ADR-0008, "the
       // round"): a client that arrives late reads this off
-      // `/session/:id/children`, from an event it never saw.
+      // `/session/:id/children`, from an event it never saw. The label here
+      // also merges what the task tool already labeled at creation, so a pass
+      // that re-runs into an existing child does not lose its name.
       const qaInfo = yield* sessions.get(qaSessionID).pipe(Effect.orDie)
       yield* sessions.setMetadata({
         sessionID: qaSessionID,
-        metadata: { ...(qaInfo.metadata ?? {}), goal_role: "qa", goal_round: input.decision.round },
+        metadata: {
+          ...(qaInfo.metadata ?? {}),
+          goal_role: "qa",
+          goal_round: input.decision.round,
+        },
       })
       const qaMessages = yield* sessions.messages({ sessionID: qaSessionID }).pipe(Effect.orDie)
       const qaMessage = qaMessages.findLast((message) => message.info.role === "assistant")
