@@ -1,10 +1,15 @@
 import type { SessionGoalContract, SessionGoalGate, SessionGoalInfo } from "@opencode-ai/sdk/v2/client"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
-import { Show, createMemo, type Accessor } from "solid-js"
+import { For, Show, createMemo, type Accessor } from "solid-js"
 import { useLanguage } from "@/context/language"
 import { useSettings } from "@/context/settings"
-import { goalConclusion, type GoalVerdict, type SessionGoalRuling } from "@/pages/session/session-goal"
+import {
+  goalConclusion,
+  type GoalVerdict,
+  type SessionGoalRuling,
+  type SessionGoalRole,
+} from "@/pages/session/session-goal"
 
 /** The loop's numbers cross the wire as plain numbers; a stray non-number reads as none. */
 const num = (value: unknown, fallback = 0) => (Number.isFinite(value) ? Number(value) : fallback)
@@ -23,6 +28,7 @@ const num = (value: unknown, fallback = 0) => (Number.isFinite(value) ? Number(v
 export function SessionGoalStrip(props: {
   goal: SessionGoalInfo
   ruling: SessionGoalRuling | undefined
+  roles: SessionGoalRole[]
   collapsed: boolean
   onToggle: () => void
   centered: boolean
@@ -70,6 +76,10 @@ export function SessionGoalStrip(props: {
         return language.t("ui.messagePart.goal.verdict.continue")
     }
   }
+
+  /** The run's roles are labeled with the goal's own words for the phase. */
+  const roleLabel = (role: SessionGoalRole["role"]) =>
+    role === "judge" ? language.t("session.goal.phase.judge") : language.t("session.goal.phase.qa")
 
   /**
    * How the run ended, from either source: the ruling the trail delivered, or —
@@ -293,6 +303,40 @@ export function SessionGoalStrip(props: {
                     </Show>
                   </section>
                 )}
+              </Show>
+
+              <Show when={props.roles.length > 0}>
+                <section data-slot="session-goal-run" class="flex flex-col gap-1">
+                  <h3 class={sectionClass()}>{language.t("session.goal.run")}</h3>
+                  <For each={props.roles}>
+                    {(role) => (
+                      <button
+                        type="button"
+                        data-slot="session-goal-role"
+                        data-role={role.role}
+                        classList={{
+                          "flex items-center gap-2 rounded-md px-2 py-0.5 text-left": true,
+                          "bg-v2-background-bg-layer-02 text-v2-text-text-muted hover:text-v2-text-text-base": v2(),
+                          "border border-border-weak-base text-text-weak hover:text-text-strong": !v2(),
+                        }}
+                        onClick={() => props.onOpenRoleSession(role.id)}
+                      >
+                        <span data-slot="session-goal-role-label" class="shrink-0">
+                          {roleLabel(role.role)}
+                        </span>
+                        <Show when={role.round !== undefined}>
+                          <span data-slot="session-goal-role-round" class={`shrink-0 ${labelClass()}`}>
+                            {language.t("session.goal.round", { round: role.round ?? 0 })}
+                          </span>
+                        </Show>
+                        <span data-slot="session-goal-role-title" class="min-w-0 flex-1 truncate">
+                          {role.title}
+                        </span>
+                        <Icon name="chevron-right" size="small" class="shrink-0" />
+                      </button>
+                    )}
+                  </For>
+                </section>
               </Show>
 
               <Show when={conclusion()}>

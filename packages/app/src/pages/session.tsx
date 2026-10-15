@@ -2148,6 +2148,7 @@ export default function Page() {
           <SessionGoalStrip
             goal={info()}
             ruling={goal.ruling()}
+            roles={goal.roles()}
             collapsed={goalView.collapsed}
             onToggle={() => setGoalView("collapsed", !goalView.collapsed)}
             centered={centered()}

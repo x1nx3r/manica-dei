@@ -1190,4 +1190,5 @@ export const dict: Record<string, string> = {
   "session.goal.openRoleSession": "Open the judge's session",
   "session.goal.expand": "Show the goal",
   "session.goal.collapse": "Hide the goal",
+  "session.goal.run": "The run",
 }

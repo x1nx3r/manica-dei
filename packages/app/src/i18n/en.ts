@@ -282,6 +282,7 @@ export const dict = {
   "session.goal.gate.exit": "Exit",
   "session.goal.gate.unrun": "Not run",
   "session.goal.openRoleSession": "Open the judge's session",
+  "session.goal.run": "The run",
   "session.goal.expand": "Show the goal",
   "session.goal.collapse": "Hide the goal",
 

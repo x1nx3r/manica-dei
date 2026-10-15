@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionGoalInfo } from "@opencode-ai/sdk/v2/client"
-import { goalConclusion, goalProjection, loadGoal, type SessionGoalRuling } from "./session-goal"
+import {
+  goalConclusion,
+  goalProjection,
+  goalRoles,
+  loadGoal,
+  loadChildren,
+  type SessionGoalRuling,
+} from "./session-goal"
 
 const goal = (patch: Partial<SessionGoalInfo> = {}) =>
   ({
@@ -85,5 +92,44 @@ describe("loadGoal", () => {
       throw new Error("Request is not supported by this version of OpenCode Server (Server responded with text/html)")
     }
     await expect(loadGoal(request)).resolves.toBeUndefined()
+  })
+})
+
+describe("goalRoles", () => {
+  const child = (patch: Record<string, unknown> = {}) => ({ id: "ses_child", title: "QA the goal", ...patch })
+
+  test("the labeled children are the run's roles, with their round", () => {
+    const roles = goalRoles([
+      child({ id: "ses_qa", metadata: { goal_role: "qa", goal_round: 2 } }),
+      child({ id: "ses_judge", title: "Judge the goal", metadata: { goal_role: "judge", goal_round: 2 } }),
+    ])
+    expect(roles).toEqual([
+      { id: "ses_qa", title: "QA the goal", role: "qa", round: 2 },
+      { id: "ses_judge", title: "Judge the goal", role: "judge", round: 2 },
+    ])
+  })
+
+  test("an unlabeled child is not a role: a task subagent is a child of the same session", () => {
+    expect(goalRoles([child(), child({ metadata: { tool: "task" } })])).toEqual([])
+    expect(goalRoles([])).toEqual([])
+    expect(goalRoles({})).toEqual([])
+    expect(goalRoles(null)).toEqual([])
+  })
+
+  test("a role from before the round was carried reads with none", () => {
+    expect(goalRoles([child({ metadata: { goal_role: "qa" } })])).toEqual([
+      { id: "ses_child", title: "QA the goal", role: "qa", round: undefined },
+    ])
+  })
+})
+
+describe("loadChildren", () => {
+  test("never rejects, for the reason `loadGoal` cannot", async () => {
+    const request = async (): Promise<{ data?: unknown }> => {
+      throw new Error("Request is not supported by this version of OpenCode Server (Server responded with text/html)")
+    }
+    await expect(loadChildren(request)).resolves.toEqual([])
+    await expect(loadChildren(async () => ({ error: { message: "not found" } }))).resolves.toEqual([])
+    await expect(loadChildren(async () => ({ data: [null, 4] }))).resolves.toEqual([])
   })
 })

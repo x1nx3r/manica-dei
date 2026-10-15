@@ -97,6 +97,54 @@ export async function loadGoal(
 }
 
 /**
+ * A role session of the run, as `GET /session/:id/children` describes it (ADR-0008,
+ * "the round"). `role` is the goal's own three words — not the agent name, which
+ * the seam forbids clients from having to know.
+ */
+export type SessionGoalRole = {
+  id: string
+  title: string
+  role: "qa" | "judge"
+  round: number | undefined
+}
+
+/**
+ * The role sessions in a children response, or nothing.
+ *
+ * A child with no `goal_role` label is not one of the run's roles: a task
+ * subagent is a child of the same session and is not part of this list. A role
+ * session from before the label existed is invisible here — the list is the
+ * labeled truth, not every child there ever was.
+ */
+export function goalRoles(value: unknown): SessionGoalRole[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return []
+    const info = entry as { id?: unknown; title?: unknown; metadata?: unknown }
+    if (typeof info.id !== "string" || typeof info.title !== "string") return []
+    const metadata = info.metadata && typeof info.metadata === "object" ? info.metadata : undefined
+    const role = (metadata as { goal_role?: unknown } | undefined)?.goal_role
+    const round = (metadata as { goal_round?: unknown } | undefined)?.goal_round
+    if (role !== "qa" && role !== "judge") return []
+    return [{ id: info.id, title: info.title, role, round: typeof round === "number" ? round : undefined }]
+  })
+}
+
+/** The children of a session, or nothing — and never a rejection, for the same
+ * reason as `loadGoal`: a rejected resource throws where it is read. */
+export async function loadChildren(
+  request: () => Promise<{ data?: unknown; error?: unknown }>,
+): Promise<SessionGoalRole[]> {
+  try {
+    const result = await request()
+    if (result.error) return []
+    return goalRoles(result.data)
+  } catch {
+    return []
+  }
+}
+
+/**
  * The goal loop's state for one session, for the header chip and the goal panel.
  *
  * The events are the *trigger*, not the state. A phase move, an admitted pass or
@@ -118,6 +166,11 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     (id) => loadGoal(() => serverSDK().client.session.goal({ sessionID: id, directory: sdk().directory })),
   )
 
+  const [roles, { refetch: refetchRoles }] = createResource(
+    () => sessionID(),
+    (id) => loadChildren(() => serverSDK().client.session.children({ sessionID: id, directory: sdk().directory })),
+  )
+
   createEffect(() => {
     const events = sdk().event
     const id = sessionID()
@@ -128,6 +181,8 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     const refresh = (event: { properties: { sessionID: string } }) => {
       if (event.properties.sessionID !== id) return
       void refetch()
+      // A role appeared or moved: the children list is refetched with it.
+      void refetchRoles()
     }
 
     const offs = [
@@ -145,6 +200,7 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
           ...(role ? { roleSessionID: role } : {}),
         })
         void refetch()
+        void refetchRoles()
       }),
     ]
     onCleanup(() => offs.forEach((off) => off()))
@@ -155,6 +211,8 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
   return {
     /** The projection, or `undefined` for a session the loop has not run on. */
     info,
+    /** The run's labeled role sessions, from the children route (ADR-0008). */
+    roles: createMemo(() => roles() ?? []),
     /** The last judgement, when the trail delivered one to this client. */
     ruling: () => store.ruling,
   }
