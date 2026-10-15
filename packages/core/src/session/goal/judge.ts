@@ -185,7 +185,8 @@ export function parseVerdict(raw: string): Judgement {
 
   // The legacy shape, still accepted: `{"done": true|false}`.
   if (object["done"] === true) return { verdict: "done", reason: reasonOf(object), ...(handoff ? { handoff } : {}) }
-  if (object["done"] === false) return { verdict: "continue", reason: reasonOf(object), ...(handoff ? { handoff } : {}) }
+  if (object["done"] === false)
+    return { verdict: "continue", reason: reasonOf(object), ...(handoff ? { handoff } : {}) }
 
   return FAIL_OPEN
 }
@@ -227,17 +228,24 @@ function renderRecord(record: SessionGoal.Record): string {
         // The command is deliberately withheld: the judge relays to the dev, and
         // a relayed command is the thing the dev can tune to (draft §6). The gate
         // evidence above is the judge's record of what actually ran.
-        .map((probe) =>
-          [
+        .map((probe) => {
+          const block = [
             `- [${probe.result}]${probe.derived ? " (derived)" : ""} ${probe.criterion}`,
-            ...(probe.output.trim().length === 0 ? [] : indent(probe.output)),
-          ].join("\n"),
-        )
+            // The spread brackets matter: `indent` returns a string, and leaking a
+            // string into an array spread renders it per character — the ladder
+            // the wallpaper run's judge actually read (ADR-0006, the round-2
+            // record arrived one letter per line).
+            ...(probe.output.trim().length === 0 ? [] : [indent(probe.output)]),
+          ].join("\n")
+          return block
+        })
         .join("\n")
     : "(no probes were run — an abstention, not a pass)"
   const derived = record.probes.some((probe) => probe.derived)
   const findings = record.findings.length
-    ? record.findings.map((finding) => `- ${finding.criterion}: ${finding.detail}\n  evidence: ${finding.evidence}`).join("\n")
+    ? record.findings
+        .map((finding) => `- ${finding.criterion}: ${finding.detail}\n  evidence: ${finding.evidence}`)
+        .join("\n")
     : "(none)"
   return [
     `State reviewed: ${record.state}`,
