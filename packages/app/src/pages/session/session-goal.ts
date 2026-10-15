@@ -73,6 +73,30 @@ export function goalProjection(value: unknown): SessionGoalInfo | undefined {
 }
 
 /**
+ * The projection for one session, or `undefined` — and never a rejection.
+ *
+ * Three things make this a function of its own, and each of them is a bug it
+ * would otherwise be. The route is new, so a server that does not serve it
+ * answers 404, or answers with something that is not JSON. A rejected resource
+ * *throws where it is read*, which is inside the session page, so an
+ * unanswerable goal would take the whole session view down with it — the
+ * fixtures found that, at the price of every layout test in the suite. And the
+ * projection is checked rather than trusted: a stub, a proxy or a version skew
+ * can answer 200 with a body that is not a goal, and the strip renders on fields.
+ */
+export async function loadGoal(
+  request: () => Promise<{ data?: unknown; error?: unknown }>,
+): Promise<SessionGoalInfo | undefined> {
+  try {
+    const result = await request()
+    if (result.error) return undefined
+    return goalProjection(result.data)
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * The goal loop's state for one session, for the header chip and the goal panel.
  *
  * The events are the *trigger*, not the state. A phase move, an admitted pass or
@@ -81,8 +105,8 @@ export function goalProjection(value: unknown): SessionGoalInfo | undefined {
  * projection cannot give is the handoff, which is why the verdict payload is
  * kept as the ruling.
  *
- * A session the loop never ran on has no goal: the route answers 404, which is a
- * fact about the session and not an error to surface.
+ * A session the loop never ran on has no goal, and neither has a server that
+ * cannot answer the question: both are a session with no goal, not an error.
  */
 export function createSessionGoal(sessionID: Accessor<string | undefined>) {
   const sdk = useSDK()
@@ -91,11 +115,7 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
 
   const [goal, { refetch }] = createResource(
     () => sessionID(),
-    async (id): Promise<SessionGoalInfo | undefined> => {
-      const result = await serverSDK().client.session.goal({ sessionID: id, directory: sdk().directory })
-      if (result.error) return undefined
-      return goalProjection(result.data)
-    },
+    (id) => loadGoal(() => serverSDK().client.session.goal({ sessionID: id, directory: sdk().directory })),
   )
 
   createEffect(() => {

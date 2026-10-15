@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionGoalInfo } from "@opencode-ai/sdk/v2/client"
-import { goalConclusion, goalProjection, type SessionGoalRuling } from "./session-goal"
+import { goalConclusion, goalProjection, loadGoal, type SessionGoalRuling } from "./session-goal"
 
 const goal = (patch: Partial<SessionGoalInfo> = {}) =>
   ({
@@ -62,5 +62,28 @@ describe("goalProjection", () => {
     expect(goalProjection("ok")).toBeUndefined()
     expect(goalProjection(goal({ gates: undefined as never }))).toBeUndefined()
     expect(goalProjection(goal({ phase: undefined as never }))).toBeUndefined()
+  })
+})
+
+describe("loadGoal", () => {
+  test("a served projection is the goal", async () => {
+    const info = goal()
+    await expect(loadGoal(async () => ({ data: info }))).resolves.toBe(info)
+  })
+
+  test("an answered error and an unanswered route are both no goal", async () => {
+    await expect(loadGoal(async () => ({ error: { message: "Goal not found" } }))).resolves.toBeUndefined()
+    await expect(loadGoal(async () => ({ data: {} }))).resolves.toBeUndefined()
+  })
+
+  test("a route the server cannot answer does not reject", async () => {
+    // The failure this exists for: the perf fixtures answer an unlikely path
+    // with `index.html`, the client throws on the content type, and a rejected
+    // resource throws *at its read* — inside the session page, which took the
+    // whole view down and every layout test with it.
+    const request = async (): Promise<{ data?: unknown }> => {
+      throw new Error("Request is not supported by this version of OpenCode Server (Server responded with text/html)")
+    }
+    await expect(loadGoal(request)).resolves.toBeUndefined()
   })
 })

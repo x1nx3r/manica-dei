@@ -199,9 +199,16 @@ Its state comes from the projection, not from the payloads: `goal.phase`,
 panel shows what the server holds. The one thing the projection does not carry is
 the handoff, and that is why the verdict payload is kept beside the fetch — a
 client that arrives after the fact still gets the verdict and its reason, but not
-the relay and not the judge's session. The response is checked rather than
-trusted: a body that is not a projection reads as no goal, because the strip
-renders on fields and must not render on a body that lacks them.
+the relay and not the judge's session.
+
+The response is checked rather than trusted, in two ways, and both were needed:
+a body that is not a projection reads as no goal, and a route the server cannot
+answer — an older build, an unrouted path, a static handler — is no goal as well.
+The second matters more than it sounds. The workspace SDK throws on any
+`text/html` response (`packages/sdk/js/src/v2/client.ts`), and a rejected
+`createResource` throws *where it is read*, which is inside the session page: an
+unanswerable goal took the whole view into its error boundary, and every
+layout-continuity test with it.
 
 Two things do remain, and neither is the client:
 
