@@ -973,6 +973,9 @@ describe("session.goal-loop", () => {
       judgeResult = { judgement: { verdict: "continue", reason: "the finding holds", handoff }, roleSessionID: judgeSession }
       const ruled = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(ruled.decision._tag).toBe("continue")
+      // The pointer is not only on the event: it is on the row, so `GET
+      // /session/:id/goal` serves it to a client that opened after the fact.
+      expect((yield* goal.get(info.id))?.last_verdict_session).toBe(judgeSession)
 
       const data = (type: string) => published.filter((event) => event.type === type).map((event) => event.data)
       expect(data(SessionGoalEvent.Event.Phase.type)).toEqual([

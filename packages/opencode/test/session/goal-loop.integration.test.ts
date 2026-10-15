@@ -769,6 +769,9 @@ describe("goal-loop end to end (mock model)", () => {
       const parent = yield* sessions.get(session.id)
       expect(parent.tokens?.input).toBe(0)
       expect(parent.tokens?.output).toBe(0)
+      // And the projection carries the pointer back to the judge, for the
+      // client that arrives late (ADR-0008, "the seam").
+      expect((yield* goal.get(session.id))?.last_verdict_session).toBe(judge.id)
     }),
     { git: true },
     { timeout: 30_000 },

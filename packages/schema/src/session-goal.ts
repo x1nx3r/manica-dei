@@ -2,6 +2,7 @@ export * as SessionGoal from "./session-goal"
 
 import { Schema } from "effect"
 import { optional } from "./schema"
+import { SessionID } from "./session-id"
 
 /**
  * The durable goal of a session (fork ADR-0006).
@@ -126,6 +127,12 @@ export const Info = Schema.Struct({
   turns_used: Schema.Number,
   last_verdict: Verdict.pipe(optional),
   last_reason: Schema.String.pipe(optional),
+  /**
+   * The judge session that produced `last_verdict` — the pointer a client that
+   * arrives late needs to open the ruling it is reading (ADR-0008, "the seam").
+   * Set whenever the judge ran as a session; absent before the first verdict.
+   */
+  last_verdict_session: SessionID.pipe(optional),
   /**
    * QA's record for the round it reviewed (ADR-0006, "the record"). Present
    * only between a QA pass and the loop weighing it; the judge reads it, and it

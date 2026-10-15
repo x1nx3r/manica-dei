@@ -218,9 +218,13 @@ Two things do remain, and neither is the client:
   and the parts do not need a pointer. What reaches a client watching the session
   under test is the **event**, and both now carry it: the verdict first
   (`d518bb6be`), the review with the QA child's id the call site already held.
-  What still has no pointer is the projection, for a client that arrives after
-  the fact and sees no events; closing that means a field on the goal row, and
-  `GET /session/:id/children` is the seam's answer meanwhile.
+  What still had no pointer was the projection, for a client that arrives after
+  the fact and sees no events. It has one now (`20261015120000` and the wire
+  field): the goal row keeps the judge session beside the last verdict, so
+  `GET /session/:id/goal` serves the ruling's source directly, and a late client
+  no longer needs the children route to find it. What the projection still does
+  not carry is the handoff — that rides the event alone, and the verdict card in
+  the timeline is where it lives.
 - the **casts accumulate**, one per new surface, until an avenue moves the app
   onto the current client — the verdict event's `roleSessionID` is read through
   one today. That avenue is planned separately

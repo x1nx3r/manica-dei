@@ -16,10 +16,10 @@ export type GoalVerdict = NonNullable<SessionGoalInfo["last_verdict"]>
 /**
  * Fork ADR-0008: the last judgement as the trail carried it.
  *
- * `GET /session/:id/goal` holds the verdict and its reason, but not the judge's
- * three-part handoff and not the judge's own session. Those ride the
- * `session.goal.verdict` event, so they are kept here beside the fetch rather
- * than asked of the projection twice.
+ * `GET /session/:id/goal` holds the verdict, its reason and the judge session
+ * that delivered it. The one thing it does not hold is the judge's three-part
+ * handoff, which rides only the `session.goal.verdict` event — so the payload is
+ * kept here beside the fetch rather than asked of the projection twice.
  */
 export type SessionGoalRuling = {
   round?: number
@@ -34,9 +34,10 @@ export type SessionGoalRuling = {
  * How the run ended, from either source.
  *
  * A client that was present when the judge ruled has the ruling the trail
- * carried. A client that arrived after the fact has only the projection, which
- * holds the verdict and its reason — and neither the handoff nor the judge's
- * session, which is the difference the caller can see.
+ * carried — the handoff and the judge session in the payload. A client that
+ * arrived after the fact has the projection, which carries the verdict, its
+ * reason and the judge session, but not the handoff: that is the difference the
+ * caller can see.
  */
 export function goalConclusion(
   info: SessionGoalInfo,
@@ -44,7 +45,11 @@ export function goalConclusion(
 ): SessionGoalRuling | undefined {
   if (ruling) return ruling
   if (!info.last_verdict) return undefined
-  return { verdict: info.last_verdict, reason: info.last_reason ?? "" }
+  return {
+    verdict: info.last_verdict,
+    reason: info.last_reason ?? "",
+    ...(info.last_verdict_session ? { roleSessionID: info.last_verdict_session } : {}),
+  }
 }
 
 /**

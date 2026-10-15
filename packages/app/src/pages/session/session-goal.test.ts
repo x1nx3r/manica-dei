@@ -41,11 +41,20 @@ describe("goalConclusion", () => {
   })
 
   test("the projection concludes a run the client arrived after the fact for", () => {
-    const conclusion = goalConclusion(goal({ last_verdict: "done", last_reason: "the gate passes" }), undefined)
-    expect(conclusion).toEqual({ verdict: "done", reason: "the gate passes" })
-    // What a late client cannot get from the projection: the handoff and the
-    // judge's own session. The verdict card in the timeline carries the first.
+    const conclusion = goalConclusion(
+      goal({ last_verdict: "done", last_reason: "the gate passes", last_verdict_session: "ses_judge" }),
+      undefined,
+    )
+    expect(conclusion).toEqual({ verdict: "done", reason: "the gate passes", roleSessionID: "ses_judge" })
+    // What a late client cannot get from the projection: the handoff. The
+    // pointer rides the row now; the relay is in the verdict card in the
+    // timeline.
     expect(conclusion?.handoff).toBeUndefined()
+  })
+
+  test("a projection whose judge predates the pointer concludes without it", () => {
+    const conclusion = goalConclusion(goal({ last_verdict: "done", last_reason: "the gate passes" }), undefined)
+    expect(conclusion).toEqual({ verdict: "done", reason: "the gate passes", roleSessionID: undefined })
     expect(conclusion?.roleSessionID).toBeUndefined()
   })
 

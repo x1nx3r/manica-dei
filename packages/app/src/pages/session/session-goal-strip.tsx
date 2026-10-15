@@ -83,9 +83,8 @@ export function SessionGoalStrip(props: {
 
   /**
    * How the run ended, from either source: the ruling the trail delivered, or —
-   * for a client that arrived after the fact — the verdict the projection holds.
-   * The second carries no handoff and no judge session, because the projection
-   * has neither.
+   * for a client that arrived after the fact — the projection, which carries the
+   * verdict, its reason and the judge's session, but not the handoff.
    */
   const conclusion = createMemo(() => goalConclusion(props.goal, props.ruling))
   const gate = createMemo<SessionGoalGate | undefined>(() => props.goal.gates[0])

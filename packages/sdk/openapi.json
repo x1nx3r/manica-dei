@@ -484,96 +484,6 @@
         ]
       }
     },
-    "/global/upgrade": {
-      "post": {
-        "tags": ["global"],
-        "operationId": "global.upgrade",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Upgrade result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "success": {
-                          "type": "boolean",
-                          "enum": [true]
-                        },
-                        "version": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["success", "version"],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "success": {
-                          "type": "boolean",
-                          "enum": [false]
-                        },
-                        "error": {
-                          "type": "string"
-                        }
-                      },
-                      "required": ["success", "error"],
-                      "additionalProperties": false
-                    }
-                  ],
-                  "description": "Upgrade result"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "BadRequest | InvalidRequestError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/effect_HttpApiError_BadRequest"
-                    },
-                    {
-                      "$ref": "#/components/schemas/InvalidRequestError"
-                    }
-                  ]
-                }
-              }
-            }
-          }
-        },
-        "description": "Upgrade opencode to the specified version.",
-        "summary": "Upgrade opencode",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "target": {
-                    "type": "string"
-                  }
-                },
-                "required": ["target"],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.global.upgrade({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/event": {
       "get": {
         "tags": ["event"],
@@ -861,231 +771,6 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.capabilities.get({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/experimental/console": {
-      "get": {
-        "tags": ["experimental"],
-        "operationId": "experimental.console.get",
-        "parameters": [
-          {
-            "name": "directory",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "workspace",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Active Console provider metadata",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ConsoleState"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "InternalServerError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/effect_HttpApiError_InternalServerError"
-                }
-              }
-            }
-          }
-        },
-        "description": "Get the active Console org name and the set of provider IDs managed by that Console org.",
-        "summary": "Get active Console provider metadata",
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.console.get({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/experimental/console/orgs": {
-      "get": {
-        "tags": ["experimental"],
-        "operationId": "experimental.console.listOrgs",
-        "parameters": [
-          {
-            "name": "directory",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "workspace",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Switchable Console orgs",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "orgs": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "accountID": {
-                            "type": "string"
-                          },
-                          "accountEmail": {
-                            "type": "string"
-                          },
-                          "accountUrl": {
-                            "type": "string"
-                          },
-                          "orgID": {
-                            "type": "string"
-                          },
-                          "orgName": {
-                            "type": "string"
-                          },
-                          "active": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": ["accountID", "accountEmail", "accountUrl", "orgID", "orgName", "active"],
-                        "additionalProperties": false
-                      }
-                    }
-                  },
-                  "required": ["orgs"],
-                  "additionalProperties": false,
-                  "description": "Switchable Console orgs"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "InternalServerError",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/effect_HttpApiError_InternalServerError"
-                }
-              }
-            }
-          }
-        },
-        "description": "Get the available Console orgs across logged-in accounts, including the current active org.",
-        "summary": "List switchable Console orgs",
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.console.listOrgs({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/experimental/console/switch": {
-      "post": {
-        "tags": ["experimental"],
-        "operationId": "experimental.console.switchOrg",
-        "parameters": [
-          {
-            "name": "directory",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          },
-          {
-            "name": "workspace",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "required": false
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Switch success",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "boolean",
-                  "description": "Switch success"
-                }
-              }
-            }
-          }
-        },
-        "description": "Persist a new active Console account/org selection for the current local OpenCode state.",
-        "summary": "Switch active Console org",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "accountID": {
-                    "type": "string"
-                  },
-                  "orgID": {
-                    "type": "string"
-                  }
-                },
-                "required": ["accountID", "orgID"],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.experimental.console.switchOrg({\n  ...\n})"
           }
         ]
       }
@@ -6006,6 +5691,86 @@
           {
             "lang": "js",
             "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.todo({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/goal": {
+      "get": {
+        "tags": ["session"],
+        "operationId": "session.goal",
+        "parameters": [
+          {
+            "name": "sessionID",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses"
+            },
+            "required": true
+          },
+          {
+            "name": "directory",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "workspace",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Goal projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionGoalInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest | InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/effect_HttpApiError_BadRequest"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvalidRequestError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Retrieve the goal projection for a session: the contract, the phase, the budget, and the last verdict.",
+        "summary": "Get session goal",
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createOpencodeClient } from \"@opencode-ai/sdk\n\nconst client = createOpencodeClient()\nawait client.session.goal({\n  ...\n})"
           }
         ]
       }
@@ -15390,6 +15155,15 @@
             "$ref": "#/components/schemas/EventSessionNextRevertCommitted"
           },
           {
+            "$ref": "#/components/schemas/EventSessionGoalPhase"
+          },
+          {
+            "$ref": "#/components/schemas/EventSessionGoalReview"
+          },
+          {
+            "$ref": "#/components/schemas/EventSessionGoalVerdict"
+          },
+          {
             "$ref": "#/components/schemas/EventMessagePartDelta"
           },
           {
@@ -17145,6 +16919,68 @@
         "required": ["id", "sessionID", "messageID", "type", "auto"],
         "additionalProperties": false
       },
+      "GoalReviewPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^prt"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^msg"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["goal.review"]
+          },
+          "record": {
+            "$ref": "#/components/schemas/SessionGoalRecord"
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "record"],
+        "additionalProperties": false
+      },
+      "GoalVerdictPart": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^prt"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "messageID": {
+            "type": "string",
+            "pattern": "^msg"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["goal.verdict"]
+          },
+          "round": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/SessionGoalVerdict"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "handoff": {
+            "$ref": "#/components/schemas/SessionGoalHandoff"
+          }
+        },
+        "required": ["id", "sessionID", "messageID", "type", "round", "verdict", "reason"],
+        "additionalProperties": false
+      },
       "Part": {
         "anyOf": [
           {
@@ -17182,6 +17018,12 @@
           },
           {
             "$ref": "#/components/schemas/CompactionPart"
+          },
+          {
+            "$ref": "#/components/schemas/GoalReviewPart"
+          },
+          {
+            "$ref": "#/components/schemas/GoalVerdictPart"
           }
         ]
       },
@@ -19012,6 +18854,179 @@
                       }
                     },
                     "required": ["timestamp", "sessionID", "messageID"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["session.goal.phase"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "phase": {
+                        "$ref": "#/components/schemas/SessionGoalPhase"
+                      },
+                      "status": {
+                        "$ref": "#/components/schemas/SessionGoalStatus"
+                      },
+                      "round": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["NaN"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["-Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity", "-Infinity", "NaN"]
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["sessionID", "phase", "status", "round"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["session.goal.review"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "roleSessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "round": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["NaN"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["-Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity", "-Infinity", "NaN"]
+                          }
+                        ]
+                      },
+                      "record": {
+                        "$ref": "#/components/schemas/SessionGoalRecord"
+                      }
+                    },
+                    "required": ["sessionID", "round", "record"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["id", "type", "properties"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^evt_"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["session.goal.verdict"]
+                  },
+                  "properties": {
+                    "type": "object",
+                    "properties": {
+                      "sessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "roleSessionID": {
+                        "type": "string",
+                        "pattern": "^ses"
+                      },
+                      "round": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["NaN"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["-Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity", "-Infinity", "NaN"]
+                          }
+                        ]
+                      },
+                      "verdict": {
+                        "$ref": "#/components/schemas/SessionGoalVerdict"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "handoff": {
+                        "$ref": "#/components/schemas/SessionGoalHandoff"
+                      }
+                    },
+                    "required": ["sessionID", "round", "verdict", "reason"],
                     "additionalProperties": false
                   }
                 },
@@ -21878,37 +21893,6 @@
         "required": ["backgroundSubagents"],
         "additionalProperties": false
       },
-      "ConsoleState": {
-        "type": "object",
-        "properties": {
-          "consoleManagedProviders": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "activeOrgName": {
-            "type": "string"
-          },
-          "switchableOrgCount": {
-            "type": "integer",
-            "minimum": 0
-          }
-        },
-        "required": ["consoleManagedProviders", "switchableOrgCount"],
-        "additionalProperties": false
-      },
-      "effect_HttpApiError_InternalServerError": {
-        "type": "object",
-        "properties": {
-          "_tag": {
-            "type": "string",
-            "enum": ["InternalServerError"]
-          }
-        },
-        "required": ["_tag"],
-        "additionalProperties": false
-      },
       "ToolListItem": {
         "type": "object",
         "properties": {
@@ -23092,6 +23076,17 @@
           }
         }
       },
+      "effect_HttpApiError_InternalServerError": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["InternalServerError"]
+          }
+        },
+        "required": ["_tag"],
+        "additionalProperties": false
+      },
       "TextPartInput": {
         "type": "object",
         "properties": {
@@ -23849,6 +23844,159 @@
           }
         ]
       },
+      "session.goal.phase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.goal.phase"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "phase": {
+                "$ref": "#/components/schemas/SessionGoalPhase"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionGoalStatus"
+              },
+              "round": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              }
+            },
+            "required": ["sessionID", "phase", "status", "round"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
+      "session.goal.verdict": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.goal.verdict"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "roleSessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "round": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
+              "verdict": {
+                "$ref": "#/components/schemas/SessionGoalVerdict"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "handoff": {
+                "$ref": "#/components/schemas/SessionGoalHandoff"
+              }
+            },
+            "required": ["sessionID", "round", "verdict", "reason"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
       "session.status": {
         "type": "object",
         "properties": {
@@ -24140,6 +24288,15 @@
           },
           {
             "$ref": "#/components/schemas/SessionNextRevertCommitted"
+          },
+          {
+            "$ref": "#/components/schemas/session.goal.phase"
+          },
+          {
+            "$ref": "#/components/schemas/SessionGoalReview"
+          },
+          {
+            "$ref": "#/components/schemas/session.goal.verdict"
           },
           {
             "$ref": "#/components/schemas/MessagePartDelta"
@@ -24537,6 +24694,102 @@
         "required": ["directory"],
         "additionalProperties": false
       },
+      "SessionGoalProbe": {
+        "type": "object",
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "description": "Which clause of the contract this probes"
+          },
+          "derived": {
+            "type": "boolean",
+            "description": "true = QA's own probe (the holdout); false = the author's check"
+          },
+          "command": {
+            "type": "string",
+            "description": "What was executed"
+          },
+          "output": {
+            "type": "string",
+            "description": "The captured tail of the command's output"
+          },
+          "result": {
+            "type": "string",
+            "enum": ["pass", "fail", "could-not-run"]
+          }
+        },
+        "required": ["criterion", "derived", "command", "output", "result"],
+        "additionalProperties": false
+      },
+      "SessionGoalFinding": {
+        "type": "object",
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "description": "The clause of the contract this contradicts"
+          },
+          "detail": {
+            "type": "string",
+            "description": "The contradiction, in one or two sentences"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "file:line, or the command and its output"
+          }
+        },
+        "required": ["criterion", "detail", "evidence"],
+        "additionalProperties": false
+      },
+      "SessionGoalRecord": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "The snapshot hash reviewed — the record's binding"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["clean", "contradicted"]
+          },
+          "probes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionGoalProbe"
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionGoalFinding"
+            }
+          }
+        },
+        "required": ["state", "verdict", "probes", "findings"],
+        "additionalProperties": false
+      },
+      "SessionGoalVerdict": {
+        "type": "string",
+        "enum": ["done", "blocked", "continue", "wait"]
+      },
+      "SessionGoalHandoff": {
+        "type": "object",
+        "properties": {
+          "tested": {
+            "type": "string",
+            "description": "The probe's criterion and what it observed"
+          },
+          "implementation": {
+            "type": "string",
+            "description": "What the artifact does, per QA's read — file:line"
+          },
+          "cause": {
+            "type": "string",
+            "description": "The contradiction, or why the finding does not hold"
+          }
+        },
+        "required": ["tested", "implementation", "cause"],
+        "additionalProperties": false
+      },
       "ModelRef": {
         "type": "object",
         "properties": {
@@ -24763,6 +25016,14 @@
         },
         "required": ["messageID"],
         "additionalProperties": false
+      },
+      "SessionGoalPhase": {
+        "type": "string",
+        "enum": ["dev", "qa", "judge"]
+      },
+      "SessionGoalStatus": {
+        "type": "string",
+        "enum": ["active", "done", "blocked"]
       },
       "PermissionV2Source": {
         "type": "object",
@@ -27109,6 +27370,240 @@
         "required": ["ticket", "expires_in"],
         "additionalProperties": false
       },
+      "SessionGoalSize": {
+        "type": "string",
+        "enum": ["small", "medium", "large", "huge"]
+      },
+      "SessionGoalContract": {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "The single end state that must be true when done"
+          },
+          "verification": {
+            "type": "string",
+            "description": "The command that proves the outcome"
+          },
+          "constraints": {
+            "type": "string",
+            "description": "What must not change or regress"
+          },
+          "boundaries": {
+            "type": "string",
+            "description": "Files, directories, tools, systems in scope"
+          },
+          "stop_when": {
+            "type": "string",
+            "description": "When to stop and ask instead of pushing on"
+          }
+        },
+        "required": ["outcome", "verification", "constraints", "boundaries", "stop_when"],
+        "additionalProperties": false
+      },
+      "SessionGoalGate": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "max_retries": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "attempts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "last_exit_code": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "last_output_tail": {
+            "type": "string"
+          }
+        },
+        "required": ["command", "timeout_seconds", "max_retries", "attempts", "last_exit_code", "last_output_tail"],
+        "additionalProperties": false
+      },
+      "SessionGoalInfo": {
+        "type": "object",
+        "properties": {
+          "goal": {
+            "type": "string",
+            "description": "The goal as the agent restated it at commit"
+          },
+          "size": {
+            "$ref": "#/components/schemas/SessionGoalSize"
+          },
+          "size_reason": {
+            "type": "string"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/SessionGoalContract"
+          },
+          "gates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionGoalGate"
+            }
+          },
+          "authorized": {
+            "type": "boolean",
+            "description": "The commit gate: false until a human authorizes"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/SessionGoalPhase"
+          },
+          "turn_budget": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "turns_used": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
+          "last_verdict": {
+            "$ref": "#/components/schemas/SessionGoalVerdict"
+          },
+          "last_reason": {
+            "type": "string"
+          },
+          "last_verdict_session": {
+            "type": "string",
+            "pattern": "^ses"
+          },
+          "qa_record": {
+            "$ref": "#/components/schemas/SessionGoalRecord"
+          },
+          "state_hash": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionGoalStatus"
+          }
+        },
+        "required": ["goal", "gates", "authorized", "phase", "turn_budget", "turns_used", "state_hash", "status"],
+        "additionalProperties": false
+      },
       "WorkspaceEventConnectionStatus": {
         "type": "object",
         "properties": {
@@ -27809,6 +28304,50 @@
         "required": ["type", "id", "name", "state", "time"],
         "additionalProperties": false
       },
+      "SessionMessageAssistantGoalReview": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["goal.review"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/SessionGoalRecord"
+          }
+        },
+        "required": ["type", "id", "record"],
+        "additionalProperties": false
+      },
+      "SessionMessageAssistantGoalVerdict": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["goal.verdict"]
+          },
+          "id": {
+            "type": "string"
+          },
+          "round": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/SessionGoalVerdict"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "handoff": {
+            "$ref": "#/components/schemas/SessionGoalHandoff"
+          }
+        },
+        "required": ["type", "id", "round", "verdict", "reason"],
+        "additionalProperties": false
+      },
       "SessionMessageAssistant": {
         "type": "object",
         "properties": {
@@ -27854,6 +28393,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/SessionMessageAssistantTool"
+                },
+                {
+                  "$ref": "#/components/schemas/SessionMessageAssistantGoalReview"
+                },
+                {
+                  "$ref": "#/components/schemas/SessionMessageAssistantGoalVerdict"
                 }
               ]
             }
@@ -31477,6 +32022,80 @@
               }
             },
             "required": ["timestamp", "sessionID", "messageID", "text"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "data"],
+        "additionalProperties": false
+      },
+      "SessionGoalReview": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.goal.review"]
+          },
+          "durable": {
+            "type": "object",
+            "properties": {
+              "aggregateID": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": ["aggregateID", "seq", "version"],
+            "additionalProperties": false
+          },
+          "location": {
+            "$ref": "#/components/schemas/LocationRef"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "roleSessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "round": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
+              "record": {
+                "$ref": "#/components/schemas/SessionGoalRecord"
+              }
+            },
+            "required": ["sessionID", "round", "record"],
             "additionalProperties": false
           }
         },
@@ -35424,6 +36043,167 @@
               }
             },
             "required": ["timestamp", "sessionID", "messageID"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventSessionGoalPhase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.goal.phase"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "phase": {
+                "$ref": "#/components/schemas/SessionGoalPhase"
+              },
+              "status": {
+                "$ref": "#/components/schemas/SessionGoalStatus"
+              },
+              "round": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              }
+            },
+            "required": ["sessionID", "phase", "status", "round"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventSessionGoalReview": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.goal.review"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "roleSessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "round": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
+              "record": {
+                "$ref": "#/components/schemas/SessionGoalRecord"
+              }
+            },
+            "required": ["sessionID", "round", "record"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["id", "type", "properties"],
+        "additionalProperties": false
+      },
+      "EventSessionGoalVerdict": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^evt_"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["session.goal.verdict"]
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "roleSessionID": {
+                "type": "string",
+                "pattern": "^ses"
+              },
+              "round": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
+              "verdict": {
+                "$ref": "#/components/schemas/SessionGoalVerdict"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "handoff": {
+                "$ref": "#/components/schemas/SessionGoalHandoff"
+              }
+            },
+            "required": ["sessionID", "round", "verdict", "reason"],
             "additionalProperties": false
           }
         },

@@ -138,6 +138,9 @@ export const GoalTable = sqliteTable("session_goal", {
   last_verdict: text().$type<SessionGoal.Verdict>(),
   // Why the judge returned that verdict — the sentence a human reads.
   last_reason: text(),
+  // Fork ADR-0008: the judge session that produced `last_verdict` — the pointer
+  // a late client needs to open the ruling it is reading (ADR-0008, "the seam").
+  last_verdict_session: text().$type<SessionSchema.ID>(),
   // Fork ADR-0006: QA's record for the round it reviewed. Present only between
   // a QA pass and the loop weighing it; the judge reads it.
   qa_record: text({ mode: "json" }).$type<SessionGoal.Record>(),

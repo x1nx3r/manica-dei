@@ -53,8 +53,10 @@ export interface Interface {
    */
   readonly burnTurn: (sessionID: SessionID) => Effect.Effect<void>
   /**
-   * Records one loop turn: bumps the count and stores the verdict, why, and the
-   * workspace state the verdict applied to.
+   * Records one loop turn: bumps the count and stores the verdict, why, the
+   * workspace state the verdict applied to, and — when there was one — the
+   * judge session that delivered it, so a late client can open the ruling
+   * (ADR-0008, "the seam").
    */
   readonly record: (input: {
     sessionID: SessionID
@@ -62,6 +64,8 @@ export interface Interface {
     reason?: string
     /** The snapshot hash of the message the judge read, when there is one. */
     state?: string
+    /** The judge's own session, when the judgement ran as one. */
+    session?: SessionID
   }) => Effect.Effect<void>
   readonly clear: (sessionID: SessionID) => Effect.Effect<void>
 }
@@ -124,6 +128,9 @@ const layer = Layer.effect(
         turns_used: row.turns_used,
         ...(row.last_verdict === null ? {} : { last_verdict: row.last_verdict }),
         ...(row.last_reason === null ? {} : { last_reason: row.last_reason }),
+        ...(row.last_verdict_session === null || row.last_verdict_session === undefined
+          ? {}
+          : { last_verdict_session: row.last_verdict_session }),
         ...(row.qa_record === null ? {} : { qa_record: row.qa_record }),
         state_hash: row.state_hash,
         status: row.status,
@@ -209,6 +216,7 @@ const layer = Layer.effect(
       verdict: SessionGoal.Verdict
       reason?: string
       state?: string
+      session?: SessionID
     }) {
       // Increment in SQL, not read-then-write: two turns must not lose one.
       yield* db
@@ -217,6 +225,10 @@ const layer = Layer.effect(
           turns_used: sql`${GoalTable.turns_used} + 1`,
           last_verdict: input.verdict,
           last_reason: input.reason ?? null,
+          // The judge's own session, for the pointer a late client reads
+          // (ADR-0008, "the seam"). Absent when the judgement never reached a
+          // session — a transport failure, or a server predating step 3.
+          last_verdict_session: input.session ?? null,
           // The workspace state this verdict applied to (ADR-0006, "state
           // binding"). Recorded here, and enforced by the record's own binding.
           state_hash: input.state ?? null,

@@ -1229,6 +1229,7 @@ export type GlobalEvent = {
         type: "session.goal.review"
         properties: {
           sessionID: string
+          roleSessionID?: string
           round: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
           record: SessionGoalRecord
         }
@@ -1238,6 +1239,7 @@ export type GlobalEvent = {
         type: "session.goal.verdict"
         properties: {
           sessionID: string
+          roleSessionID?: string
           round: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
           verdict: SessionGoalVerdict2
           reason: string
@@ -2882,6 +2884,7 @@ export type SessionGoalVerdict = {
   location?: LocationRef
   data: {
     sessionID: string
+    roleSessionID?: string
     round: number | "NaN" | "Infinity" | "-Infinity"
     verdict: SessionGoalVerdict2
     reason: string
@@ -4067,6 +4070,7 @@ export type SessionGoalInfo = {
   turns_used: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   last_verdict?: SessionGoalVerdict2
   last_reason?: string
+  last_verdict_session?: string
   qa_record?: SessionGoalRecord
   state_hash: string
   status: SessionGoalStatus
@@ -5553,6 +5557,7 @@ export type SessionGoalReview = {
   location?: LocationRef
   data: {
     sessionID: string
+    roleSessionID?: string
     round: number | "NaN" | "Infinity" | "-Infinity"
     record: SessionGoalRecord
   }
@@ -6926,6 +6931,7 @@ export type EventSessionGoalReview = {
   type: "session.goal.review"
   properties: {
     sessionID: string
+    roleSessionID?: string
     round: number | "NaN" | "Infinity" | "-Infinity"
     record: SessionGoalRecord
   }
@@ -6936,6 +6942,7 @@ export type EventSessionGoalVerdict = {
   type: "session.goal.verdict"
   properties: {
     sessionID: string
+    roleSessionID?: string
     round: number | "NaN" | "Infinity" | "-Infinity"
     verdict: SessionGoalVerdict2
     reason: string

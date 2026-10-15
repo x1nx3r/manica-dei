@@ -308,6 +308,9 @@ const layer = Layer.effect(
           verdict: judgement.verdict,
           reason: judgement.reason,
           state: input.state,
+          // The judge's own session rides the row, so a late client can open
+          // the ruling without the event bus (ADR-0008, "the seam").
+          ...(result.roleSessionID ? { session: result.roleSessionID } : {}),
         })
         // The verdict carries the substance (ADR-0008): the ruling, why, and the
         // three-part relay when the judge supplied one. `round` is the round the
