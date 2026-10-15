@@ -59,6 +59,18 @@ done`, `turns_used 2` — the budget counted both certified rounds.
    handoff stamp kept and merging, so the round number attaches before the first
    probe and the row deep-links to the transcript the moment the pass starts.
 
+   **Where each piece of the client work actually lives:** the chips, the
+   projection-synthesized judge check, and the throttled self-heal refetch are in
+   `54294fec5`, _with_ the commit-question change — but that commit's message
+   names only the question, so a bisect from this finding should read that hash
+   for all four. The ladder the judge read one letter per line was the _third_
+   piece of this run's findings, not recorded above when found: the render bug
+   was a spread leaking `indent()`'s string (`...(cond ? [] : indent(...))`),
+   rendering the record per character — fixed in `fe6323a76` with the pins in
+   `core/test/session/goal/judge-render.test.ts`. The state-hash echo is closed
+   in `d82d76a79`: both prompts now name what the token is where the reviewer
+   reads it.
+
 2. **The strip's live-arrival leg is unverified.** A client that was open when
    the goal was set showed no strip; a client that reloaded showed it, which
    localizes the suspect to the event→refetch path (`session.goal.phase` →
