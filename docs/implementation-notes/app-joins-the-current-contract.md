@@ -48,13 +48,13 @@ or not at all.
 The app speaks the **V1 surface**; the workspace client speaks the current one.
 They are not the same interface, and the differences are not cosmetic:
 
-| | the app (vendored tarball) | `packages/client` (workspace) |
-|---|---|---|
-| entrypoints | `.`, `/promise`, `/effect` (built `dist/`) | `.`, `/effect` (TypeScript source) |
-| type names | domain — `SessionApi`, `SessionInfo`, `FileDiffInfo` | endpoint — `SessionsListOutput`, `SessionsPromptInput` |
-| events | `session.tool.*`, `session.agent.selected`, `session.text.*` | `session.next.tool.*`, `session.next.agent.switched`, `session.next.text.started` |
-| tool state | `state.metadata`, status `"streaming"` | `state.structured`, status `"pending"` |
-| groups | `mcp`, `catalog` and endpoints `command`, `shell`, `rename`, `remove`, `fork` | not present |
+|             | the app (vendored tarball)                                                    | `packages/client` (workspace)                                                     |
+| ----------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| entrypoints | `.`, `/promise`, `/effect` (built `dist/`)                                    | `.`, `/effect` (TypeScript source)                                                |
+| type names  | domain — `SessionApi`, `SessionInfo`, `FileDiffInfo`                          | endpoint — `SessionsListOutput`, `SessionsPromptInput`                            |
+| events      | `session.tool.*`, `session.agent.selected`, `session.text.*`                  | `session.next.tool.*`, `session.next.agent.switched`, `session.next.text.started` |
+| tool state  | `state.metadata`, status `"streaming"`                                        | `state.structured`, status `"pending"`                                            |
+| groups      | `mcp`, `catalog` and endpoints `command`, `shell`, `rename`, `remove`, `fork` | not present                                                                       |
 
 That last row is the one that decides the size: **the workspace client is not a
 superset.** The app calls `api.mcp.list/connect/disconnect`, `api.mcp.resource.catalog`,
@@ -92,13 +92,13 @@ existing moves. This is what the goal loop's UI needs, and it is small.
 belong, and they are the reason the two sizes must not be confused:
 
 - **Imports and type names**: 46 statements across 42 files, each needing a
-  specifier change *and* a name remap, because the workspace `.` is neither
+  specifier change _and_ a name remap, because the workspace `.` is neither
   `/promise` nor those names. Roughly 120–200 lines, and the types ripple into the
   values used at those sites.
 - **The event layer**: `server-session-v2-reducer.ts` (509 lines, ~30 switch
   cases), `server-session.ts` (`applyV2`, `:946-983`), `server-sdk.tsx`
   (`CurrentDelta`), `server-compat.ts`. Several hundred lines across roughly six
-  files. This is the cost of *retiring* `session.*`, not of adding a v2 path — the
+  files. This is the cost of _retiring_ `session.*`, not of adding a v2 path — the
   app can keep the V1 names and grow the other half beside them.
 - **The missing surfaces**: `mcp`, `catalog`, `command`, `shell`, `rename`,
   `remove`, `fork`. Either the protocol regains them or the app falls back to the
@@ -123,13 +123,13 @@ app needs — `mcp`, `catalog`, `command`, `shell`, `rename`, `remove`, `fork` �
 does the app keep a fallback to the V1 SDK for the parts the protocol does not
 cover?
 
-My lean: extend the protocol, because the client is *generated* from it, so
+My lean: extend the protocol, because the client is _generated_ from it, so
 coverage is the protocol's business. Before that is possible: confirm which of
 those the server actually serves today. The MCP group exists; the rest is unknown.
 
 **2. The event surface — a decision only for the full migration.** The avenue keeps
 the V1 names and grows a v2 path beside them; the reducer rewrite is the price of
-*retiring* V1, not of adding v2. If and when V1 is retired, the question is
+_retiring_ V1, not of adding v2. If and when V1 is retired, the question is
 whether the app's reducer moves to `session.next.*` first, or the server keeps
 emitting both names until the app is on v2 everywhere.
 
@@ -156,6 +156,9 @@ ADR-0008's steps. The cast is committed there and this phase removes it.
 
 ## What it unblocks
 
-Every future contract addition reaching the app — including ADR-0008's remaining
-step 4 work: the phase chip, the goal panel and the handoff view, which all need
-`GET /session/:id/goal` to be reachable from the app.
+Every future contract addition reaching the app. ADR-0008's step 4 no longer waits
+on it — the goal strip, the review card and the verdict card are in — but each
+came at the price of its cast: the two cards read their parts through one, and the
+verdict event's `roleSessionID` is read through another (the field is on the wire
+and off the generated type until regeneration). This avenue is what removes the
+price, so the next contract addition costs nothing.
