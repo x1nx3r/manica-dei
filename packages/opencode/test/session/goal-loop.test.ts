@@ -955,9 +955,11 @@ describe("session.goal-loop", () => {
       expect(asked.decision._tag).toBe("qa")
       if (asked.decision._tag !== "qa") return
 
-      // Two: QA's record is submitted; the phase moves to `judge`.
+      // Two: QA's record is submitted; the phase moves to `judge`. The reviewer's
+      // own session rides the event, the way the judge's rides the verdict.
       const record = contradictedRecord(asked.decision.state)
-      yield* loop.submitRecord({ sessionID: info.id, record })
+      const qaSession = SessionID.make("ses_qa_1")
+      yield* loop.submitRecord({ sessionID: info.id, record, roleSessionID: qaSession })
 
       // Three: the judge weighs it and rules.
       const handoff = {
@@ -978,7 +980,9 @@ describe("session.goal-loop", () => {
         { sessionID: info.id, phase: "judge", status: "active", round: 1 },
         { sessionID: info.id, phase: "dev", status: "active", round: 2 },
       ])
-      expect(data(SessionGoalEvent.Event.Review.type)).toEqual([{ sessionID: info.id, round: 1, record }])
+      expect(data(SessionGoalEvent.Event.Review.type)).toEqual([
+        { sessionID: info.id, roleSessionID: qaSession, round: 1, record },
+      ])
       expect(data(SessionGoalEvent.Event.Verdict.type)).toEqual([
         {
           sessionID: info.id,

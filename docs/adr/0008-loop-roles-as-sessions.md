@@ -212,12 +212,15 @@ layout-continuity test with it.
 
 Two things do remain, and neither is the client:
 
-- the **pointers on the parts**. The events carry the role session's id; the
-  `goal.review` and `goal.verdict` parts do not, so a card in the timeline still
-  cannot link to the session it came from. `goal.review` also has no id at all
-  yet — the QA child's session is known at the call site
-  (`packages/opencode/src/session/prompt.ts`, `runQa`) and is simply not passed.
-  Adding both, and regenerating, is one patch.
+- the **pointers, examined**. A part lives in the role session that produced it —
+  a review card sits in the QA pass's transcript, a verdict card in the judge's —
+  so a card cannot link "to the session it came from" without linking to itself,
+  and the parts do not need a pointer. What reaches a client watching the session
+  under test is the **event**, and both now carry it: the verdict first
+  (`d518bb6be`), the review with the QA child's id the call site already held.
+  What still has no pointer is the projection, for a client that arrives after
+  the fact and sees no events; closing that means a field on the goal row, and
+  `GET /session/:id/children` is the seam's answer meanwhile.
 - the **casts accumulate**, one per new surface, until an avenue moves the app
   onto the current client — the verdict event's `roleSessionID` is read through
   one today. That avenue is planned separately

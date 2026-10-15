@@ -98,7 +98,16 @@ export interface Interface {
    * call site; the loop owns the round, so it owns the record and the phase
    * move that makes the round the one the judge concluded.
    */
-  readonly submitRecord: (input: { sessionID: SessionID; record: SessionGoal.Record }) => Effect.Effect<void>
+  /**
+   * The QA pass hands its record to the judge. `roleSessionID` is the reviewer's
+   * own session when the caller knows it: it rides the event, so the trail
+   * carries the same pointer for both roles (ADR-0008, "the seam").
+   */
+  readonly submitRecord: (input: {
+    sessionID: SessionID
+    record: SessionGoal.Record
+    roleSessionID?: SessionID
+  }) => Effect.Effect<void>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionGoalLoop") {}
@@ -384,6 +393,7 @@ const layer = Layer.effect(
     const submitRecord = Effect.fn("GoalLoop.submitRecord")(function* (input: {
       sessionID: SessionID
       record: SessionGoal.Record
+      roleSessionID?: SessionID
     }) {
       // QA's pass hands the round to the judge: persist the record and move the
       // phase, so the round that concludes is the one that passed through
@@ -397,6 +407,9 @@ const layer = Layer.effect(
       // handoff. Publish it, then the phase move it caused.
       yield* events.publish(SessionGoalEvent.Event.Review, {
         sessionID: input.sessionID,
+        // The reviewer's own session, so the trail carries the pointer the
+        // verdict event carries too (ADR-0008, "the seam").
+        ...(input.roleSessionID ? { roleSessionID: input.roleSessionID } : {}),
         round: goal.turns_used + 1,
         record: input.record,
       })

@@ -536,7 +536,10 @@ const layer = Layer.effect(
           record,
         } satisfies SessionV1.GoalReviewPart)
       }
-      yield* goalLoop.submitRecord({ sessionID: input.sessionID, record })
+      // The reviewer's own session rides the event from here: this is the call
+      // site that knows it, and the trail cannot ask for it later (ADR-0008,
+      // "the seam").
+      yield* goalLoop.submitRecord({ sessionID: input.sessionID, record, roleSessionID: qaSessionID })
     })
 
     const shellImpl = Effect.fn("SessionPrompt.shellImpl")(function* (input: ShellInput, ready?: Latch.Latch) {

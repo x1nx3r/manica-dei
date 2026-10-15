@@ -22,11 +22,19 @@ export const Phase = define({
   },
 })
 
-/** QA's pass, admitted: the record the judge weighs. */
+/**
+ * QA's pass, admitted: the record the judge weighs.
+ *
+ * `roleSessionID` is the reviewer's own session — the same pointer the verdict
+ * event carries, for the same reason: the trail is read without the container,
+ * so a consumer that stores it needs the role's id in the payload, not a second
+ * call it may no longer be able to make.
+ */
 export const Review = define({
   type: "session.goal.review",
   schema: {
     sessionID: SessionID,
+    roleSessionID: SessionID.pipe(optional),
     round: Schema.Number,
     record: SessionGoal.Record,
   },
