@@ -220,13 +220,15 @@ describe("tool.goal", () => {
       const request = yield* answerCommit(question, "Yes, that's what I want")
       yield* Fiber.join(fiber)
 
-      // The human's one chance to agree what done means. Naming each field's
-      // role is the point: a check that does not exercise the outcome has to
-      // look wrong here, not three turns later (ADR-0006).
+      // The human's one chance to agree what done means. The outcome and the check
+      // are restated in the question — a check that does not exercise the outcome
+      // has to look wrong here, not three turns later — and the rest of the
+      // contract is on the goal row, rendered by the client's goal panel beside
+      // the question (ADR-0006).
       const asked = JSON.stringify(request)
       expect(asked).toContain("Done means: the widget renders")
       expect(asked).toContain("I will check it with: bun test widget")
-      expect(asked).toContain("I will stop and ask you if: the spec is ambiguous")
+      expect(asked).toContain("The full contract — must not change, in scope, stop when — is on the goal")
 
       yield* session.remove(info.id)
     }),

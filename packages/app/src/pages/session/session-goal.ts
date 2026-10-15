@@ -31,6 +31,20 @@ export type SessionGoalRuling = {
 }
 
 /**
+ * One role's outcome as the trail announced it: QA's `clean`/`contradicted`,
+ * or the judge's ruling. The `session.goal.review` and `goal.verdict` events
+ * carry `roleSessionID`, and "The Run" rows identify their session by the same
+ * id — so a row and its outcome meet, live, in the client.
+ */
+export type SessionGoalCheck = {
+  role: "qa" | "judge"
+  roleSessionID: string
+  round?: number
+  /** The role's own words: QA's `clean`/`contradicted`, or the judge's verdict. */
+  verdict: string
+}
+
+/**
  * How the run ended, from either source.
  *
  * A client that was present when the judge ruled has the ruling the trail
@@ -164,7 +178,10 @@ export async function loadChildren(
 export function createSessionGoal(sessionID: Accessor<string | undefined>) {
   const sdk = useSDK()
   const serverSDK = useServerSDK()
-  const [store, setStore] = createStore<{ ruling: SessionGoalRuling | undefined }>({ ruling: undefined })
+  const [store, setStore] = createStore<{
+    ruling: SessionGoalRuling | undefined
+    checks: SessionGoalCheck[]
+  }>({ ruling: undefined, checks: [] })
 
   const [goal, { refetch }] = createResource(
     () => sessionID(),
@@ -181,7 +198,24 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     const id = sessionID()
     // Another session is another goal, and another goal's ruling.
     setStore("ruling", undefined)
+    setStore("checks", [])
     if (!id) return
+
+    // A click that arrived after the fact: the projection carries the judge's
+    // verdict and its session, so the run's judge row wears its outcome even
+    // when the client was not present for the judgement. The events are the
+    // precise trail and the projection is the row's own truth.
+    createEffect(() => {
+      const latest = goal()
+      if (!latest) return
+      const verdictSession = latest.last_verdict_session
+      const verdict = latest.last_verdict
+      if (!verdictSession || !verdict) return
+      setStore("checks", (list) => [
+        ...list.filter((item) => item.roleSessionID !== verdictSession),
+        { role: "judge" as const, roleSessionID: verdictSession, verdict },
+      ])
+    })
 
     const refresh = (event: { properties: { sessionID: string } }) => {
       if (event.properties.sessionID !== id) return
@@ -190,9 +224,38 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
       void refetchRoles()
     }
 
+    // The trail carries the outcome; the run's rows display it. Both the review
+    // and the verdict announce their role session, which is the id "The Run"
+    // identifies a row by — so a row and its outcome meet live.
+    const announce = (role: "qa" | "judge") => (event: { properties: Record<string, unknown> }) => {
+      const properties = event.properties as {
+        sessionID?: string
+        roleSessionID?: string
+        round?: number | "NaN" | "Infinity" | "-Infinity"
+        verdict?: string
+      }
+      if (properties.sessionID !== id) return
+      const roleSessionID = properties.roleSessionID
+      const announcedVerdict = properties.verdict
+      if (!roleSessionID || typeof announcedVerdict !== "string") return
+      setStore("checks", (list) => [
+        ...list.filter((item) => item.roleSessionID !== roleSessionID),
+        {
+          role,
+          roleSessionID,
+          round: typeof properties.round === "number" ? properties.round : undefined,
+          verdict: announcedVerdict,
+        },
+      ])
+      void refetchRoles()
+    }
+
     const offs = [
+      // A goal event is the precise trigger, and a message or session event is
+      // the blunt one — a goal set between messages still lands within one
+      // round-trip even if the goal-event leg ever failed.
       events.on("session.goal.phase", refresh),
-      events.on("session.goal.review", refresh),
+      events.on("session.goal.review", announce("qa")),
       events.on("session.goal.verdict", (event) => {
         if (event.properties.sessionID !== id) return
         const properties = event.properties
@@ -204,10 +267,23 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
           ...(properties.handoff ? { handoff: properties.handoff } : {}),
           ...(role ? { roleSessionID: role } : {}),
         })
+        // The judgement is a check like any other: it appears beside the session's rows.
+        announce("judge")(event)
         void refetch()
-        void refetchRoles()
       }),
     ]
+    // The blunt refetches, typed on the same bus so the compiler stays honest,
+    // at most once a second, because they fire on message traffic and not on
+    // goal moves. Registered beside the goal events and deregistered with them.
+    let lastLoose = 0
+    const looseRefetch = () => {
+      if (Date.now() - lastLoose < 1000) return
+      lastLoose = Date.now()
+      void refetch()
+      void refetchRoles()
+    }
+    offs.push(events.on("session.created", looseRefetch), events.on("session.updated", looseRefetch))
+    onCleanup(() => offs.forEach((off) => off()))
     onCleanup(() => offs.forEach((off) => off()))
   })
 
@@ -218,6 +294,8 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     info,
     /** The run's labeled role sessions, from the children route (ADR-0008). */
     roles: createMemo(() => roles() ?? []),
+    /** Each role's outcome as the trail announced it, keyed by the role's session. */
+    checks: () => store.checks,
     /** The last judgement, when the trail delivered one to this client. */
     ruling: () => store.ruling,
   }

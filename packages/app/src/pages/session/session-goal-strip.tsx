@@ -7,6 +7,7 @@ import { useSettings } from "@/context/settings"
 import {
   goalConclusion,
   type GoalVerdict,
+  type SessionGoalCheck,
   type SessionGoalRuling,
   type SessionGoalRole,
 } from "@/pages/session/session-goal"
@@ -29,6 +30,7 @@ export function SessionGoalStrip(props: {
   goal: SessionGoalInfo
   ruling: SessionGoalRuling | undefined
   roles: SessionGoalRole[]
+  checks: SessionGoalCheck[]
   collapsed: boolean
   onToggle: () => void
   centered: boolean
@@ -80,6 +82,30 @@ export function SessionGoalStrip(props: {
   /** The run's roles are labeled with the goal's own words for the phase. */
   const roleLabel = (role: SessionGoalRole["role"]) =>
     role === "judge" ? language.t("session.goal.phase.judge") : language.t("session.goal.phase.qa")
+
+  /** A row's check, if the trail announced one for this role session. */
+  const checkFor = (roleSessionID: string) => props.checks.find((item) => item.roleSessionID === roleSessionID)
+
+  /** The trail's words for the role's outcome — QA's or the judge's — in the
+   * same strings the cards use. */
+  const checkLabel = (role: { role: "qa" | "judge" }, verdict: string | undefined) => {
+    if (!verdict) return ""
+    if (role.role === "judge") {
+      switch (verdict) {
+        case "done":
+          return language.t("ui.messagePart.goal.verdict.done")
+        case "blocked":
+          return language.t("ui.messagePart.goal.verdict.blocked")
+        case "wait":
+          return language.t("ui.messagePart.goal.verdict.wait")
+        default:
+          return language.t("ui.messagePart.goal.verdict.continue")
+      }
+    }
+    return verdict === "contradicted"
+      ? language.t("ui.messagePart.goal.review.verdict.contradicted")
+      : language.t("ui.messagePart.goal.review.verdict.clean")
+  }
 
   /**
    * How the run ended, from either source: the ruling the trail delivered, or —
@@ -313,6 +339,7 @@ export function SessionGoalStrip(props: {
                         type="button"
                         data-slot="session-goal-role"
                         data-role={role.role}
+                        data-check={checkFor(role.id)?.verdict}
                         classList={{
                           "flex items-center gap-2 rounded-md px-2 py-0.5 text-left": true,
                           "bg-v2-background-bg-layer-02 text-v2-text-text-muted hover:text-v2-text-text-base": v2(),
@@ -331,6 +358,15 @@ export function SessionGoalStrip(props: {
                         <span data-slot="session-goal-role-title" class="min-w-0 flex-1 truncate">
                           {role.title}
                         </span>
+                        <Show when={checkFor(role.id) !== undefined}>
+                          <span
+                            data-slot="session-goal-role-check"
+                            data-check={checkFor(role.id)?.verdict}
+                            class="shrink-0"
+                          >
+                            {checkLabel(role, checkFor(role.id)?.verdict)}
+                          </span>
+                        </Show>
                         <Icon name="chevron-right" size="small" class="shrink-0" />
                       </button>
                     )}

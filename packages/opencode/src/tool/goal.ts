@@ -161,9 +161,13 @@ function renderContract(contract: SessionGoal.Contract): string {
  * trusts a contract the agent wrote (ADR-0006, "The human ratifies the contract
  * at commit").
  *
- * Naming each field's role is the point. "I will check it with … run before I
- * call it done" makes a check that does not exercise the outcome look wrong
- * here, where a person can still say so.
+ * It is short on purpose. The outcome and the check are in the question, because
+ * "I will check it with … run before I call it done" is what makes a check that
+ * does not exercise the outcome look wrong here, where a person can still say
+ * so. The rest of the contract is not restated in the question: it is on the
+ * goal row, and the client's goal panels renders it right above the composer —
+ * so the question asks about the two things it ratifies, and the panel is where
+ * the human reads the whole of what they are ratifying.
  */
 function renderCommitQuestion(contract: SessionGoal.Contract): string {
   return [
@@ -171,8 +175,7 @@ function renderCommitQuestion(contract: SessionGoal.Contract): string {
     "",
     `Done means: ${contract.outcome}`,
     `I will check it with: ${contract.verification} — run before I call it done`,
-    `Must not change: ${contract.constraints}`,
-    `In scope: ${contract.boundaries}`,
-    `I will stop and ask you if: ${contract.stop_when}`,
+    "",
+    "The full contract — must not change, in scope, stop when — is on the goal; the goal panel above the composer renders it.",
   ].join("\n")
 }

@@ -2149,6 +2149,7 @@ export default function Page() {
             goal={info()}
             ruling={goal.ruling()}
             roles={goal.roles()}
+            checks={goal.checks()}
             collapsed={goalView.collapsed}
             onToggle={() => setGoalView("collapsed", !goalView.collapsed)}
             centered={centered()}
