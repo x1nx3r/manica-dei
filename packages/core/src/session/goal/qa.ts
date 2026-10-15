@@ -107,7 +107,9 @@ export function isScratchpad(file: string | undefined): boolean {
  * change this round made.
  */
 export function roundMessages<T extends RoundMessage>(messages: ReadonlyArray<T>, userID: string): T[] {
-  return messages.filter((message) => message.info.id === userID || (message.info.role === "assistant" && message.info.parentID === userID))
+  return messages.filter(
+    (message) => message.info.id === userID || (message.info.role === "assistant" && message.info.parentID === userID),
+  )
 }
 
 /** The round's diff, rendered for QA — the change, not an account of it. */
@@ -144,7 +146,11 @@ export function buildQaPrompt(input: QaPromptInput): string {
       ? ["Completion contract (the standard you hold the artifact to):", renderContract(input.contract), ""]
       : []),
     "State under review:",
-    input.state,
+    // The hash is teachable where it is rendered, or a reviewer does what the
+    // wallpaper run's QA did and calls it "a synthetic identifier from the
+    // harness" — echoing a token it does not understand (ADR-0006, "state
+    // binding" can only be honest when the binder knows what the token binds).
+    `${input.state} (the workspace snapshot this round is bound to — a hash of the tree when the loop committed the round, not a commit SHA; echo it unchanged in your record's state field)`,
     "",
     "Diff under review:",
     input.diff && input.diff.trim().length > 0 ? input.diff : "(no diff was recorded for this round)",
@@ -192,10 +198,7 @@ export function abstention(state: string): SessionGoal.Record {
  * pass needs one (draft §4, "the holdout"). Correcting the flag keeps the record
  * honest for the judge, which weighs it.
  */
-export function attributeProbes(
-  record: SessionGoal.Record,
-  authorCommands: ReadonlyArray<string>,
-): SessionGoal.Record {
+export function attributeProbes(record: SessionGoal.Record, authorCommands: ReadonlyArray<string>): SessionGoal.Record {
   const author = new Set(authorCommands.map(normalizeCommand).filter((command) => command.length > 0))
   if (author.size === 0) return record
   return {
@@ -221,7 +224,9 @@ export function relayContinuation(goal: string, record: SessionGoal.Record): str
   const findings = record.findings.map((finding) =>
     [`- ${finding.criterion}: ${finding.detail}`, `  evidence: ${finding.evidence}`].join("\n"),
   )
-  const observations = record.probes.map((probe) => `- ${probe.criterion}: ${probe.result} — ${observation(probe.output)}`)
+  const observations = record.probes.map(
+    (probe) => `- ${probe.criterion}: ${probe.result} — ${observation(probe.output)}`,
+  )
   return [
     "[Continuing toward your standing goal — QA tested this, and it failed]",
     `Goal: ${goal}`,

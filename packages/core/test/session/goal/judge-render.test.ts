@@ -42,8 +42,25 @@ describe("Judge.buildJudgePrompt's record section", () => {
     expect(probes).toContain("  OK line 1\n  OK line 2")
   })
 
-  test("the original wire's shape is not reproduced: no space-newline-space ladders", () => {
-    expect(prompt).not.toContain(" \n \n$")
+  test("the state hash carries its meaning, so the binder is not parroting a token", () => {
+    // The wallpaper run's QA: "the commit de532f29 doesn't exist in the repo…
+    // I'll echo it as given." A reviewer that cannot say what it says no longer
+    // binds anything — the prompt names what the hash is, at the place the
+    // reviewer reads it (ADR-0006, "state binding"). The QA wording is asserted
+    // through the QA's own prompt; the judge's is the next test.
+    const qaPrompt = GoalQa.buildQaPrompt({
+      state: "de532f29cb3f29989d95f87188f06fe0f4b2134d",
+      diff: "",
+      evidence: [],
+    } as never)
+    expect(qaPrompt).toContain("(the workspace snapshot this round is bound to")
+    expect(qaPrompt).toContain("echo it unchanged in your record's state field")
+  })
+
+  test("the judge's record names what the state hash is, not just the hash", () => {
+    // The judge weighs the record against the round; teaching it where the hash
+    // comes from means a mis-binding is a reason, not a ritual.
+    expect(prompt).toContain("(the workspace snapshot the round is bound to")
   })
 })
 

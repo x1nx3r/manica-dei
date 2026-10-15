@@ -248,7 +248,9 @@ function renderRecord(record: SessionGoal.Record): string {
         .join("\n")
     : "(none)"
   return [
-    `State reviewed: ${record.state}`,
+    // The same teaching as QA's prompt: a reviewer that parrots the hash cannot
+    // be said to have bound its record to anything (the wallpaper run echoed it).
+    `State reviewed: ${record.state} (the workspace snapshot the round is bound to — the loop checked it matches before this record reached you)`,
     `Verdict: ${record.verdict}`,
     `Derived probes: ${derived ? "yes" : "no — an abstention, not a pass"}`,
     "",
