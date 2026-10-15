@@ -87,6 +87,10 @@ const layer = Layer.effect(
           parentID: input.sessionID,
           title: "Judge the goal",
           agent: agent.name,
+          // The run's roles are labeled on their own sessions (ADR-0008, "the
+          // round"), so a client that arrives late reads this off
+          // `/session/:id/children`, from an event it never saw.
+          metadata: { goal_role: "judge", goal_round: input.round },
         })
         const prompt = Judge.buildJudgePrompt(input)
         const user: SessionV1.User = {

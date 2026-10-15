@@ -525,6 +525,14 @@ const layer = Layer.effect(
       // value handed to `submitRecord`, so a surface reads the record's fields.
       // `submitRecord` is unchanged: the loop's handoff still owns the record.
       const qaSessionID = result.metadata.sessionId
+      // The run's roles are labeled on their own sessions (ADR-0008, "the
+      // round"): a client that arrives late reads this off
+      // `/session/:id/children`, from an event it never saw.
+      const qaInfo = yield* sessions.get(qaSessionID).pipe(Effect.orDie)
+      yield* sessions.setMetadata({
+        sessionID: qaSessionID,
+        metadata: { ...(qaInfo.metadata ?? {}), goal_role: "qa", goal_round: input.decision.round },
+      })
       const qaMessages = yield* sessions.messages({ sessionID: qaSessionID }).pipe(Effect.orDie)
       const qaMessage = qaMessages.findLast((message) => message.info.role === "assistant")
       if (qaMessage) {

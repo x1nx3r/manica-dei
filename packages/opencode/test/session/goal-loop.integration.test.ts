@@ -681,6 +681,11 @@ describe("goal-loop end to end (mock model)", () => {
       const reviewer = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-qa")
       expect(reviewer).toBeDefined()
       if (!reviewer) return
+      // The pass is labeled on its own session — role and round — so a client
+      // that arrives late reads the run's shape off `/session/:id/children`,
+      // from data, not from an event it never saw (ADR-0008, "the round").
+      expect(reviewer.metadata?.goal_role).toBe("qa")
+      expect(reviewer.metadata?.goal_round).toBe(1)
       const messages = yield* sessions.messages({ sessionID: reviewer.id })
       const review = messages.flatMap((message) => message.parts).find((part) => part.type === "goal.review")
       expect(review).toBeDefined()
@@ -738,6 +743,10 @@ describe("goal-loop end to end (mock model)", () => {
       expect(judge).toBeDefined()
       if (!judge) return
       expect(judge.parentID).toBe(session.id)
+      // The judgement carries its role and its round on its own row, the same
+      // metadata the pass does (ADR-0008, "the round").
+      expect(judge.metadata?.goal_role).toBe("judge")
+      expect(judge.metadata?.goal_round).toBe(1)
 
       const messages = yield* sessions.messages({ sessionID: judge.id })
       const parts = messages.flatMap((message) => message.parts)

@@ -32,6 +32,13 @@ export type Decision =
       readonly contract?: SessionGoal.Contract
       readonly state: string
       readonly evidence: ReadonlyArray<Judge.GateEvidence>
+      /**
+       * The round this pass is for: `turns_used + 1` at decide time. The call
+       * site spells it into the reviewer session's metadata, so a client that
+       * arrives late can read the pass's place in the run (ADR-0008, "the
+       * round").
+       */
+      readonly round: number
     }
   | { readonly _tag: "blocked"; readonly reason: string; readonly note: string }
   | { readonly _tag: "wait"; readonly reason: string; readonly wait: Judge.WaitDirective; readonly note: string }
@@ -387,7 +394,13 @@ const layer = Layer.effect(
       // nobody signs what they made — the dev cannot sign off on the dev).
       yield* goals.bindState({ sessionID: input.sessionID, state: round })
       yield* setPhase({ sessionID: input.sessionID, phase: "qa" })
-      return unchanged({ _tag: "qa", contract: goal.contract, state: round, evidence })
+      return unchanged({
+        _tag: "qa",
+        contract: goal.contract,
+        state: round,
+        evidence,
+        round: goal.turns_used + 1,
+      })
     })
 
     const submitRecord = Effect.fn("GoalLoop.submitRecord")(function* (input: {
