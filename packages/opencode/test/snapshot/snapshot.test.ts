@@ -1216,3 +1216,64 @@ it.instance(
   }),
   { git: true },
 )
+
+// ── ADR-0009: the workspace is a set of repositories ─────────────────────────
+
+it.instance(
+  "multi-repo workspaces capture, patch and diff every repository",
+  Effect.gen(function* () {
+    const tmp = yield* TestInstance
+    const root = tmp.directory
+    for (const name of ["app", "billing"]) {
+      yield* mkdirp(`${root}/${name}`)
+      yield* write(`${root}/${name}/one.txt`, "one")
+      yield* exec(`${root}/${name}`, ["git", "init", "-q"])
+      yield* exec(`${root}/${name}`, ["git", "add", "."])
+      yield* exec(`${root}/${name}`, [
+        "git",
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "user.name=test",
+        "commit",
+        "-qm",
+        "init",
+      ])
+    }
+    const snapshot = yield* Snapshot.Service
+    const before = yield* snapshot.track()
+    // The root is deliberately not a repo: the composite is what binds the round.
+    expect(before).toMatch(/^md1-/)
+
+    yield* write(`${root}/app/one.txt`, "one changed")
+    yield* write(`${root}/billing/two.txt`, "two new")
+    const after = yield* snapshot.track()
+    expect(after).toMatch(/^md1-/)
+
+    const patch = yield* snapshot.patch(before!)
+    expect(patch.files).toContain(fwd(root, "app", "one.txt"))
+    expect(patch.files).toContain(fwd(root, "billing", "two.txt"))
+
+    const diffs = yield* snapshot.diffFull(before!, after!)
+    const app = diffs.find((item) => item.repo === "app")
+    const billing = diffs.find((item) => item.repo === "billing")
+    expect(app?.file).toBe("one.txt")
+    expect(app?.patch).toContain("one changed")
+    expect(billing?.file).toBe("two.txt")
+    expect(billing?.status).toBe("added")
+  }),
+  { git: false },
+)
+
+it.instance(
+  "single-repo workspaces keep the historical snapshot id shape",
+  Effect.gen(function* () {
+    const snapshot = yield* Snapshot.Service
+    const id = yield* snapshot.track()
+    expect(id).toBeTruthy()
+    // No composite marker: old rows, review panes and revert code keep reading
+    // single-repo snapshots exactly as they always did.
+    expect(id!).not.toMatch(/^md1-/)
+  }),
+  { git: true },
+)
