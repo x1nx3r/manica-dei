@@ -283,3 +283,69 @@ commit gate, not in the middle of a round discovered only later.
   grouped per repo at commit time (the current single-gate shape holding, with
   per-repo steps inside it), so gates survive the two-repo-day? Deferred to the
   gate-prose fix's commit, where the parsing lands anyway.
+
+## For the manus-dei side: the summon-side ADR, in one pass
+
+This ADR flips an assumption the summon side may still carry ("the workspace
+root is one repo, or a repo-shaped thing"). The fork owns route semantics,
+snapshots, and the review display; **summon owns the manifest, the env
+contract, the entrypoint, and the onboarding future** — and a manus-dei ADR
+(next free number; the latest is `019-release-delivery.md`) should record the
+summon-side counterpart of the decisions above. This section is written so a
+manus-dei agent can draft that ADR from this file alone, without re-deriving
+the fork side.
+
+**What manus owns here:**
+
+1. **The manifest is the roster's source of truth** (PLAN §4). The repo list
+   already exists (`repo:` entries seeded by the entrypoint). The summon-side
+   ADR should decide the _schema's authority_: each entry's `name` maps 1:1 to
+   a workspace folder and becomes the fork's `repoKey` (the composite's key);
+   `source`/`ref` stay clone inputs. Optional, worth deciding now: an explicit
+   `path` anchor field per repo (workspace/\<name\> today, so noon nest
+   tomorrow needs one), and whether undeclared-but-discovered repos are
+   tracked-and-marked (the fork unions both; the summon ADR should record the
+   same union explicitly so a template author's typo cannot silently remove a
+   repo from review).
+2. **`MANUS_REPOS` stays the only transport.** The env carries
+   `[{name, source, ref}]`; the fork reads names as repo-keys. No deusd API
+   for roster sync, no second channel — the env transport law (ADR-015's
+   identity seam) covers git identity too.
+3. **The root is deliberately not a repo — make it law.** The templates'
+   entrypoint must not `git init` the workspace root, promote the inner repos
+   to gitlinks, or seed a wrapper index. The bandaid (born mid-session on Oct
+   16 as the snapshot deadlock's workaround) is retired by the pairing law:
+   **fork release first, template pin bump after**; older volumes that still
+   carry a root `.git` degrade gracefully (fork ADR §6: the wrapper becomes
+   one more tracked repo; the phantom `app (+1 -1)` diff is dead structurally,
+   and the fork reads both shapes meanwhile).
+4. **The exit story needs a check, not a change.** `sessionctl.snapshot`
+   already commits _every_ repository (`b09182d` — "commit every repository").
+   Under the composite model that behavior is correct as-is; the summon ADR
+   should record that confirmation plus per-repo _attribution_ (which repo's
+   commit carried what) as the observed contract, so the fork's grouped
+   Review pane and the deusd trail read the same work.
+5. **The onboarding future gets one line, not a feature.** The repo→workspace
+   template onboarding (an agent helping a user craft a custom template) may
+   eventually violate the at-least-one-repo invariant mid-craft. The fork
+   lands a fail-stop guard at goal commit for that world; manus's ADR should
+   note the same guard's summon-side twin: a summon whose manifest resolves to
+   zero repos should fail loudly at summon, not open a session that discovers
+   the hole later.
+6. **Depth and the shape of "tracked".** Depth-2 coverage
+   (workspace/app/packages/foo), no recursion into node_modules or vendored
+   trees — the summon ADR should mirror the cap so template authors know what
+   "the whole workspace" means in the manifest's vocabulary.
+
+**What to read here first (one pass each):**
+
+- Context above — the three receipts (the starved loop; QA's submodule
+  surgery; the boot-frozen discovery class of bug, ADR-0007's lesson).
+- Decision §1–§2 for the roster/composite mechanics the manifest feeds.
+- Decision §4 for what the Review pane will show, so the fleet's trail
+  (harvest/, sessionctl) stays the same story from both sides.
+- Phase plan §1–§4 for the ordering law and what each pairing releases.
+
+**What manus should not do:** no registry schema changes for the roster (it is
+file/env data, not database truth), no git-init-shaped shims in new templates,
+no manifest renumbering — the next ADR number is free, take it.
