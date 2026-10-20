@@ -3,7 +3,10 @@ import type { FileDiffInfo } from "@opencode-ai/client/promise"
 import type { Kind } from "@/components/file-tree-v2"
 import { normalizeFileTreeV2Path } from "@/components/file-tree-v2-model"
 
-export type RenderDiff = FileDiffInfo | (SnapshotFileDiff & { file: string }) | VcsFileDiff
+export type RenderDiff = (FileDiffInfo | (SnapshotFileDiff & { file: string }) | VcsFileDiff) & {
+  /** ADR-0009: the repository a non-root diff belongs to. */
+  repo?: string
+}
 
 export function normalizePath(p: string) {
   return normalizeFileTreeV2Path(p)
@@ -29,6 +32,19 @@ export function reviewDiffDirectory(root: string, file: string) {
   const base = reviewRootDirectory(root)
   if (index < 0) return base
   return `${base.endsWith(separator) ? base : base + separator}${path.slice(0, index).replaceAll("/", separator)}`
+}
+
+/**
+ * The repositories a round touches, in sorted order. Phase 2 makes every
+ * non-root diff carry its repository; the review tree badges these folders so
+ * a repository reads as a repository, not as a plain directory (ADR-0009).
+ */
+export function reviewDiffRepos(diffs: readonly RenderDiff[]): string[] {
+  const repos = new Set<string>()
+  for (const diff of diffs) {
+    if (diff.repo) repos.add(diff.repo)
+  }
+  return [...repos].toSorted((a, b) => a.localeCompare(b))
 }
 
 export function reviewDiffKinds(diffs: RenderDiff[]) {

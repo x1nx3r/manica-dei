@@ -1182,6 +1182,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "kullanıcı adı",
   "dialog.server.add.passwordPlaceholder": "parola",
   "server.row.noUsername": "kullanıcı adı yok",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git deposu oluştur",
   "session.review.noVcs.createGit.description": "Bu projedeki değişiklikleri takip et, incele ve geri al",
   "session.review.noVcs.createGit.actionLoading": "Git deposu oluşturuluyor...",

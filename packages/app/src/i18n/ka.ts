@@ -716,6 +716,7 @@ export const dict = {
   "session.review.loadingChanges": "ცვლილებების ჩატვირთვა...",
   "session.review.empty": "ამ სესიაში ცვლილებები ჯერ არ არის",
   "session.review.noVcs": "არ არის აღმოჩენილი Git ვერსიის კონტროლის სისტემა, ცვლილებები არ არის ნაჩვენები",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "შექმენით Git საცავი",
   "session.review.noVcs.createGit.description": "თვალყური ადევნეთ, გადახედეთ და გააუქმეთ ცვლილებები ამ პროექტში",
   "session.review.noVcs.createGit.actionLoading": "Git საცავის შექმნა...",

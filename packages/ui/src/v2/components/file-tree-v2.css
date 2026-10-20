@@ -107,6 +107,26 @@
   inset: 0;
 }
 
+/* ADR-0009: a workspace is a set of repositories. The review tree marks a
+   repository's root folder so it reads as a repository, not a plain directory. */
+[data-component="file-tree-v2"] [data-slot="file-tree-v2-repo"] {
+  box-sizing: border-box;
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--v2-border-border-muted);
+  color: var(--v2-text-text-muted);
+  font-size: 10px;
+  font-weight: 560;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 [data-component="file-tree-v2"] [data-slot="file-tree-v2-change"] {
   box-sizing: border-box;
   flex: none;

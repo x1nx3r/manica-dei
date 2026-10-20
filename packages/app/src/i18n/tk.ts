@@ -715,6 +715,7 @@ export const dict = {
   "session.review.loadingChanges": "Üýtgeşmeler ýüklenýär ...",
   "session.review.empty": "Bu sessiýada entek üýtgeşme ýok",
   "session.review.noVcs": "Git wersiýa dolandyryş ulgamy tapylmady, üýtgeşmeler görkezilmedi",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git ammary dörediň",
   "session.review.noVcs.createGit.description": "Bu taslamadaky üýtgeşmeleri yzarlaň, gözden geçiriň we yzyna alyň",
   "session.review.noVcs.createGit.actionLoading": "Git ammaryny döretmek ...",

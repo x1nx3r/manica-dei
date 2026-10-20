@@ -726,6 +726,7 @@ export const dict = {
   "session.review.loadingChanges": "تبدیلیاں لوڈ ہو رہی ہیں...",
   "session.review.empty": "اس سیشن میں ابھی تک کوئی تبدیلی نہیں آئی",
   "session.review.noVcs": "Git ورژن کنٹرول سسٹم کا پتہ نہیں چلا، تبدیلیاں ظاہر نہیں کی گئیں۔",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "ایک Git ذخیرہ بنائیں",
   "session.review.noVcs.createGit.description":
     "اس پروجیکٹ میں تبدیلیوں کو ٹریک کریں، ان کا جائزہ لیں اور ان کو کالعدم کریں۔",

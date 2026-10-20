@@ -1156,6 +1156,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "ชื่อผู้ใช้",
   "dialog.server.add.passwordPlaceholder": "รหัสผ่าน",
   "server.row.noUsername": "ไม่มีชื่อผู้ใช้",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "สร้าง Git รีโพซิทอรี",
   "session.review.noVcs.createGit.description": "ติดตาม ตรวจสอบ และเลิกทำการเปลี่ยนแปลงในโปรเจกต์นี้",
   "session.review.noVcs.createGit.actionLoading": "กำลังสร้าง Git รีโพซิทอรี...",

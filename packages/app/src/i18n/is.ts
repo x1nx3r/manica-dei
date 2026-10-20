@@ -718,6 +718,7 @@ export const dict = {
   "session.review.loadingChanges": "Hleður breytingum...",
   "session.review.empty": "Engar breytingar á þessu þingi ennþá",
   "session.review.noVcs": "Ekkert Git útgáfustýringarkerfi fannst, breytingar ekki birtar",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Búðu til Git geymslu",
   "session.review.noVcs.createGit.description": "Fylgstu með, skoðaðu og afturkallaðu breytingar á þessu verkefni",
   "session.review.noVcs.createGit.actionLoading": "Býr til Git geymslu...",

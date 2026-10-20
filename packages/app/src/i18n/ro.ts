@@ -717,6 +717,7 @@ export const dict = {
   "session.review.empty": "Nicio modificare în această sesiune încă",
   "session.review.noVcs":
     "Nu a fost detectat niciun sistem de control al versiunilor Git, modificările nu sunt afișate",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Creează un depozit Git",
   "session.review.noVcs.createGit.description": "Urmărește, revizuiește și anulează modificările din acest proiect",
   "session.review.noVcs.createGit.actionLoading": "Se creează depozitul Git...",

@@ -727,6 +727,7 @@ export const dict = {
   "session.review.loadingChanges": "ބަދަލުތައް ލޯޑް ކުރަނީ...",
   "session.review.empty": "މި ޖަލްސާއަށް އަދި ބަދަލެއް ނާދެއެވެ",
   "session.review.noVcs": "Git ވަރޝަން ކޮންޓްރޯލް ސިސްޓަމެއް ނުފެނި، ބަދަލުތައް ނުފެނެއެވެ",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git ރިޕޮޒިޓަރީއެއް އުފެއްދުން",
   "session.review.noVcs.createGit.description": "މި މަޝްރޫޢަށް އަންނަ ބަދަލުތައް ޓްރެކްކޮށް، ރިވިއުކޮށް، އަންޑޯކުރުން",
   "session.review.noVcs.createGit.actionLoading": "Git ރިޕޮޒިޓަރީ އުފެއްދުމުގެ މަސައްކަތް...",

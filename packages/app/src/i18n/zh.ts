@@ -1147,6 +1147,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "用户名",
   "dialog.server.add.passwordPlaceholder": "密码",
   "server.row.noUsername": "无用户名",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "创建 Git 仓库",
   "session.review.noVcs.createGit.description": "在此项目中跟踪、审查和撤消更改",
   "session.review.noVcs.createGit.actionLoading": "正在创建 Git 仓库...",

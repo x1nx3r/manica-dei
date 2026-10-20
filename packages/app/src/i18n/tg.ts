@@ -718,6 +718,7 @@ export const dict = {
   "session.review.loadingChanges": "Тағйирот бор карда мешавад...",
   "session.review.empty": "Дар ин иҷлосия ҳанӯз тағирот нест",
   "session.review.noVcs": "Не Git Системаи Идоракунии Версия ошкор нашудааст, тағирот нишон дода нашудааст",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Анбори Git эҷод кунед",
   "session.review.noVcs.createGit.description": "Тағиротро дар ин лоиҳа пайгирӣ кунед, баррасӣ кунед ва бекор кунед",
   "session.review.noVcs.createGit.actionLoading": "Эҷоди Git анбор...",

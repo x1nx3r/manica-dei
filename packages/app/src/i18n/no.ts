@@ -1002,6 +1002,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "brukernavn",
   "dialog.server.add.passwordPlaceholder": "passord",
   "server.row.noUsername": "ikke noe brukernavn",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Opprett et Git-depot",
   "session.review.noVcs.createGit.description": "Spor, gjennomgå og angre endringer i dette prosjektet",
   "session.review.noVcs.createGit.actionLoading": "Oppretter Git-depot...",

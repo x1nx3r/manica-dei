@@ -716,6 +716,7 @@ export const dict = {
   "session.review.loadingChanges": "Heinta broytingar...",
   "session.review.empty": "Ongar broytingar í hesi setuni enn",
   "session.review.noVcs": "Nei Git Útgávustýringarskipan er uppdagað, broytingar ikki vístar",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Stovna eitt Git goymslustað",
   "session.review.noVcs.createGit.description": "Fylg við, kanna og angra broytingar í hesi verkætlan",
   "session.review.noVcs.createGit.actionLoading": "Stovna Git goymslu...",

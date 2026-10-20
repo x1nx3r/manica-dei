@@ -725,6 +725,7 @@ export const dict = {
   "session.review.loadingChanges": "Dəyişikliklər yüklənir...",
   "session.review.empty": "Bu sessiyada hələ dəyişiklik yoxdur",
   "session.review.noVcs": "Git versiyaya nəzarət sistemi aşkarlanmadı; sessiya dəyişiklikləri göstərilməyəcək",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git repozitoriyası yaradın",
   "session.review.noVcs.createGit.description": "Bu layihədə dəyişiklikləri izləyin, nəzərdən keçirin və ləğv edin",
   "session.review.noVcs.createGit.actionLoading": "Git repozitoriyası yaradılır...",

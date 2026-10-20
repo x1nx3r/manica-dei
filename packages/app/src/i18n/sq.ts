@@ -718,6 +718,7 @@ export const dict = {
   "session.review.loadingChanges": "Ndryshimet po ngarkohen...",
   "session.review.empty": "Ende nuk ka ndryshime në këtë seancë",
   "session.review.noVcs": "Nuk u zbulua sistemi i kontrollit të versionit Git, ndryshimet nuk shfaqen",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Krijoni një depo Git",
   "session.review.noVcs.createGit.description": "Gjurmoni, rishikoni dhe anuloni ndryshimet në këtë projekt",
   "session.review.noVcs.createGit.actionLoading": "Krijimi i depove Git...",

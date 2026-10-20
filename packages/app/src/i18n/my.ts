@@ -723,6 +723,7 @@ export const dict = {
   "session.review.loadingChanges": "အပြောင်းအလဲများကို ဖွင့်နေသည်...",
   "session.review.empty": "ဤစက်ရှင်တွင် ပြောင်းလဲမှုမရှိသေးပါ။",
   "session.review.noVcs": "မည်သည့် Git ဗားရှင်းထိန်းချုပ်မှုစနစ်မှ ရှာမတွေ့ပါ၊ အပြောင်းအလဲများကို မပြသပါ။",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git repository တစ်ခုဖန်တီးပါ။",
   "session.review.noVcs.createGit.description": "ဤပရောဂျက်ရှိ အပြောင်းအလဲများကို ခြေရာခံ၊ သုံးသပ်ပြီး ပြန်ဖျက်ပါ။",
   "session.review.noVcs.createGit.actionLoading": "Git repository ကို ဖန်တီးနေသည်...",

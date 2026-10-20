@@ -719,6 +719,7 @@ export const dict = {
   "session.review.loadingChanges": "Се вчитуваат промените...",
   "session.review.empty": "Сè уште нема промени на оваа сесија",
   "session.review.noVcs": "Не е откриен систем за контрола на верзијата Git, промените не се прикажани",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Направете складиште Git",
   "session.review.noVcs.createGit.description": "Следете, прегледувајте и поништете ги промените во овој проект",
   "session.review.noVcs.createGit.actionLoading": "Се создава складиште Git...",

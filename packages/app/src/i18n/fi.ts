@@ -613,6 +613,7 @@ export const dict = {
   "session.review.loadingChanges": "Ladataan muutoksia...",
   "session.review.empty": "Tässä istunnossa ei vielä muutoksia",
   "session.review.noVcs": "Git-versionhallintaa ei havaittu, joten muutoksia ei näytetä",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Luo Git-säilö",
   "session.review.noVcs.createGit.description": "Seuraa, tarkista ja kumoa muutoksia tässä projektissa",
   "session.review.noVcs.createGit.actionLoading": "Luodaan Git-säilöä...",

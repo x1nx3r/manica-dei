@@ -711,6 +711,7 @@ export const dict = {
   "session.review.loadingChanges": "ກຳລັງໂຫຼດການປ່ຽນແປງ...",
   "session.review.empty": "ບໍ່ມີການປ່ຽນແປງໃນເຊດຊັນນີ້ເທື່ອ",
   "session.review.noVcs": "ບໍ່ພົບລະບົບການຄວບຄຸມເວີຊັນ Git, ການປ່ຽນແປງບໍ່ສະແດງ",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "ສ້າງບ່ອນເກັບຂໍ້ມູນ Git",
   "session.review.noVcs.createGit.description": "ຕິດຕາມ, ທົບທວນ, ແລະຍົກເລີກການປ່ຽນແປງໃນໂຄງການນີ້",
   "session.review.noVcs.createGit.actionLoading": "ກຳລັງສ້າງບ່ອນເກັບຂໍ້ມູນ Git...",

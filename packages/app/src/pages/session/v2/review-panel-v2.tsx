@@ -25,6 +25,7 @@ import {
   filterRenderableDiff,
   filterReviewFiles,
   reviewDiffKinds,
+  reviewDiffRepos,
   reviewDiffNeedsLoad,
   type RenderDiff,
 } from "@/pages/session/v2/review-diff-kinds"
@@ -227,6 +228,7 @@ function ReviewPanelV2Sidebar(props: {
             <FileTreeV2
               allowed={props.filteredFiles()}
               kinds={props.kinds()}
+              repos={reviewDiffRepos(props.diffs())}
               draggable={false}
               active={props.activeDiff()}
               onFileClick={(node) => props.onSelectFile(node.path)}

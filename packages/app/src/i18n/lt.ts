@@ -722,6 +722,7 @@ export const dict = {
   "session.review.loadingChanges": "Įkeliami pakeitimai...",
   "session.review.empty": "Pakeitimų šioje sesijoje dar nėra",
   "session.review.noVcs": "Neaptikta Git versijos valdymo sistema, pakeitimai nerodomi",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Sukurkite Git saugyklą",
   "session.review.noVcs.createGit.description": "Stebėkite, peržiūrėkite ir anuliuokite šio projekto pakeitimus",
   "session.review.noVcs.createGit.actionLoading": "Kuriama Git saugykla...",

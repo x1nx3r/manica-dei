@@ -723,6 +723,7 @@ export const dict = {
   "session.review.loadingChanges": "Wijzigingen laden...",
   "session.review.empty": "Er zijn nog geen wijzigingen in deze sessie",
   "session.review.noVcs": "Geen Git-versiecontrolesysteem gedetecteerd, wijzigingen niet weergegeven",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Maak een Git-repository",
   "session.review.noVcs.createGit.description": "Wijzigingen in dit project bijhouden, beoordelen en ongedaan maken",
   "session.review.noVcs.createGit.actionLoading": "Git-repository maken...",

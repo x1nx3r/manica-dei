@@ -721,6 +721,7 @@ export const dict = {
   "session.review.loadingChanges": "S'estan carregant els canvis...",
   "session.review.empty": "Encara no hi ha canvis en aquesta sessió",
   "session.review.noVcs": "No Git S'ha detectat el sistema de control de versions, els canvis no es mostren",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Creeu un repositori Git.",
   "session.review.noVcs.createGit.description": "Feu un seguiment, reviseu i desfer els canvis en aquest projecte",
   "session.review.noVcs.createGit.actionLoading": "S'està creant un repositori Git...",

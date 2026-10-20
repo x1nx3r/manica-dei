@@ -719,6 +719,7 @@ export const dict = {
   "session.review.loadingChanges": "Oʻzgarishlar yuklanmoqda...",
   "session.review.empty": "Bu sessiyada hali oʻzgarishlar yoʻq",
   "session.review.noVcs": "Git versiyasini boshqarish tizimi aniqlanmadi, o'zgarishlar ko'rsatilmadi",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git omborini yarating",
   "session.review.noVcs.createGit.description":
     "Ushbu loyihadagi oʻzgarishlarni kuzating, koʻrib chiqing va bekor qiling",

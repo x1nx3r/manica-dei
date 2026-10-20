@@ -1081,6 +1081,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "ユーザー名",
   "dialog.server.add.passwordPlaceholder": "パスワード",
   "server.row.noUsername": "ユーザー名なし",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git リポジトリを作成",
   "session.review.noVcs.createGit.description": "このプロジェクトの変更を追跡、レビュー、元に戻す",
   "session.review.noVcs.createGit.actionLoading": "Git リポジトリを作成中...",

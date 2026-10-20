@@ -711,6 +711,7 @@ export const dict = {
   "session.review.loadingChanges": "Muudatuste laadimine...",
   "session.review.empty": "Sellel seansil pole veel muudatusi",
   "session.review.noVcs": "Ei tuvastatud Git Versioonikontrollisüsteemi, muudatusi ei kuvata",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Loo Git hoidla",
   "session.review.noVcs.createGit.description": "Selle projekti muudatuste jälgimine, ülevaatamine ja tagasivõtmine",
   "session.review.noVcs.createGit.actionLoading": "Git hoidla loomine...",

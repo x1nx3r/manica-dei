@@ -1049,6 +1049,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "brugernavn",
   "dialog.server.add.passwordPlaceholder": "adgangskode",
   "server.row.noUsername": "intet brugernavn",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Opret et Git-repository",
   "session.review.noVcs.createGit.description": "Spor, gennemgå og fortryd ændringer i dette projekt",
   "session.review.noVcs.createGit.actionLoading": "Opretter Git-repository...",
