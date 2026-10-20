@@ -212,7 +212,9 @@ describe("session.system", () => {
         expect(output).toContain("Name: Ada")
         expect(output).toContain("GitHub: ada")
         expect(output).toContain("Role: frontend developer")
-        expect(output).toContain("Greet Ada by name")
+        // ADR-0008.5: first-exchange only — the stance is re-sent each request.
+        expect(output).toContain("greet Ada by name")
+        expect(output).toContain("If Ada has already been greeted in this session, do not greet again")
       }),
     ),
   )

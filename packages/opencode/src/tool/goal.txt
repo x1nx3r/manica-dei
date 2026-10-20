@@ -11,9 +11,11 @@ outcome of the conversation, not its start.
   few reversible decisions), `large` (many decisions, some irreversible),
   `huge` (underspecified past enumeration). Say why in `size_reason`.
 - contract: the five fields. `verification` is the command that proves the
-  outcome — a test, a build, a benchmark. It becomes the gate the loop runs
-  before every judge, so it must be concrete and checkable. A contract with no
-  verification is refused.
+  outcome — a test, a build, a benchmark. It must be **one exact shell command
+  line**: the loop runs it verbatim before every judge. Prose makes it
+  unrunnable — a clause joined with a comma, or a "plus a browser check" that
+  names work instead of running it, belongs in `constraints`, never here. A
+  contract with no verification is refused.
 - commit: `false` to write the goal and stop; `true` to ask the human to confirm
   what done means — the outcome and the check that proves it — and to authorize
   an unattended run. Authorization happens only on a yes.

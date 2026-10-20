@@ -1,4 +1,6 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { readdir, stat } from "fs/promises"
+import path from "path"
 import { Context, Effect, Layer } from "effect"
 
 import { InstanceState } from "@/effect/instance-state"
@@ -73,6 +75,7 @@ const layer = Layer.effect(
         const references = yield* Effect.gen(function* () {
           return (yield* (yield* Reference.Service).list()).filter((reference) => reference.description !== undefined)
         }).pipe(Effect.provide(locations.get(Location.Ref.make({ directory: AbsolutePath.make(ctx.directory) }))))
+        const repos = yield* Effect.promise(() => scanWorkspaceRepos(ctx.worktree, ctx.project.vcs === "git"))
         return [
           [
             `You are powered by the model named ${model.api.id}. The exact model ID is ${model.providerID}/${model.api.id}`,
@@ -80,7 +83,12 @@ const layer = Layer.effect(
             `<env>`,
             `  Working directory: ${ctx.directory}`,
             `  Workspace root folder: ${ctx.worktree}`,
-            `  Is directory a git repo: ${ctx.project.vcs === "git" ? "yes" : "no"}`,
+            // ADR-0008.5: the roster, not the root's git bit. A multi-repo
+            // workspace answers "is it a git repo" with a lie in both
+            // directions — the root's wrapper repo hides the real ones, and a
+            // repo-less root reads as "no" while three repos sit beside it.
+            `  Workspace repos: ${repos.length ? repos.join(" · ") : "(none detected)"}`,
+            `  Runtime: sandboxed container; the workspace persists, the operating system does not.`,
             `  Platform: ${process.platform}`,
             `  Today's date: ${new Date().toDateString()}`,
             `</env>`,
@@ -162,3 +170,26 @@ export const node = LayerNode.make({
 })
 
 export * as SystemPrompt from "./system"
+
+/**
+ * ADR-0008.5 / ADR-0009: the environment block names the workspace's
+ * repositories instead of asking whether the root is one. Depth-1 scan — a
+ * directory that owns a `.git` is a repo; the root counts when the location
+ * already says it is one. Cheap enough for the per-request environment block,
+ * and honest for the shape summon actually produces (a workspace of repos).
+ * The authoritative roster (declared ∪ round-living discovery) arrives with
+ * ADR-0009 phase 1; this line tells the model the truth until then.
+ */
+async function scanWorkspaceRepos(directory: string, rootIsRepo: boolean): Promise<string[]> {
+  const repos: string[] = []
+  if (rootIsRepo) repos.push(`workspace root (${directory})`)
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
+  for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isDirectory() || entry.name === "node_modules") continue
+    const repo = await stat(path.join(directory, entry.name, ".git"))
+      .then((info) => info.isDirectory() || info.isFile())
+      .catch(() => false)
+    if (repo) repos.push(`${entry.name} (${path.join(directory, entry.name)})`)
+  }
+  return repos
+}

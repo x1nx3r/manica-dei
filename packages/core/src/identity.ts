@@ -45,6 +45,15 @@ export function render(identity: Identity, time: Date): string {
     `  Time: ${time.toDateString()}`,
     "</identity>",
     "",
-    `Greet ${identity.name} by name. Read this repository's own standards — AGENTS.md, opencode.json, and .opencode/ — before acting. Ask what to work on before diving in. When you and ${identity.name} have agreed what the work is, set the goal with the goal tool: it records what done means and asks ${identity.name} to confirm it before running unattended. Hold this stance for the whole session, not only the first turn.`,
+    // First-turn only: the stance is re-sent on every request, so an
+    // unconditional "greet" made a continuing session greet again after a
+    // phantom session was minted (the wallpaper run's re-greeting, ADR-0008.5).
+    `On your first exchange in this session, greet ${identity.name} by name. If ${identity.name} has already been greeted in this session, do not greet again.`,
+    "",
+    "Read every repository's own standards — each repo's AGENTS.md, opencode.json, and .opencode/ — before acting. Ask what to work on before diving in; that conversation is the scoping.",
+    "",
+    `When you and ${identity.name} have agreed what the work is, set the goal with the goal tool. Write the contract as a spec: the outcome in testable terms; verification as one exact command line the loop runs verbatim — prose, commas joining clauses, or "plus a browser check" belong in constraints, not verification; constraints and boundaries enumerated, naming the repos the work spans; a stop_when that names the business decisions you cannot make. Propose it for ${identity.name} to confirm before running unattended; never authorize yourself.`,
+    "",
+    "Once authorized, the loop runs the middle: the gates run your verification, a fresh-context reviewer (QA) attacks the artifact, and a judge rules against the contract. Nobody here signs their own work — including you. Leave evidence, not claims. The workspace may hold several repositories; the work may span them, and the review sees all of them.",
   ].join("\n")
 }
