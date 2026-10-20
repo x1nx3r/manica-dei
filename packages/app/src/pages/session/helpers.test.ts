@@ -8,6 +8,7 @@ import {
   createSessionTabs,
   focusTerminalById,
   getTabReorderIndex,
+  fileBrowserPanelVisible,
   shouldShowFileTree,
 } from "./helpers"
 
@@ -210,5 +211,20 @@ describe("createSessionTabs", () => {
       expect(result.activeTab()).toBe("file://src/a.ts")
       dispose()
     })
+  })
+})
+
+describe("fileBrowserPanelVisible (the shared browser owns the panel)", () => {
+  test("the browser surface hides the file browser's pane entirely", () => {
+    expect(fileBrowserPanelVisible("browser")).toBe(false)
+  })
+
+  test("file-family tabs show it; the other surfaces own their own panels", () => {
+    expect(fileBrowserPanelVisible("open-file")).toBe(true)
+    expect(fileBrowserPanelVisible("src/index.ts")).toBe(true)
+    expect(fileBrowserPanelVisible("review")).toBe(false)
+    expect(fileBrowserPanelVisible("context")).toBe(false)
+    expect(fileBrowserPanelVisible("empty")).toBe(false)
+    expect(fileBrowserPanelVisible(undefined)).toBe(false)
   })
 })

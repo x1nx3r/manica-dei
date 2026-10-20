@@ -29,6 +29,17 @@ export const getSessionKey = (dir: string | undefined, id: string | undefined) =
 export function shouldShowFileTree(input: { visible: boolean; opened: boolean }) {
   return input.opened && input.visible
 }
+/**
+ * Which side-panel surfaces show the file browser's own panel. The shared
+ * browser owns the panel outright — full width, nothing beside it (the tree
+ * shell stays mounted, it is only hidden) — and review/context/empty have
+ * their own panels, so only a file-family tab shows the file browser's pane.
+ */
+export function fileBrowserPanelVisible(active: string | undefined) {
+  if (!active) return false
+  if (active === SESSION_BROWSER_TAB) return false
+  return active !== "review" && active !== "context" && active !== "empty"
+}
 
 export const createSessionTabs = (input: TabsInput) => {
   const review = input.review ?? (() => false)
