@@ -118,31 +118,38 @@ onboarding agent (and any user who clones a repo into a live workspace) gets
 review coverage with no new event plumbing. Boot-frozen would silently exclude
 that repo from _every_ review — a manufactured blind spot nobody planned.
 
-### 2. Snapshots become a set keyed by repo
+### 2. Snapshots become a set keyed by repo — serializing to _one_ hash string
 
-`capture()` returns one tree per tracked repo instead of a single tree ID:
+`capture()` returns one tree per tracked repo instead of a single tree ID — and
+the composite serializes _inside the existing string_:
 
 ```text
-step-finish.snapshot (wire) =
-  | <treeID>                                    ← old sessions, read as-is
-  | { "repos": { <repoKey>: <treeID>, … } }     ← repoKey = path relative to workspace
+step-finish.snapshot (wire)  =  <composite hash>          ← unchanged type: one string
+composite                     =  { <repoKey>: <treeID>, … }   (sorted, canonical)
+server-side index             =  composite-hash → {repoKey → treeID}   (written at capture)
 ```
 
 ```mermaid
 flowchart TD
-    subgraph capture ["Snapshot.capture() per round"]
+    subgraph capture ["Snapshot.capture() per step"]
         R1["repo app\nworktree /workspace/app"] --> T1["tree 8d71…"]
         R2["repo billing"] --> T2["tree c93f…"]
         R3["workspace root\n(only if itself a repo)"] --> T3["tree a705…"]
     end
-    T1 & T2 & T3 --> C["composite = {repos: {app: 8d71…, billing: c93f…}}"]
-    C --> H["state_hash = hash(composite)"] --> G["session_goal.state_hash\n(ADR-0006)"]
+    T1 & T2 & T3 --> CANON["canonical serial:\nsorted repoKeys, stable order"]
+    CANON --> H["one opaque hash string"]
+    H -->|wire| SF["step-finish.snapshot\n(type unchanged — no union, no SDK regen)"]
+    H --> I["index: composite hash → tree set"]
+    H --> G["state_hash = the same string\n(ADR-0006)"]
+    I --> D["computeDiff(start, end):\nresolve → per-repo diffs"]
 ```
 
 Each repo keeps its own snapshot-git under
 `global.data/snapshot/<project>/<hash(repo worktree)>` — identical mechanics to
-today's root, one directory per repo. The composite is what `step-finish`
-carries; the schema union (string | object) keeps every old message readable.
+today's root, one directory per repo. Because the composite is one opaque
+string, the wire schema keeps its current type and every historical message
+stays valid byte-for-byte; the _tree IDs_ the Review pane needs are resolved
+server-side through the capture-time index — not carried on the wire.
 
 ### 3. The state hash binds the composite — the loop's vocabulary does not move
 
@@ -237,8 +244,9 @@ commit gate, not in the middle of a round discovered only later.
 - `Snapshot.Service`'s interface grows the roster concept (list, per-repo
   worktrees); the goal loop, gates, runner, and review read it through the same
   port — no layer below `core/session` learns the env.
-- The wire schema changes once (`step-finish.snapshot` union). SDK types are
-  regenerated with the same commit.
+- The wire schema does **not** change: `step-finish.snapshot` remains one
+  opaque string (now the composite hash); no union, no SDK regeneration; old
+  messages stay valid byte-for-byte.
 - Cost: a depth-1 rescan per round is noise (a handful of directory reads);
   per-repo snapshot-gits are one more directory per repo; nothing new bills.
 - The Review pane's diff list gains grouping — new i18n-free structure, the
@@ -260,9 +268,10 @@ commit gate, not in the middle of a round discovered only later.
 ## Phase plan
 
 1. **Roster + per-repo snapshots** — roster model (`MANUS_REPOS` ∪ round-living
-   discovery), per-repo snapshot-gits, composite capture IDs, part-schema union
-   with SDK regeneration, state-hash-over-composite; unit pins at every layer;
-   the usual benchmark gate. The loop's own suites must stay green — this
+   discovery), per-repo snapshot-gits, composite capture hashed to one
+   (canonical) string, the capture-time resolver index, state-hash-over-
+   composite; unit pins at every layer; the usual benchmark gate. No wire
+   schema work — the type never changes. The loop's own suites must stay green — this
    milestone may not change any loop decision, only make binding _possible_ on
    the real workspace shape.
 2. **Per-repo diff + Review grouping** — `computeDiff` aggregation, the Review
