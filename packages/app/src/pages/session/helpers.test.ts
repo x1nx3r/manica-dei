@@ -9,6 +9,8 @@ import {
   focusTerminalById,
   getTabReorderIndex,
   fileBrowserPanelVisible,
+  resolveReviewMode,
+  reviewModeOptions,
   shouldShowFileTree,
 } from "./helpers"
 
@@ -226,5 +228,30 @@ describe("fileBrowserPanelVisible (the shared browser owns the panel)", () => {
     expect(fileBrowserPanelVisible("context")).toBe(false)
     expect(fileBrowserPanelVisible("empty")).toBe(false)
     expect(fileBrowserPanelVisible(undefined)).toBe(false)
+  })
+})
+
+describe("reviewModeOptions and resolveReviewMode (ADR-0009 phase 4)", () => {
+  test("a workspace that is not a repo offers only the round's diffs", () => {
+    expect(reviewModeOptions({ projectVcs: "none" })).toEqual(["turn"])
+  })
+
+  test("a repo offers working tree and, on a branch, the branch view", () => {
+    expect(reviewModeOptions({ projectVcs: "git", branch: "main", defaultBranch: "main" })).toEqual(["git", "turn"])
+    expect(reviewModeOptions({ projectVcs: "git", branch: "feat", defaultBranch: "main" })).toEqual([
+      "git",
+      "branch",
+      "turn",
+    ])
+  })
+
+  test("a stored mode that cannot exist here falls back to the first available", () => {
+    expect(resolveReviewMode({ projectVcs: "none", stored: "git" })).toBe("turn")
+    expect(resolveReviewMode({ projectVcs: "none", stored: "branch" })).toBe("turn")
+    expect(resolveReviewMode({ projectVcs: "git", branch: "feat", defaultBranch: "main", stored: "branch" })).toBe(
+      "branch",
+    )
+    expect(resolveReviewMode({ projectVcs: "git", stored: "turn" })).toBe("turn")
+    expect(resolveReviewMode({})).toBe("turn")
   })
 })

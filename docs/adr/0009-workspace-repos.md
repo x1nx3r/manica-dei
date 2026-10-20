@@ -267,20 +267,35 @@ commit gate, not in the middle of a round discovered only later.
 
 ## Phase plan
 
-1. **Roster + per-repo snapshots** — roster model (`MANUS_REPOS` ∪ round-living
-   discovery), per-repo snapshot-gits, composite capture hashed to one
-   (canonical) string, the capture-time resolver index, state-hash-over-
-   composite; unit pins at every layer; the usual benchmark gate. No wire
-   schema work — the type never changes. The loop's own suites must stay green — this
-   milestone may not change any loop decision, only make binding _possible_ on
-   the real workspace shape.
-2. **Per-repo diff + Review grouping** — `computeDiff` aggregation, the Review
-   pane's repo sections, QA's aggregated diff view; the same corpus-case QA no
-   longer needs its workaround, and the eval lever gets re-run.
-3. **Per-repo revert/restore** — mechanical, sequenced after the display shows
-   what restore semantically needs.
-4. **Bandaid retirement** — the parent repo's templates stop expecting a root
-   repo; upstream-finding doc for the deadlock closes against this ADR.
+1. **Roster + per-repo snapshots** — ✅ done (`ba6ae7c5e`, PR #15). The roster
+   (`MANUS_REPOS` ∪ round-living discovery), per-repo snapshot-gits, composite
+   capture hashed to one canonical string, the capture-time resolver index,
+   state-hash-over-composite. The deployed path converted; no wire schema work
+   (the type never changes); the loop's own suites stayed green.
+2. **Per-repo diff + Review grouping** — ✅ done (`9ebd72f57`, PR #16). Diffs
+   carry workspace-relative paths (`app/src/x`), so the Review pane's
+   path-driven tree groups by repository without a new component, and QA's
+   brief renders the round as sections per repo. Root paths unprefixed:
+   single-repo sessions byte-identical.
+3. **Per-repo revert/restore** — ✅ done (`bd2b77b28`). Pinned end to end
+   (selective revert touches only the file's repo; composite restore returns
+   every repo; `patch` lists all files). Found and fixed: the aggregated revert
+   diff was ambiguous when repos shared a filename — `diff(hash)` now
+   qualifies each repo's patch paths.
+4. **Bandaid retirement** — ✅ fork side done. The templates already made the
+   root-not-a-repo law (manus ADR-020, PR #77); the fork proves the bandaid is
+   _unneeded_: a root-less workspace binds (phase 1), and an older workspace
+   with a leftover wrapper root degrades gracefully — the root joins the roster
+   as an ordinary repo, and the phantom gitlink diff is structurally gone
+   (pinned in the snapshot suite). One fork-side trap was still live and is
+   fixed: the Review pane's default mode was `git` even when the project is not
+   a repo, so a multi-repo workspace landed on an empty pane — the mode now
+   resolves against the modes that actually exist (`resolveReviewMode`).
+   Remaining parent-side pairing: the template pin bump on the next release.
+   Known follow-up, deliberately not wired: the empty-review "Initialize git"
+   CTA still appears for a genuinely bare workspace (base template); it should
+   eventually learn the roster so a multi-repo workspace never offers a root
+   git init.
 
 ## Open questions
 

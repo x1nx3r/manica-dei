@@ -29,6 +29,39 @@ export const getSessionKey = (dir: string | undefined, id: string | undefined) =
 export function shouldShowFileTree(input: { visible: boolean; opened: boolean }) {
   return input.opened && input.visible
 }
+
+export type ReviewMode = "git" | "branch" | "turn"
+
+/**
+ * Which change views exist, and which one the session lands on. A workspace
+ * that is not itself a repo (the summoned multi-repo shape, ADR-0009) has no
+ * working-tree or branch view — the round's own diffs are the review. The
+ * stored mode may name a view that does not exist here (or ever existed): fall
+ * back to the first available rather than render an empty pane.
+ */
+export function reviewModeOptions(input: {
+  projectVcs?: string
+  branch?: string
+  defaultBranch?: string
+}): ReviewMode[] {
+  const git = input.projectVcs === "git"
+  const modes: ReviewMode[] = []
+  if (git) modes.push("git")
+  if (git && input.branch && input.defaultBranch && input.branch !== input.defaultBranch) modes.push("branch")
+  modes.push("turn")
+  return modes
+}
+
+export function resolveReviewMode(input: {
+  projectVcs?: string
+  branch?: string
+  defaultBranch?: string
+  stored?: string
+}): ReviewMode {
+  const modes = reviewModeOptions(input)
+  const stored = modes.find((mode) => mode === input.stored)
+  return stored ?? modes[0] ?? "turn"
+}
 /**
  * Which side-panel surfaces show the file browser's own panel. The shared
  * browser owns the panel outright — full width, nothing beside it (the tree
