@@ -1257,9 +1257,9 @@ it.instance(
     const diffs = yield* snapshot.diffFull(before!, after!)
     const app = diffs.find((item) => item.repo === "app")
     const billing = diffs.find((item) => item.repo === "billing")
-    expect(app?.file).toBe("one.txt")
+    expect(app?.file).toBe("app/one.txt")
     expect(app?.patch).toContain("one changed")
-    expect(billing?.file).toBe("two.txt")
+    expect(billing?.file).toBe("billing/two.txt")
     expect(billing?.status).toBe("added")
   }),
   { git: false },
