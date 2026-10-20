@@ -85,6 +85,8 @@ export interface DiffFile {
   readonly additions: number
   readonly deletions: number
   readonly status?: "added" | "deleted" | "modified"
+  /** ADR-0009: the repository a non-root diff belongs to. */
+  readonly repo?: string
 }
 
 /**
@@ -112,14 +114,34 @@ export function roundMessages<T extends RoundMessage>(messages: ReadonlyArray<T>
   )
 }
 
-/** The round's diff, rendered for QA — the change, not an account of it. */
+/**
+ * The round's diff, rendered for QA — the change, not an account of it.
+ *
+ * ADR-0009: a multi-repo round arrives with each diff tagged by its repository
+ * and paths already workspace-relative. The render keeps those tags as
+ * sections so QA reads one review document per workspace instead of having to
+ * re-derive the real diff from a gitlink (the corpus's submodule surgery).
+ * A single-repo (untagged) round renders exactly as before.
+ */
 export function renderDiff(files: ReadonlyArray<DiffFile>): string {
-  return files
-    .filter((file) => !isScratchpad(file.file))
-    .map((file) => {
-      const header = `${file.file ?? "(unknown)"} (${file.status ?? "modified"}, +${file.additions} -${file.deletions})`
-      return file.patch && file.patch.trim().length > 0 ? `${header}\n${file.patch}` : header
-    })
+  const rows = files.filter((file) => !isScratchpad(file.file))
+  const tagged = rows.some((file) => file.repo !== undefined)
+  const line = (file: DiffFile) => {
+    const header = `${file.file ?? "(unknown)"} (${file.status ?? "modified"}, +${file.additions} -${file.deletions})`
+    return file.patch && file.patch.trim().length > 0 ? `${header}\n${file.patch}` : header
+  }
+  if (!tagged) return rows.map(line).join("\n\n")
+
+  const sections = new Map<string, DiffFile[]>()
+  for (const file of rows) {
+    const key = file.repo ?? "workspace root"
+    const list = sections.get(key) ?? []
+    list.push(file)
+    sections.set(key, list)
+  }
+  return [...sections.entries()]
+    .toSorted(([a], [b]) => a.localeCompare(b))
+    .map(([key, list]) => [`## ${key}`, ...list.map(line)].join("\n\n"))
     .join("\n\n")
 }
 

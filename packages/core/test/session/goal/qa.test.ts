@@ -115,9 +115,7 @@ describe("GoalQa.parseRecord — unreadable replies are an abstention", () => {
       '{"state":"snap-1","verdict":"contradicted","probes":[{"criterion":"x"},{"result":"pass","command":"c"}],"findings":[1]}',
       state,
     )
-    expect(record.probes).toEqual([
-      { criterion: "", derived: false, command: "c", output: "", result: "pass" },
-    ])
+    expect(record.probes).toEqual([{ criterion: "", derived: false, command: "c", output: "", result: "pass" }])
     expect(record.findings).toEqual([])
   })
 })
@@ -217,7 +215,13 @@ describe("GoalQa.errorContinuation", () => {
 })
 
 describe("GoalQa.isReviewableDiff", () => {
-  const file = (file: string, patch: string) => ({ file, patch, additions: 1, deletions: 0, status: "modified" as const })
+  const file = (file: string, patch: string) => ({
+    file,
+    patch,
+    additions: 1,
+    deletions: 0,
+    status: "modified" as const,
+  })
 
   test("an empty diff is not reviewable", () => {
     expect(GoalQa.isReviewableDiff([])).toBe(false)
@@ -237,7 +241,13 @@ describe("GoalQa.isReviewableDiff", () => {
 })
 
 describe("GoalQa.renderDiff", () => {
-  const file = (file: string, patch: string) => ({ file, patch, additions: 1, deletions: 0, status: "modified" as const })
+  const file = (file: string, patch: string) => ({
+    file,
+    patch,
+    additions: 1,
+    deletions: 0,
+    status: "modified" as const,
+  })
 
   test("keeps the work in the round's change", () => {
     const rendered = GoalQa.renderDiff([file("src/widget.ts", "diff --git a/src/widget.ts b/src/widget.ts")])
@@ -263,7 +273,10 @@ describe("GoalQa.renderDiff", () => {
 })
 
 describe("GoalQa.roundMessages", () => {
-  const message = (id: string, role: string, parentID?: string) => ({ info: { id, role, ...(parentID ? { parentID } : {}) }, parts: [] })
+  const message = (id: string, role: string, parentID?: string) => ({
+    info: { id, role, ...(parentID ? { parentID } : {}) },
+    parts: [],
+  })
 
   test("keeps the round's user turn and its assistant replies, and drops earlier rounds", () => {
     const messages = [
@@ -276,5 +289,45 @@ describe("GoalQa.roundMessages", () => {
     ]
     const round = GoalQa.roundMessages(messages, "u2")
     expect(round.map((item) => item.info.id)).toEqual(["u2", "a2", "a2b"])
+  })
+})
+
+describe("renderDiff with repository tags (ADR-0009)", () => {
+  test("sections the round by repository, workspace-relative paths intact", () => {
+    const text = GoalQa.renderDiff([
+      {
+        file: "billing/two.txt",
+        patch: "@@ -0,0 +1 @@\n+two",
+        additions: 1,
+        deletions: 0,
+        status: "added",
+        repo: "billing",
+      },
+      {
+        file: "app/one.txt",
+        patch: "@@ -1 +1 @@\n-one\n+one changed",
+        additions: 1,
+        deletions: 1,
+        status: "modified",
+        repo: "app",
+      },
+    ])
+    expect(text).toContain("## app")
+    expect(text).toContain("## billing")
+    // Sections are sorted, and each contains its own files only.
+    expect(text.indexOf("## app")).toBeLessThan(text.indexOf("## billing"))
+    const [app, billing = ""] = text.split("## billing")
+    expect(app).toContain("## app")
+    expect(app).toContain("app/one.txt")
+    expect(app).not.toContain("billing/two.txt")
+    expect(billing).toContain("billing/two.txt")
+  })
+
+  test("an untagged (single-repo) diff renders flat, exactly as before", () => {
+    const text = GoalQa.renderDiff([
+      { file: "src/a.ts", patch: "@@ -1 +1 @@\n-a\n+b", additions: 1, deletions: 1, status: "modified" },
+    ])
+    expect(text).toBe("src/a.ts (modified, +1 -1)\n@@ -1 +1 @@\n-a\n+b")
+    expect(text).not.toContain("##")
   })
 })

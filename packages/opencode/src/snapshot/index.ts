@@ -964,8 +964,17 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
             const b = right.get(key) ?? EMPTY_TREE
             if (a === EMPTY_TREE && b === EMPTY_TREE) continue
             const diffs = yield* (yield* view(repo)).diffFull(a, b)
+            // Paths are workspace-relative so the Review pane's tree groups by
+            // repository on its own (`app/src/x`), and QA's diff reads like a
+            // review document with a repository per section. The root repo
+            // keeps its paths unprefixed — legacy sessions are byte-identical.
+            const prefix = key === RepoRoster.ROOT_KEY ? "" : `${key}/`
             for (const item of diffs) {
-              result.push({ ...item, ...(key === RepoRoster.ROOT_KEY ? {} : { repo: key }) })
+              result.push({
+                ...item,
+                ...(item.file ? { file: `${prefix}${item.file}` } : {}),
+                ...(key === RepoRoster.ROOT_KEY ? {} : { repo: key }),
+              })
             }
           }
           return result
