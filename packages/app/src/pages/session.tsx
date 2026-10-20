@@ -71,7 +71,14 @@ import {
   createSessionComposerRegionController,
   SessionComposerRegion,
 } from "@/pages/session/composer"
-import { createOpenReviewFile, createSessionTabs, createSizing, shouldShowFileTree } from "@/pages/session/helpers"
+import {
+  createOpenReviewFile,
+  createSessionTabs,
+  createSizing,
+  resolveReviewMode,
+  reviewModeOptions,
+  shouldShowFileTree,
+} from "@/pages/session/helpers"
 import { MessageTimeline } from "@/pages/session/timeline/message-timeline"
 import { createTimelineModel } from "@/pages/session/timeline/model"
 import { type DiffStyle, SessionReviewTab, type SessionReviewTabProps } from "@/pages/session/review-tab"
@@ -375,7 +382,13 @@ export default function Page() {
   const location = useLocation()
   const navigate = useNavigate()
   const { params, sessionKey, workspaceKey, tabs, view } = useSessionLayout()
-  const reviewMode = () => view().review.mode() ?? "git"
+  const reviewMode = () =>
+    resolveReviewMode({
+      projectVcs: sync().project?.vcs,
+      branch: sync().data.vcs?.branch,
+      defaultBranch: sync().data.vcs?.default_branch,
+      stored: view().review.mode(),
+    })
   const reviewFile = () => view().review.file()
   const sessionOwnership = createSessionOwnership(sessionKey)
   const newSessionDesign = createMemo(() => settings.general.newLayoutDesigns())
@@ -668,17 +681,13 @@ export default function Page() {
     const project = sync().project
     return !!project && project.vcs !== "git"
   })
-  const changesOptions = createMemo<ChangeMode[]>(() => {
-    const list: ChangeMode[] = []
-    const project = sync().project
-    const vcs = sync().data.vcs
-    if (project?.vcs === "git") list.push("git")
-    if (project?.vcs === "git" && vcs?.branch && vcs?.default_branch && vcs.branch !== vcs.default_branch) {
-      list.push("branch")
-    }
-    list.push("turn")
-    return list
-  })
+  const changesOptions = createMemo<ChangeMode[]>(() =>
+    reviewModeOptions({
+      projectVcs: sync().project?.vcs,
+      branch: sync().data.vcs?.branch,
+      defaultBranch: sync().data.vcs?.default_branch,
+    }),
+  )
   const mobileChanges = createMemo(() => !isDesktop() && store.mobileTab === "changes")
   const wantsReview = createMemo(() =>
     isDesktop()

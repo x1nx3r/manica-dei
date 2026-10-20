@@ -1328,3 +1328,58 @@ it.instance(
   }),
   { git: false },
 )
+
+it.instance(
+  "a workspace whose root is itself a repo tracks both root and nested repos (older volumes, ADR-0009 phase 4)",
+  Effect.gen(function* () {
+    const tmp = yield* TestInstance
+    const root = tmp.directory
+    // The wrapper root the bandaid created, plus one real repo inside it.
+    yield* write(`${root}/AGENTS.md`, "standard")
+    yield* exec(root, ["git", "init", "-q"])
+    yield* exec(root, ["git", "add", "."])
+    yield* exec(root, [
+      "git",
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=test",
+      "commit",
+      "-qm",
+      "init",
+    ])
+    yield* mkdirp(`${root}/app`)
+    yield* write(`${root}/app/one.txt`, "one")
+    yield* exec(`${root}/app`, ["git", "init", "-q"])
+    yield* exec(`${root}/app`, ["git", "add", "."])
+    yield* exec(`${root}/app`, [
+      "git",
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=test",
+      "commit",
+      "-qm",
+      "init",
+    ])
+
+    const snapshot = yield* Snapshot.Service
+    const before = yield* snapshot.track()
+    expect(before).toMatch(/^md1-/)
+
+    yield* write(`${root}/AGENTS.md`, "standard, changed")
+    yield* write(`${root}/app/one.txt`, "one changed")
+    const after = yield* snapshot.track()
+
+    const diffs = yield* snapshot.diffFull(before!, after!)
+    const rootDiff = diffs.find((item) => item.file === "AGENTS.md")
+    const appDiff = diffs.find((item) => item.file === "app/one.txt")
+    expect(rootDiff?.repo).toBeUndefined()
+    expect(appDiff?.repo).toBe("app")
+
+    // The wrapper does not resurrect the phantom gitlink: the nested repo's
+    // content is reviewed on its own, never as `app (+1 -1)`.
+    expect(diffs.some((item) => item.file === "app" && item.patch === "")).toBe(false)
+  }),
+  { git: true },
+)
