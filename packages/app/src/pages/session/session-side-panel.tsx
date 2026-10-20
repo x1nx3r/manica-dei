@@ -53,6 +53,7 @@ import {
   createOpenSessionFileTab,
   createSessionTabs,
   getTabReorderIndex,
+  fileBrowserPanelVisible,
   shouldShowFileTree,
   type Sizing,
 } from "@/pages/session/helpers"
@@ -108,15 +109,8 @@ export function SessionSidePanel(props: {
         opened: layout.fileTree.opened(),
       }),
   )
-  const open = createMemo(() => reviewOpen() || fileOpen())
   const fileTreeWidth = createMemo(() => Math.max(FILE_TREE_WIDTH_MIN, layout.fileTree.width()))
   const reviewTab = createMemo(() => isDesktop())
-  const panelWidth = createMemo(() => {
-    if (!open()) return "0px"
-    if (reviewOpen()) return "auto"
-    return `${fileTreeWidth()}px`
-  })
-  const treeWidth = createMemo(() => (fileOpen() ? `${fileTreeWidth()}px` : "0px"))
 
   const diffs = createMemo(() => props.diffs().filter(renderDiff))
   const diffFiles = createMemo(() => diffs().map((d) => d.file))
@@ -195,6 +189,21 @@ export function SessionSidePanel(props: {
   const activeTab = tabState.activeTab
   const activeFileTab = tabState.activeFileTab
 
+  // Issue (tab surfaces): the shared browser owns the side panel outright —
+  // full width, nothing beside it. The file tree is a files-and-review
+  // neighbor, not a browser one, so it closes while the browser surface is on
+  // top and reopens when a file/review tab takes over. Inert in both layout
+  // branches: the v2 file browser hides through `fileBrowserVisible`, this
+  // memo drives the legacy tree column.
+  const treeOpen = createMemo(() => fileOpen() && activeTab() !== SESSION_BROWSER_TAB)
+  const open = createMemo(() => reviewOpen() || treeOpen())
+  const panelWidth = createMemo(() => {
+    if (!open()) return "0px"
+    if (reviewOpen()) return "auto"
+    return `${fileTreeWidth()}px`
+  })
+  const treeWidth = createMemo(() => (treeOpen() ? `${fileTreeWidth()}px` : "0px"))
+
   const fileTreeTab = () => layout.fileTree.tab()
 
   const setFileTreeTabValue = (value: string) => {
@@ -243,10 +252,7 @@ export function SessionSidePanel(props: {
     if (!props.fileBrowserState) return false
     return openedTabs().length > 0 || openFileOpen() || !!browserTab()
   })
-  const fileBrowserVisible = createMemo(() => {
-    const active = activeTab()
-    return active !== "review" && active !== "context" && active !== "empty"
-  })
+  const fileBrowserVisible = createMemo(() => fileBrowserPanelVisible(activeTab()))
   const openFileKeybind = createMemo(() => command.keybindParts("file.open"))
   const closeTabKeybind = createMemo(() => command.keybindParts("tab.close"))
   const [store, setStore] = createStore({
@@ -811,7 +817,7 @@ export function SessionSidePanel(props: {
               </div>
             </Show>
 
-            <Show when={fileOpen()}>
+            <Show when={treeOpen()}>
               <div
                 id="file-tree-panel"
                 class="relative min-w-0 h-full shrink-0 overflow-hidden"
