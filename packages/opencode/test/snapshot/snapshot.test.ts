@@ -1277,3 +1277,54 @@ it.instance(
   }),
   { git: true },
 )
+
+it.instance(
+  "multi-repo revert and restore act per repository (ADR-0009 phase 3)",
+  Effect.gen(function* () {
+    const tmp = yield* TestInstance
+    const root = tmp.directory
+    for (const name of ["app", "billing"]) {
+      yield* mkdirp(`${root}/${name}`)
+      yield* write(`${root}/${name}/one.txt`, "one")
+      yield* exec(`${root}/${name}`, ["git", "init", "-q"])
+      yield* exec(`${root}/${name}`, ["git", "add", "."])
+      yield* exec(`${root}/${name}`, [
+        "git",
+        "-c",
+        "user.email=test@example.com",
+        "-c",
+        "user.name=test",
+        "commit",
+        "-qm",
+        "init",
+      ])
+    }
+    const snapshot = yield* Snapshot.Service
+    const first = yield* snapshot.track()
+    expect(first).toMatch(/^md1-/)
+
+    yield* write(`${root}/app/one.txt`, "app changed")
+    yield* write(`${root}/billing/one.txt`, "billing changed")
+    yield* write(`${root}/billing/new.txt`, "new")
+
+    const patch = yield* snapshot.patch(first!)
+    expect(patch.files).toContain(fwd(root, "app", "one.txt"))
+    expect(patch.files).toContain(fwd(root, "billing", "one.txt"))
+
+    // The legacy `diff` (revert UI's patch text) spans the whole workspace.
+    const diff = yield* snapshot.diff(first!)
+    expect(diff).toContain("app/one.txt")
+    expect(diff).toContain("billing/one.txt")
+
+    // A selective revert touches only the file's own repository.
+    yield* snapshot.revert([{ hash: first!, files: [fwd(root, "app", "one.txt")] }])
+    expect(yield* readText(`${root}/app/one.txt`)).toBe("one")
+    expect(yield* readText(`${root}/billing/one.txt`)).toBe("billing changed")
+
+    // The composite restore returns every repo to the captured tree.
+    yield* snapshot.restore(first!)
+    expect(yield* readText(`${root}/app/one.txt`)).toBe("one")
+    expect(yield* readText(`${root}/billing/one.txt`)).toBe("one")
+  }),
+  { git: false },
+)

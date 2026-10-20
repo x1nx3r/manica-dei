@@ -939,6 +939,31 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
           }
         })
 
+        // A repo's patch speaks in paths relative to its own worktree. Concatenated
+        // across repos those paths collide (`app/one.txt` vs `billing/one.txt`
+        // both render as `one.txt`), so the aggregate qualifies every path with
+        // the repo key — the same workspace-relative shape diffFull already
+        // produces (ADR-0009 phase 2/3).
+        const qualify = (key: string, patch: string) => {
+          if (key === RepoRoster.ROOT_KEY) return patch
+          return patch
+            .split("\n")
+            .map((line) => {
+              const pair = /^diff --git a\/(.+) b\/(.+)$/.exec(line)
+              if (pair) return `diff --git a/${key}/${pair[1]} b/${key}/${pair[2]}`
+              const before = /^--- a\/(.+)$/.exec(line)
+              if (before) return `--- a/${key}/${before[1]}`
+              const after = /^\+\+\+ b\/(.+)$/.exec(line)
+              if (after) return `+++ b/${key}/${after[1]}`
+              const from = /^rename from (.+)$/.exec(line)
+              if (from) return `rename from ${key}/${from[1]}`
+              const to = /^rename to (.+)$/.exec(line)
+              if (to) return `rename to ${key}/${to[1]}`
+              return line
+            })
+            .join("\n")
+        }
+
         const diff = Effect.fnUntraced(function* (hash: string) {
           const repos = yield* roster()
           const parts: string[] = []
@@ -946,7 +971,7 @@ const layer: Layer.Layer<Service, never, FSUtil.Service | AppProcess.Service | C
             const repo = find(repos, key) ?? (key === RepoRoster.ROOT_KEY ? legacy() : undefined)
             if (!repo) continue
             const text = yield* (yield* view(repo)).diff(tree)
-            if (text.trim()) parts.push(text.trim())
+            if (text.trim()) parts.push(qualify(key, text.trim()))
           }
           return parts.join("\n")
         })
