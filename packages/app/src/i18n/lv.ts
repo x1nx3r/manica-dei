@@ -717,6 +717,7 @@ export const dict = {
   "session.review.loadingChanges": "Notiek izmaiņu ielāde...",
   "session.review.empty": "Šajā sesijā vēl nav izmaiņu",
   "session.review.noVcs": "Nav atrasta Git versiju kontrole, izmaiņas netiek rādītas",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Izveidot Git repozitoriju",
   "session.review.noVcs.createGit.description": "Izseko, pārskati un atsauc izmaiņas šajā projektā",
   "session.review.noVcs.createGit.actionLoading": "Notiek Git repozitorija izveide...",

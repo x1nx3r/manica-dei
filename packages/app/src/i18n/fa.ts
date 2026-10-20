@@ -715,6 +715,7 @@ export const dict = {
   "session.review.loadingChanges": "در حال بارگیری تغییرات...",
   "session.review.empty": "هنوز هیچ تغییری در این جلسه وجود ندارد",
   "session.review.noVcs": "هیچ سیستم کنترل نسخه Git شناسایی نشد، تغییرات نمایش داده نمی شود",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "یک مخزن Git ایجاد کنید",
   "session.review.noVcs.createGit.description": "ردیابی، بررسی، و لغو تغییرات در این پروژه",
   "session.review.noVcs.createGit.actionLoading": "ایجاد مخزن Git...",

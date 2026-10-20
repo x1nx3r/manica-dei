@@ -723,6 +723,7 @@ export const dict = {
   "session.review.loadingChanges": "Φόρτωση αλλαγών...",
   "session.review.empty": "Δεν υπάρχουν ακόμη αλλαγές σε αυτήν τη συνεδρία",
   "session.review.noVcs": "Δεν εντοπίστηκε σύστημα ελέγχου έκδοσης Git, οι αλλαγές δεν εμφανίζονται",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Δημιουργία αποθετηρίου Git",
   "session.review.noVcs.createGit.description": "Παρακολούθηση, έλεγχος και αναίρεση αλλαγών σε αυτό το έργο",
   "session.review.noVcs.createGit.actionLoading": "Δημιουργία αποθετηρίου Git...",

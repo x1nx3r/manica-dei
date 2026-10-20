@@ -715,6 +715,7 @@ export const dict: Record<string, string> = {
   "session.review.loadingChanges": "পরিবর্তনগুলি লোড হচ্ছে...",
   "session.review.empty": "এই সেশনে এখনও কোন পরিবর্তন নেই",
   "session.review.noVcs": "কোন Git সংস্করণ নিয়ন্ত্রণ সিস্টেম সনাক্ত করা যায়নি, পরিবর্তনগুলি প্রদর্শিত হয় না",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "একটি Git সংগ্রহস্থল তৈরি করুন",
   "session.review.noVcs.createGit.description":
     "এই প্রকল্পের পরিবর্তনগুলি ট্র্যাক করুন, পর্যালোচনা করুন এবং পূর্বাবস্থায় ফেরান৷",

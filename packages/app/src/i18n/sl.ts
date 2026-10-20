@@ -716,6 +716,7 @@ export const dict = {
   "session.review.loadingChanges": "Nalaganje sprememb ...",
   "session.review.empty": "V tej seji še ni sprememb",
   "session.review.noVcs": "Sistem za nadzor različic Git ni bil zaznan, spremembe niso prikazane",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Ustvarite repozitorij Git",
   "session.review.noVcs.createGit.description": "Sledite, pregledujte in razveljavite spremembe v tem projektu",
   "session.review.noVcs.createGit.actionLoading": "Ustvarjanje skladišča Git ...",

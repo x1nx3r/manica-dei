@@ -705,6 +705,7 @@ export const dict = {
   "session.review.loadingChanges": "Loading changes...",
   "session.review.empty": "No changes in this session yet",
   "session.review.noVcs": "No Git Version Control System detected, changes not displayed",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Create a Git repository",
   "session.review.noVcs.createGit.description": "Track, review, and undo changes in this project",
   "session.review.noVcs.createGit.actionLoading": "Creating Git repository...",

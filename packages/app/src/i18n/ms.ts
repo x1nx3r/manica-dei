@@ -714,6 +714,7 @@ export const dict = {
   "session.review.loadingChanges": "Memuat perubahan...",
   "session.review.empty": "Belum ada perubahan dalam sesi ini",
   "session.review.noVcs": "Tiada Sistem Kawalan Versi Git dikesan, perubahan tidak dipaparkan",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Cipta repositori Git",
   "session.review.noVcs.createGit.description": "Jejak, semak dan undur perubahan dalam projek ini",
   "session.review.noVcs.createGit.actionLoading": "Mencipta repositori Git...",

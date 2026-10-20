@@ -714,6 +714,7 @@ export const dict = {
   "session.review.loadingChanges": "Načítavam zmeny...",
   "session.review.empty": "V tejto relácii zatiaľ nie sú žiadne zmeny",
   "session.review.noVcs": "Nebolo zistené Git verzionovanie, zmeny sa nezobrazujú",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Vytvoriť Git repozitár",
   "session.review.noVcs.createGit.description": "Sledujte, kontrolujte a vracajte zmeny v tomto projekte",
   "session.review.noVcs.createGit.actionLoading": "Vytváram Git repozitár...",

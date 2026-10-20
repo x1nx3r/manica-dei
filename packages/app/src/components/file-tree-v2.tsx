@@ -1,4 +1,5 @@
 import { useFile } from "@/context/file"
+import { useLanguage } from "@/context/language"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
 import "@opencode-ai/ui/v2/file-tree-v2.css"
 import {
@@ -60,6 +61,7 @@ const FileTreeNodeV2 = (
       active?: string
       draggable: boolean
       kinds?: ReadonlyMap<string, Kind>
+      repos?: ReadonlySet<string>
       as?: "div" | "button"
     },
 ) => {
@@ -69,11 +71,13 @@ const FileTreeNodeV2 = (
     "active",
     "draggable",
     "kinds",
+    "repos",
     "as",
     "children",
     "class",
     "classList",
   ])
+  const language = useLanguage()
   const kind = () => local.kinds?.get(normalizeFileTreeV2Path(local.node.path))
 
   return (
@@ -102,6 +106,9 @@ const FileTreeNodeV2 = (
       <span class="flex-1 min-w-0 text-start text-12-medium whitespace-nowrap truncate">
         <bdi dir="auto">{local.node.name}</bdi>
       </span>
+      <Show when={local.node.type === "directory" && local.repos?.has(normalizeFileTreeV2Path(local.node.path))}>
+        <span data-slot="file-tree-v2-repo">{language.t("session.review.repository")}</span>
+      </Show>
       {(() => {
         const value = kind()
         if (!value || local.node.type !== "file") return null
@@ -127,11 +134,14 @@ export default function FileTreeV2(props: {
   active?: string
   allowed?: readonly string[]
   kinds?: ReadonlyMap<string, Kind>
+  repos?: readonly string[]
   draggable?: boolean
   onFileClick?: (file: FileNode) => void
   onFileDoubleClick?: (file: FileNode) => void
 }) {
   const file = useFile()
+  const language = useLanguage()
+  const repoSet = createMemo(() => new Set((props.repos ?? []).map(normalizeFileTreeV2Path)))
   const live = () => props.allowed === undefined
   const draggable = () => props.draggable ?? true
   const active = () => normalizeFileTreeV2Path(props.active ?? "")
@@ -246,6 +256,7 @@ export default function FileTreeV2(props: {
                           active={active()}
                           draggable={draggable()}
                           kinds={props.kinds}
+                          repos={repoSet()}
                           as="button"
                           type="button"
                           class="relative"
@@ -271,6 +282,7 @@ export default function FileTreeV2(props: {
                         active={active()}
                         draggable={draggable()}
                         kinds={props.kinds}
+                        repos={repoSet()}
                         as="button"
                         type="button"
                         class="relative"

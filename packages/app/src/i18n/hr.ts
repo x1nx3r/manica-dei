@@ -723,6 +723,7 @@ export const dict = {
   "session.review.loadingChanges": "Učitavanje promjena...",
   "session.review.empty": "Još nema promjena u ovoj sesiji",
   "session.review.noVcs": "Sustav kontrole verzija Git nije otkriven, promjene nisu prikazane",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Napravite Git spremište",
   "session.review.noVcs.createGit.description": "Pratite, pregledajte i poništite promjene u ovom projektu",
   "session.review.noVcs.createGit.actionLoading": "Stvaranje Git repozitorija...",

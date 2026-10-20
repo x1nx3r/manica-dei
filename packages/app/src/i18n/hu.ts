@@ -721,6 +721,7 @@ export const dict = {
   "session.review.loadingChanges": "Módosítások betöltése...",
   "session.review.empty": "Ebben a munkamenetben még nincs változás",
   "session.review.noVcs": "Nem észlelt Git verzióvezérlő rendszert, a változások nem jelennek meg",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Hozzon létre egy Git tárolót",
   "session.review.noVcs.createGit.description":
     "Kövesse nyomon, tekintse át és vonja vissza a változtatásokat ebben a projektben",

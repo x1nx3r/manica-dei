@@ -713,6 +713,7 @@ export const dict: Record<string, string> = {
   "session.review.loadingChanges": "වෙනස්කම් පූරණය කරමින්...",
   "session.review.empty": "මෙම සැසියේ තවමත් වෙනස්කම් නොමැත",
   "session.review.noVcs": "Git අනුවාද පාලන පද්ධතියක් අනාවරණය වී නැත, වෙනස්කම් දර්ශනය නොවේ",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git ගබඩාවක් සාදන්න",
   "session.review.noVcs.createGit.description": "මෙම ව්‍යාපෘතියේ වෙනස්කම් හඹා යන්න, සමාලෝචනය කරන්න, සහ පසුගමනය කරන්න",
   "session.review.noVcs.createGit.actionLoading": "Git ගබඩාව නිර්මාණය කරමින්...",

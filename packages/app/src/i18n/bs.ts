@@ -1175,6 +1175,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "korisničko ime",
   "dialog.server.add.passwordPlaceholder": "lozinka",
   "server.row.noUsername": "nema korisničkog imena",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Kreiraj Git repozitorij",
   "session.review.noVcs.createGit.description": "Prati, pregledaj i poništi promjene u ovom projektu",
   "session.review.noVcs.createGit.actionLoading": "Kreiranje Git repozitorija...",

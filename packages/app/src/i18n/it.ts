@@ -631,6 +631,7 @@ export const dict = {
   "session.review.loadingChanges": "Caricamento modifiche...",
   "session.review.empty": "Nessuna modifica ancora in questa sessione",
   "session.review.noVcs": "Nessun sistema di controllo della versione Git rilevato, modifiche non visualizzate",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Crea un repository Git",
   "session.review.noVcs.createGit.description": "Tieni traccia, rivedi e annulla le modifiche in questo progetto",
   "session.review.noVcs.createGit.actionLoading": "Creazione del repository Git in corso...",

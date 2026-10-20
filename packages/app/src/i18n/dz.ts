@@ -727,6 +727,7 @@ export const dict: Record<string, string> = {
   "session.review.loadingChanges": "བསྒྱུར་བཅོས་ཚུ་མངོན་གསལ་འབད་དོ...",
   "session.review.empty": "ལཱ་ཡུན་འདི་ནང་ བསྒྱུར་བཅོས་ག་ནི་ཡང་མེདཔ།",
   "session.review.noVcs": "མེན་ Git ཐོན་རིམ་ཚད་འཛིན་རིམ་ལུགས་སྐྱོན་འཛིན་འབད་ནུག བསྒྱུར་བཅོས་ཚུ་བཀྲམ་སྟོན་མ་འབད་བས།",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Gitམཛོད་ཅིག་གསར་བསྐྲུན་འབད།",
   "session.review.noVcs.createGit.description":
     "ལས་འགུལ་འདི་ནང་ བསྒྱུར་བཅོས་ཚུ་ བརྟག་ཞིབ་འབད་ནི་དང་ བསྐྱར་ཞིབ་འབད་ནི་ དེ་ལས་ འབད་བཤོལ་འབད་ནི།",

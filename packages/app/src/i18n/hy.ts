@@ -720,6 +720,7 @@ export const dict = {
   "session.review.loadingChanges": "Բեռնվում են փոփոխություններ...",
   "session.review.empty": "Այս նիստում դեռ փոփոխություններ չկան",
   "session.review.noVcs": "Չի հայտնաբերվել Git Տարբերակի կառավարման համակարգ, փոփոխությունները չեն ցուցադրվում",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Ստեղծել Git պահոց",
   "session.review.noVcs.createGit.description": "Հետեւել, վերանայել և հետարկել այս նախագծի փոփոխությունները",
   "session.review.noVcs.createGit.actionLoading": "Ստեղծվում է Git պահոց...",

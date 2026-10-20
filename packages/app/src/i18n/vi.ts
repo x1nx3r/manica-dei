@@ -725,6 +725,7 @@ export const dict = {
   "session.review.loadingChanges": "Đang tải các thay đổi...",
   "session.review.empty": "Chưa có thay đổi nào trong phiên này",
   "session.review.noVcs": "Không phát hiện hệ thống quản lý phiên bản Git nên không thể hiển thị thay đổi",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Tạo kho lưu trữ Git",
   "session.review.noVcs.createGit.description": "Theo dõi, xem xét và hoàn tác các thay đổi trong dự án này",
   "session.review.noVcs.createGit.actionLoading": "Đang tạo kho lưu trữ Git...",

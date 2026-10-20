@@ -806,6 +806,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "사용자 이름",
   "dialog.server.add.passwordPlaceholder": "비밀번호",
   "server.row.noUsername": "사용자 이름 없음",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git 저장소 생성",
   "session.review.noVcs.createGit.description": "이 프로젝트의 변경 사항을 추적, 검토 및 실행 취소",
   "session.review.noVcs.createGit.actionLoading": "Git 저장소 생성 중...",

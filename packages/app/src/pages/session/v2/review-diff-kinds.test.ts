@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { filterReviewFiles, reviewDiffDirectory, reviewDiffKinds, reviewDiffNeedsLoad } from "./review-diff-kinds"
+import {
+  filterReviewFiles,
+  reviewDiffDirectory,
+  reviewDiffKinds,
+  reviewDiffNeedsLoad,
+  reviewDiffRepos,
+} from "./review-diff-kinds"
 
 describe("reviewDiffKinds", () => {
   test("maps file and directory kinds", () => {
@@ -66,5 +72,21 @@ describe("reviewDiffDirectory", () => {
     expect(reviewDiffDirectory("C:\\", "README.md")).toBe("C:\\")
     expect(reviewDiffDirectory("/", "src/a.ts")).toBe("/src")
     expect(reviewDiffDirectory("C:\\", "src/a.ts")).toBe("C:\\src")
+  })
+})
+
+describe("reviewDiffRepos (ADR-0009: repositories are signified, not implied)", () => {
+  test("collects the round's repositories once, sorted", () => {
+    expect(
+      reviewDiffRepos([
+        { file: "billing/two.txt", additions: 1, deletions: 0, repo: "billing" },
+        { file: "app/one.txt", additions: 1, deletions: 1, repo: "app" },
+        { file: "app/three.txt", additions: 1, deletions: 0, repo: "app" },
+      ]),
+    ).toEqual(["app", "billing"])
+  })
+
+  test("single-repo rounds carry no tags — nothing to badge", () => {
+    expect(reviewDiffRepos([{ file: "src/a.ts", additions: 1, deletions: 0 }])).toEqual([])
   })
 })

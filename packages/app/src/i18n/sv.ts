@@ -720,6 +720,7 @@ export const dict = {
   "session.review.loadingChanges": "Läser in ändringar...",
   "session.review.empty": "Inga ändringar i denna session ännu",
   "session.review.noVcs": "Inget Git-versionskontrollsystem upptäcktes, ändringar visas inte",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Skapa ett Git-arkiv",
   "session.review.noVcs.createGit.description": "Spåra, granska och ångra ändringar i det här projektet",
   "session.review.noVcs.createGit.actionLoading": "Skapar Git-arkiv...",

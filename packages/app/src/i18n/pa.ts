@@ -725,6 +725,7 @@ export const dict = {
   "session.review.loadingChanges": "تبدیلیاں لوڈ ہو رہیاں نیں...",
   "session.review.empty": "اس سیشن وچ حالے تک کوئی تبدیلی نئیں",
   "session.review.noVcs": "کوئی Git ورژن کنٹرول سسٹم نئیں لبھیا، تبدیلیاں نئیں وکھائیاں گئیاں",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "اک Git ریپازٹری بناؤ",
   "session.review.noVcs.createGit.description": "اس منصوبے چ تبدیلیاں نو ٹریک کرو، جائزہ لوو تے کالعدم کرو",
   "session.review.noVcs.createGit.actionLoading": "Git ریپازٹری بنانا...",

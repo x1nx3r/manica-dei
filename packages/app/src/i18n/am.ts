@@ -703,6 +703,7 @@ export const dict = {
   "session.review.loadingChanges": "ለውጦችን በመጫን ላይ...",
   "session.review.empty": "በዚህ ክፍለ ጊዜ ምንም ለውጦች የሉም",
   "session.review.noVcs": "ምንም Git የስሪት ቁጥጥር ስርዓት አልተገኘም፣ ለውጦች አይታዩም",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Git ማከማቻ ፍጠር",
   "session.review.noVcs.createGit.description": "በዚህ ፕሮጀክት ላይ ለውጦችን ይከታተሉ፣ ይገምግሙ እና ይቀልብሱ",
   "session.review.noVcs.createGit.actionLoading": "Git ማከማቻ በመፍጠር ላይ...",

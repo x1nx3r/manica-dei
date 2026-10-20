@@ -785,6 +785,7 @@ export const dict = {
   "session.review.loadingChanges": "Завантаження змін...",
   "session.review.empty": "У цій сесії ще немає змін",
   "session.review.noVcs": "Систему контролю версій Git не виявлено, зміни не відображаються",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Створити Git-репозиторій",
   "session.review.noVcs.createGit.description": "Відстежуйте, переглядайте та скасовуйте зміни в цьому проєкті",
   "session.review.noVcs.createGit.actionLoading": "Створення Git-репозиторію...",

@@ -1143,6 +1143,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "使用者名稱",
   "dialog.server.add.passwordPlaceholder": "密碼",
   "server.row.noUsername": "無使用者名稱",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "建立 Git 儲存庫",
   "session.review.noVcs.createGit.description": "追蹤、檢閱及復原此專案中的變更",
   "session.review.noVcs.createGit.actionLoading": "正在建立 Git 儲存庫...",

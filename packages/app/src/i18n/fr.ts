@@ -1109,6 +1109,7 @@ export const dict = {
   "dialog.server.add.usernamePlaceholder": "nom d'utilisateur",
   "dialog.server.add.passwordPlaceholder": "mot de passe",
   "server.row.noUsername": "aucun nom d'utilisateur",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Créer un dépôt Git",
   "session.review.noVcs.createGit.description": "Suivre, examiner et annuler les modifications dans ce projet",
   "session.review.noVcs.createGit.actionLoading": "Création du dépôt Git...",

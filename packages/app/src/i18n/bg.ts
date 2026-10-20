@@ -721,6 +721,7 @@ export const dict = {
   "session.review.loadingChanges": "Промените се зареждат...",
   "session.review.empty": "Все още няма промени в тази сесия",
   "session.review.noVcs": "Не е открита Git Система за контрол на версиите, промените не се показват",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "Създайте Git хранилище",
   "session.review.noVcs.createGit.description": "Проследявайте, преглеждайте и отменяйте промените в този проект",
   "session.review.noVcs.createGit.actionLoading": "Създаване на Git хранилище...",

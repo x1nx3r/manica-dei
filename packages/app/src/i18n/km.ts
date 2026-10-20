@@ -713,6 +713,7 @@ export const dict = {
   "session.review.loadingChanges": "កំពុងផ្ទុកការផ្លាស់ប្តូរ...",
   "session.review.empty": "មិនមានការផ្លាស់ប្តូរនៅក្នុងសម័យនេះនៅឡើយទេ",
   "session.review.noVcs": "គ្មានប្រព័ន្ធគ្រប់គ្រងកំណែ Git ត្រូវបានរកឃើញទេ ការផ្លាស់ប្តូរមិនត្រូវបានបង្ហាញទេ។",
+  "session.review.repository": "repo",
   "session.review.noVcs.createGit.title": "បង្កើតឃ្លាំង Git",
   "session.review.noVcs.createGit.description": "តាមដាន ពិនិត្យ និងបោះបង់ការផ្លាស់ប្ដូរនៅក្នុងគម្រោងនេះ។",
   "session.review.noVcs.createGit.actionLoading": "ការបង្កើតឃ្លាំង Git...",
