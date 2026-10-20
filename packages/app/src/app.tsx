@@ -34,13 +34,15 @@ import {
   onCleanup,
   type ParentProps,
   Show,
+  untrack,
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { CommandProvider, useCommand, type CommandOption } from "@/context/command"
 import { CommentsProvider } from "@/context/comments"
 import { FileProvider } from "@/context/file"
-import { ServerSDKProvider } from "@/context/server-sdk"
+import { ServerSDKProvider, useServerSDK } from "@/context/server-sdk"
+import { lastWorkspaceSession } from "@/utils/last-workspace-session"
 import { ServerSyncProvider, useServerSync } from "@/context/server-sync"
 import { GlobalProvider, useGlobal } from "@/context/global"
 import { LanguageProvider, type Locale, useLanguage } from "@/context/language"
@@ -75,6 +77,9 @@ const SessionRoute = () => {
   const [search] = useSearchParams<{ draftId?: string; prompt?: string }>()
   const sdk = useSDK()
   const server = useServer()
+  const serverSDK = useServerSDK()
+  const serverSync = useServerSync()
+  const navigate = useNavigate()
   const tabs = useTabs()
 
   if (params.id && settings.general.newLayoutDesigns()) {
@@ -89,13 +94,35 @@ const SessionRoute = () => {
     )
   }
 
-  // When the new layout is enabled, the legacy new-session route (/:dir/session with no id)
-  // is replaced by a draft at /new-session?draftId=…
+  // Issue #6: an id-less workspace URL means "open the workspace's last
+  // session; else a new chat" — the same resolve the sidebar's
+  // navigateToProject runs, consulted on this route. Without it a minted
+  // workspace URL lands blank and the first message mints a phantom session,
+  // orphaning what the last one carried (the goal run, the greeting, the
+  // trail).
   createEffect(() => {
-    if (!settings.general.newLayoutDesigns()) return
     if (params.id || search.draftId) return
-    if (!tabs.ready() || !sdk().directory) return
-    tabs.newDraft({ server: server.key, directory: sdk().directory }, search.prompt)
+    if (!tabs.ready()) return
+    const directory = sdk().directory
+    if (!directory) return
+    untrack(async () => {
+      const child = serverSync().child(directory, { bootstrap: false })[0]
+      const session = await lastWorkspaceSession(serverSDK().api.session, {
+        directory,
+        ...(child ? { synced: [{ path: { directory }, session: child.session }] } : {}),
+      })
+      if (session) {
+        navigate(`${legacySessionHref(directory, session.id)}${location.search}`, { replace: true })
+        return
+      }
+      // A workspace with no sessions keeps the plain new-chat behavior. Under
+      // the new layout that is a draft; dedupe by directory so an effect
+      // re-run during the resolve cannot mint two drafts.
+      const draft = tabs.store.some((tab) => tab.type === "draft" && tab.directory === directory)
+      if (settings.general.newLayoutDesigns() && !draft) {
+        await tabs.newDraft({ server: server.key, directory }, search.prompt)
+      }
+    })
   })
 
   return (
