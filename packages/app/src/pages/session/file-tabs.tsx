@@ -223,6 +223,30 @@ export function SessionFileView(props: SessionFileViewProps) {
   )
 }
 
+/**
+ * A visible file tab owns its data.
+ *
+ * `file.load` was called only by the openers — the tree, the review list, the
+ * command palette — so a tab that became visible any other way rendered
+ * nothing at all: a tab restored from the persisted layout after a reload, or
+ * one whose tab string normalises to a path the opener did not load. The
+ * switch in the view has no branch for "no state", so the pane is blank and
+ * stays blank; nothing ever asks again.
+ *
+ * Asking from the view makes the tab the last word on whether its file is
+ * loaded. The opener's eager load stays as a head start, not a requirement.
+ */
+function createFileTabLoader(path: () => string | undefined) {
+  const file = useFile()
+  createEffect(() => {
+    const value = path()
+    if (!value) return
+    const state = file.get(value)
+    if (state?.loaded || state?.loading || state?.error) return
+    void file.load(value)
+  })
+}
+
 function SessionFileViewV1(props: { tab: string }) {
   const file = useFile()
   const comments = useComments()
@@ -245,6 +269,7 @@ function SessionFileViewV1(props: { tab: string }) {
   }
 
   const path = createMemo(() => file.pathFromTab(props.tab))
+  createFileTabLoader(path)
   const state = createMemo(() => {
     const p = path()
     if (!p) return
@@ -500,6 +525,9 @@ function SessionFileViewV1(props: { tab: string }) {
             <div class="px-6 py-4 text-text-weak">{language.t("common.loading")}...</div>
           </Match>
           <Match when={state()?.error}>{(err) => <div class="px-6 py-4 text-text-weak">{err()}</div>}</Match>
+          <Match when={path()}>
+            <div class="px-6 py-4 text-text-weak">{language.t("common.loading")}...</div>
+          </Match>
         </Switch>
       </ScrollView>
     </div>
@@ -530,6 +558,7 @@ function SessionFileViewV2(props: { tab: string }) {
   }
 
   const path = createMemo(() => file.pathFromTab(props.tab))
+  createFileTabLoader(path)
   const state = createMemo(() => {
     const p = path()
     if (!p) return
@@ -791,6 +820,9 @@ function SessionFileViewV2(props: { tab: string }) {
             <div class="px-6 py-4 text-text-weak">{language.t("common.loading")}...</div>
           </Match>
           <Match when={state()?.error}>{(err) => <div class="px-6 py-4 text-text-weak">{err()}</div>}</Match>
+          <Match when={path()}>
+            <div class="px-6 py-4 text-text-weak">{language.t("common.loading")}...</div>
+          </Match>
         </Switch>
       </ScrollView>
     </div>

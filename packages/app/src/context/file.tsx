@@ -185,9 +185,14 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
         .then((x) => {
           if (scope() !== directory) return
           const content = x.data
+          // `loaded` with nothing in it renders an empty pane and reports no
+          // error, because the view trusts `loaded`: a body the client could
+          // not parse must fail like a failed request, not erase the file.
+          if (!content || typeof content.content !== "string") {
+            setLoadError(file, language.t("toast.file.loadFailed.title"))
+            return
+          }
           setLoaded(file, content)
-
-          if (!content) return
           touchFileContent(file, approxBytes(content))
           evictContent(new Set([file]))
         })
