@@ -206,7 +206,11 @@ export function withCliFixture<A, E>(
 
     const spawn = Effect.fn("opencode.spawn")(function* (args: string[], opts?: SpawnOpts) {
       const start = Date.now()
-      const timeoutMs = opts?.timeoutMs ?? 30_000
+      // The run-process cases get a 60s bun budget per test; 30s of that was
+      // this harness's own bound and lost to CI load twice (v0.4.5's PR,
+      // v0.4.6's post-merge run). 45s stays under the budget and still fails
+      // a real hang.
+      const timeoutMs = opts?.timeoutMs ?? 45_000
       // stdin: "ignore" so the child doesn't see a piped stdin and block
       // on `Bun.stdin.text()` (see src/cli/cmd/run.ts — non-TTY stdin is
       // consumed as the prompt). The old Process.run wrapper defaulted to
