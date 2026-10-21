@@ -62,7 +62,13 @@ import LegacyLayout from "@/pages/layout"
 import NewLayout from "@/pages/layout-new"
 import { ErrorPage } from "./pages/error"
 import { useCheckServerHealth } from "./utils/server-health"
-import { legacySessionHref, legacySessionServer, requireServerKey, sessionHref } from "./utils/session-route"
+import {
+  legacySessionHref,
+  legacySessionServer,
+  requireServerKey,
+  sessionHref,
+  workspaceSessionHref,
+} from "./utils/session-route"
 import { createSessionLineage } from "@/pages/session/session-lineage"
 
 import { SessionPage, SessionRouteErrorBoundary, TargetSessionRouteContent } from "@/pages/session"
@@ -82,17 +88,29 @@ const SessionRoute = () => {
   const navigate = useNavigate()
   const tabs = useTabs()
 
-  if (params.id && settings.general.newLayoutDesigns()) {
+  // The route below decides, once, whether this is the new layout's session
+  // route or the legacy page. It used to be a plain `if` in the component
+  // body, so an in-place navigation from the id-less workspace URL to the
+  // id URL (`issue #6`'s resolve, one route later) kept the branch chosen
+  // with no id: the legacy page mounted inside the new layout's `main`,
+  // which is `items-start`, and shrank to a 340px column. Make the decision
+  // reactive; the workspace resolve can then replace to the canonical URL
+  // and the right layout mounts.
+  const sessionHrefFor = (sessionID: string, directory: string) =>
+    workspaceSessionHref({
+      newLayout: settings.general.newLayoutDesigns(),
+      directory,
+      sessionID,
+      server: server.key,
+      tabs: tabs.store.filter((item) => item.type === "session"),
+    })
+
+  const target = createMemo(() => {
     const sessionID = params.id
-    return (
-      <Show when={tabs.ready()}>
-        {(_) => {
-          const persisted = tabs.store.filter((item) => item.type === "session")
-          return <Navigate href={sessionHref(legacySessionServer(persisted, sessionID, server.key), sessionID)} />
-        }}
-      </Show>
-    )
-  }
+    if (!sessionID || !settings.general.newLayoutDesigns()) return
+    if (!tabs.ready()) return
+    return sessionHrefFor(sessionID, sdk().directory)
+  })
 
   // Issue #6: an id-less workspace URL means "open the workspace's last
   // session; else a new chat" — the same resolve the sidebar's
@@ -112,7 +130,7 @@ const SessionRoute = () => {
         ...(child ? { synced: [{ path: { directory }, session: child.session }] } : {}),
       })
       if (session) {
-        navigate(`${legacySessionHref(directory, session.id)}${location.search}`, { replace: true })
+        navigate(`${sessionHrefFor(session.id, directory)}${location.search}`, { replace: true })
         return
       }
       // A workspace with no sessions keeps the plain new-chat behavior. Under
@@ -127,7 +145,11 @@ const SessionRoute = () => {
 
   return (
     <SessionRouteErrorBoundary sessionID={params.id}>
-      <SessionPage />
+      <Show when={params.id && settings.general.newLayoutDesigns()} fallback={<SessionPage />}>
+        <Show when={target()} keyed>
+          {(href) => <Navigate href={href} />}
+        </Show>
+      </Show>
     </SessionRouteErrorBoundary>
   )
 }
