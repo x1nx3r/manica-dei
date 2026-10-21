@@ -153,6 +153,32 @@ describe("tool.goal", () => {
     }),
   )
 
+  it.instance("refuses a prose verification, and sets nothing", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const info = yield* session.create({})
+      const tool = yield* (yield* GoalTool).init()
+
+      const result = yield* tool.execute(
+        params({
+          contract: {
+            ...contract,
+            verification:
+              "cd app && npm run lint && npm run build, plus browser screenshots of the picker in dark and light mode",
+          },
+        }),
+        context(info.id),
+      )
+
+      expect(result.title).toContain("one exact shell command")
+      expect(result.output).toContain("constraints")
+      expect(yield* goal.get(info.id)).toBeUndefined()
+
+      yield* session.remove(info.id)
+    }),
+  )
+
   it.instance("a huge goal routes to a split proposal, not to work", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service

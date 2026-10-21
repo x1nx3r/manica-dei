@@ -274,12 +274,20 @@ const layer = Layer.effect(
             native: true,
             hidden: true,
             temperature: 0,
+            // ADR-0006, hardened by ADR-0008.5's review: `evaluate` is
+            // last-match-wins, so the global operator config (which legitimately
+            // allows bash/edit for the build agent) would otherwise repeal this
+            // agent's denials. The deny-all is appended AFTER `user` so the
+            // judge is tool-less by construction, not by the config's grace.
             permission: Permission.merge(
               defaults,
               Permission.fromConfig({
                 "*": "deny",
               }),
               user,
+              Permission.fromConfig({
+                "*": "deny",
+              }),
             ),
             prompt: JUDGE_SYSTEM_PROMPT,
           },
@@ -305,6 +313,11 @@ const layer = Layer.effect(
             native: true,
             hidden: true,
             temperature: 0,
+            // The editing tools stay denied after the operator config merges:
+            // `evaluate` is last-match-wins, and the corpus showed QA editing
+            // files because a global `edit: allow` landed last. The re-asserted
+            // block keeps "a reviewer does not change what it reviews" a
+            // property of the agent, not of the deployment's config.
             permission: Permission.merge(
               defaults,
               Permission.fromConfig({
@@ -315,6 +328,11 @@ const layer = Layer.effect(
                 bash: "allow",
               }),
               user,
+              Permission.fromConfig({
+                edit: "deny",
+                write: "deny",
+                patch: "deny",
+              }),
             ),
             prompt: QA_SYSTEM_PROMPT,
           },

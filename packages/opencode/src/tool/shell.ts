@@ -2,6 +2,7 @@ import { Effect, Stream } from "effect"
 import os from "os"
 import { createWriteStream } from "node:fs"
 import * as Tool from "./tool"
+import { ProcessGuard } from "@opencode-ai/core/tool/process-guard"
 import path from "path"
 import { containsPath, type InstanceContext } from "../project/instance-context"
 import { InstanceState } from "@/effect/instance-state"
@@ -616,6 +617,10 @@ export const ShellTool = Tool.define(
                 throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
               }
               const timeout = params.timeout ?? defaultTimeoutMs
+              // The corpus's QA killed its own shell with `pkill -f`: refuse the
+              // pattern families whose blast radius includes this process.
+              const refused = ProcessGuard.broadKill(params.command)
+              if (refused) throw new Error(ProcessGuard.refuse(refused))
               const ps = Shell.ps(shell)
               yield* Effect.scoped(
                 Effect.gen(function* () {

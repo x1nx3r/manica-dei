@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect"
+import { GoalVerification } from "./goal-verification"
 import { SessionGoal } from "@opencode-ai/schema/session-goal"
 import * as Tool from "./tool"
 import { Goal } from "../session/goal"
@@ -60,6 +61,14 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
               title: "A contract needs a verification command",
               output:
                 "The completion contract has no verification command, and a goal whose verification cannot be expressed as a command was not scoped tightly enough. Ask the human which check proves the outcome, then set the goal again.",
+              metadata: {},
+            }
+          }
+
+          const prose = GoalVerification.proseReason(verification)
+          if (prose) {
+            return {
+              ...GoalVerification.refuse(verification),
               metadata: {},
             }
           }

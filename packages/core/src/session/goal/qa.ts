@@ -46,6 +46,10 @@ A finding is a **contradiction** between the contract and the artifact: a clause
 
 Every finding carries its evidence: the file and line, or what you observed — never the command you ran it with, which the dev is not given. A suspicion is not a finding. Do not report style, taste, or the work you would have done differently. Do not invent findings to look thorough — a manufactured finding costs the author a round and is worse than silence.
 
+### Running processes
+
+Start what you need, and stop what you started **by PID** — run pgrep -x <name>, then kill <pid>. Never use pkill -f, killall -r, or pgrep -f piped into kill: those match full command lines, and the shell running *this* review has this very command in its argv. A reviewer that kills itself delivers nothing. The harness refuses those forms; do not try to work around the refusal.
+
 ### The one thing you must not do
 
 Do not accept the author's framing. The contract is the standard, the artifact is the evidence, and nothing else is admitted. Where the artifact and the contract disagree, the artifact is what is true.`

@@ -8,6 +8,7 @@ import { Config } from "../config"
 import { makeLocationNode } from "../effect/app-node"
 import { FSUtil } from "../fs-util"
 import { LocationMutation } from "../location-mutation"
+import { ProcessGuard } from "./process-guard"
 import { AppProcess } from "../process"
 import { PermissionV2 } from "../permission"
 import { PositiveInt } from "../schema"
@@ -121,6 +122,10 @@ const layer = Layer.effectDiscard(
           ],
           execute: (input, context) =>
             Effect.gen(function* () {
+              // ADR-0006 live-fire: broad pattern kills can match this tool's own
+              // shell (`pkill -f` sees the whole command line in argv).
+              const refused = ProcessGuard.broadKill(input.command)
+              if (refused) return yield* Effect.fail(new Error(ProcessGuard.refuse(refused)))
               const source = {
                 type: "tool" as const,
                 messageID: context.assistantMessageID,
