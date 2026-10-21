@@ -753,3 +753,53 @@ it.instance(
     },
   },
 )
+
+// ADR-0006 live-fire hardening: `evaluate` is last-match-wins, so the global
+// operator config — which legitimately allows bash/edit for the build agent —
+// must not repeal the loop's own guarantees. The built-in denials are
+// re-asserted after the user block.
+
+it.instance(
+  "the judge stays tool-less even when the operator config allows tools",
+  () =>
+    Effect.gen(function* () {
+      const judge = yield* load((svc) => svc.get("goal-judge"))
+      expect(judge).toBeDefined()
+      expect(evalPerm(judge, "bash")).toBe("deny")
+      expect(evalPerm(judge, "edit")).toBe("deny")
+      expect(evalPerm(judge, "read")).toBe("deny")
+    }),
+  {
+    config: {
+      permission: {
+        bash: { "*": "allow" },
+        edit: "allow",
+        read: "allow",
+      },
+    },
+  },
+)
+
+it.instance(
+  "QA cannot edit even when the operator config allows it — bash stays available",
+  () =>
+    Effect.gen(function* () {
+      const qa = yield* load((svc) => svc.get("goal-qa"))
+      expect(qa).toBeDefined()
+      expect(evalPerm(qa, "edit")).toBe("deny")
+      expect(evalPerm(qa, "write")).toBe("deny")
+      expect(evalPerm(qa, "patch")).toBe("deny")
+      // The probe must execute; bash is QA's interface to the artifact.
+      expect(evalPerm(qa, "bash")).toBe("allow")
+    }),
+  {
+    config: {
+      permission: {
+        edit: "allow",
+        write: "allow",
+        patch: "allow",
+        bash: { "*": "allow" },
+      },
+    },
+  },
+)
