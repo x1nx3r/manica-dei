@@ -4,6 +4,12 @@ name: Release
 # the web UI embedded, plus the raw web dist bundle. The manus-dei template
 # pins these releases (ADR-0001 / ADR-007).
 #
+# Every release also publishes `release.json` beside the assets: version,
+# kind, tarball name and the tarball's sha256. It is the trust anchor for a
+# hot swap (manus-dei ADR-019) and the field that decides the delivery path.
+# The kind is a human statement read from `.github/release.json` at the
+# tagged commit, never an inference; see `docs/releases.md`.
+#
 # Tag pushes (v*) release automatically. workflow_dispatch re-runs a release
 # from main without re-tagging (tag-push runs use the workflow file frozen
 # at the tag, so fixes to this file need the dispatch path).
@@ -30,6 +36,26 @@ jobs:
       VERSION: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+
+      # ADR-019: the kind is a human statement in the tagged tree, not an
+      # inference from the diff. A release that does not declare one fails
+      # here, on the producer side, for the same reason deusd refuses a
+      # manifest without it: a guessed delivery path half-upgrades a
+      # container.
+      - name: Resolve the release kind
+        run: |
+          set -euo pipefail
+          KIND="$(jq -r '.kind // empty' .github/release.json)"
+          case "$KIND" in
+            agent-only|environment-change) ;;
+            *)
+              echo "::error::.github/release.json must declare kind agent-only or environment-change (got '$KIND')"
+              exit 1
+              ;;
+          esac
+          echo "RELEASE_KIND=$KIND" >> "$GITHUB_ENV"
+          echo "release kind: $KIND"
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -65,6 +91,23 @@ jobs:
           tar -czf manica-dei-linux-x64.tar.gz -C packages/opencode/dist opencode-linux-x64
           (cd packages/app && zip -qr ../../manica-dei-web-ui.zip dist)
 
+      # The checksum is taken from the exact file that is uploaded, not from a
+      # rebuild: deusd hashes what it downloaded and refuses a mismatch, so the
+      # manifest and the asset must be computed from the same bytes.
+      - name: Write the release manifest
+        run: |
+          set -euo pipefail
+          VERSION="${VERSION#v}"
+          SHA256="$(sha256sum manica-dei-linux-x64.tar.gz | cut -d' ' -f1)"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg kind "$RELEASE_KIND" \
+            --arg tarball "manica-dei-linux-x64.tar.gz" \
+            --arg sha256 "$SHA256" \
+            '{version: $version, kind: $kind, tarball: $tarball, sha256: $sha256}' \
+            > release.json
+          cat release.json
+
       - name: Smoke — boot the binary and check /api/health
         run: |
           # The server's stdout/stderr MUST be redirected: the runner waits
@@ -91,8 +134,28 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           TAG="v${VERSION#v}"
           gh release create "$TAG" \
             --title "$TAG" \
             --generate-notes \
-            manica-dei-linux-x64.tar.gz manica-dei-web-ui.zip
+            --notes 'Release manifest: `release.json` beside the assets carries `version`, `kind` (`agent-only` or `environment-change`), `tarball`, and the tarball `sha256`. See `docs/releases.md`.' \
+            manica-dei-linux-x64.tar.gz manica-dei-web-ui.zip release.json
+
+      # Acceptance for ADR-019: the manifest a consumer downloads is the one
+      # that describes the asset it downloads beside it. Verify from the
+      # published release, not from the workspace.
+      - name: Verify the published manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION#v}"
+          DIR="$(mktemp -d)"
+          gh release download "$TAG" --pattern release.json --dir "$DIR"
+          gh release download "$TAG" --pattern manica-dei-linux-x64.tar.gz --dir "$DIR"
+          test "$(jq -r '.version' "$DIR/release.json")" = "${VERSION#v}"
+          test "$(jq -r '.kind' "$DIR/release.json")" = "$RELEASE_KIND"
+          test "$(jq -r '.tarball' "$DIR/release.json")" = "manica-dei-linux-x64.tar.gz"
+          test "$(jq -r '.sha256' "$DIR/release.json")" = "$(sha256sum "$DIR/manica-dei-linux-x64.tar.gz" | cut -d' ' -f1)"
+          echo "manifest verified against the published tarball"
