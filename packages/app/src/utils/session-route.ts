@@ -10,6 +10,27 @@ export function legacySessionHref(directory: string, sessionID: string) {
   return `/${base64Encode(directory)}/session/${sessionID}`
 }
 
+/**
+ * The canonical session route for the layout that is mounted.
+ *
+ * The new layout keeps sessions at `/server/<key>/session/<id>`; the legacy
+ * layout keeps `/<dir>/session/<id>`. A workspace URL resolves its last
+ * session in place (issue #6), so the resolve must target the layout's own
+ * route. Replacing to the legacy shape makes the route's layout decision
+ * happen one navigation too late: the legacy page mounts inside the new
+ * shell and shrinks to its content width (issue #22).
+ */
+export function workspaceSessionHref(input: {
+  newLayout: boolean
+  directory: string
+  sessionID: string
+  server: ServerConnection.Key
+  tabs: readonly { type: "session"; server: ServerConnection.Key; sessionId: string }[]
+}) {
+  if (!input.newLayout) return legacySessionHref(input.directory, input.sessionID)
+  return sessionHref(legacySessionServer(input.tabs, input.sessionID, input.server), input.sessionID)
+}
+
 export function requireServerKey(segment: string | undefined) {
   const key = decode64(segment)
   if (!key || base64Encode(key) !== segment) throw new Error("Invalid server route")
