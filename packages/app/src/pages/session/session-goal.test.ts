@@ -5,6 +5,7 @@ import {
   goalProjection,
   goalRoles,
   loadGoal,
+  loadGoalOutcome,
   loadChildren,
   type SessionGoalRuling,
 } from "./session-goal"
@@ -101,6 +102,41 @@ describe("loadGoal", () => {
       throw new Error("Request is not supported by this version of OpenCode Server (Server responded with text/html)")
     }
     await expect(loadGoal(request)).resolves.toBeUndefined()
+  })
+})
+
+describe("loadGoalOutcome", () => {
+  test("a served projection is final", async () => {
+    const info = goal()
+    await expect(loadGoalOutcome(async () => ({ data: info }))).resolves.toEqual({ info, retry: false })
+  })
+
+  test("a 404 is the loop saying it has no goal, and is final", async () => {
+    // The two answers `loadGoal` must not distinguish but the client must:
+    // absence is a fact, an unanswerable server is a hole to retry.
+    await expect(loadGoalOutcome(async () => ({ error: { name: "NotFoundError" } }))).resolves.toEqual({
+      info: undefined,
+      retry: false,
+    })
+    await expect(loadGoalOutcome(async () => ({ error: { data: { statusCode: 404 } } }))).resolves.toEqual({
+      info: undefined,
+      retry: false,
+    })
+  })
+
+  test("a server that could not answer is worth another attempt", async () => {
+    await expect(
+      loadGoalOutcome(async () => ({ error: { name: "APIError", data: { statusCode: 502 } } })),
+    ).resolves.toEqual({ info: undefined, retry: true })
+    await expect(
+      loadGoalOutcome(async () => {
+        throw new Error("Connection refused")
+      }),
+    ).resolves.toEqual({ info: undefined, retry: true })
+  })
+
+  test("a 200 that is not a projection is retried rather than trusted", async () => {
+    await expect(loadGoalOutcome(async () => ({ data: {} }))).resolves.toEqual({ info: undefined, retry: true })
   })
 })
 

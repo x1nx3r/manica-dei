@@ -92,6 +92,51 @@ export function goalProjection(value: unknown): SessionGoalInfo | undefined {
 }
 
 /**
+ * One attempt at the projection, with the retry decision kept.
+ *
+ * `loadGoal` collapses two different answers into `undefined`: "the loop has
+ * never run on this session" (a 404, final) and "the server could not answer"
+ * (a booting or restarted server, worth another try). The strip renders the
+ * same for both, but a client that can tell them apart heals the second
+ * without a reload, so the decision lives beside the attempt.
+ */
+export type GoalLoadOutcome = {
+  info: SessionGoalInfo | undefined
+  retry: boolean
+}
+
+function goalMissing(error: unknown, depth = 0): boolean {
+  if (!error || typeof error !== "object" || depth > 2) return false
+  const value = error as {
+    name?: unknown
+    status?: unknown
+    statusCode?: unknown
+    data?: unknown
+    cause?: unknown
+  }
+  if (value.name === "NotFoundError" || value.status === 404 || value.statusCode === 404) return true
+  // The generated client nests the status under `data`; a thrown fetch error
+  // carries it under `cause`. Both are the same answer: the route has no goal.
+  return goalMissing(value.data, depth + 1) || goalMissing(value.cause, depth + 1)
+}
+
+export async function loadGoalOutcome(
+  request: () => Promise<{ data?: unknown; error?: unknown }>,
+): Promise<GoalLoadOutcome> {
+  try {
+    const result = await request()
+    if (result.error) return { info: undefined, retry: !goalMissing(result.error) }
+    const info = goalProjection(result.data)
+    // A 200 that is not a projection is a stub, a proxy or a version skew, and
+    // it can be either permanent or a server mid-restart: retry it on the same
+    // capped schedule rather than guess.
+    return { info, retry: info === undefined }
+  } catch (error) {
+    return { info: undefined, retry: !goalMissing(error) }
+  }
+}
+
+/**
  * The projection for one session, or `undefined` — and never a rejection.
  *
  * Three things make this a function of its own, and each of them is a bug it
@@ -106,13 +151,7 @@ export function goalProjection(value: unknown): SessionGoalInfo | undefined {
 export async function loadGoal(
   request: () => Promise<{ data?: unknown; error?: unknown }>,
 ): Promise<SessionGoalInfo | undefined> {
-  try {
-    const result = await request()
-    if (result.error) return undefined
-    return goalProjection(result.data)
-  } catch {
-    return undefined
-  }
+  return (await loadGoalOutcome(request)).info
 }
 
 /**
@@ -183,9 +222,41 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     checks: SessionGoalCheck[]
   }>({ ruling: undefined, checks: [] })
 
-  const [goal, { refetch }] = createResource(
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retryAttempts = 0
+
+  function clearRetry() {
+    if (retryTimer === undefined) return
+    clearTimeout(retryTimer)
+    retryTimer = undefined
+  }
+
+  // One second, then doubling to half a minute. The strip is absent either way,
+  // so the wait costs nothing; what it buys is a client that loaded while the
+  // agent was still booting, which used to stay empty until a turn fired an
+  // event — the "only populated after a turn" that is really fetch-once-and-
+  // forget.
+  function scheduleRetry() {
+    clearRetry()
+    const delay = Math.min(1000 * 2 ** retryAttempts, 30_000)
+    retryAttempts = Math.min(retryAttempts + 1, 5)
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined
+      void refetchGoal()
+    }, delay)
+  }
+
+  const [goal, { refetch: refetchGoal }] = createResource(
     () => sessionID(),
-    (id) => loadGoal(() => serverSDK().client.session.goal({ sessionID: id, directory: sdk().directory })),
+    async (id) => {
+      const outcome = await loadGoalOutcome(() =>
+        serverSDK().client.session.goal({ sessionID: id, directory: sdk().directory }),
+      )
+      if (outcome.info) retryAttempts = 0
+      if (outcome.retry) scheduleRetry()
+      else clearRetry()
+      return outcome.info
+    },
   )
 
   const [roles, { refetch: refetchRoles }] = createResource(
@@ -193,12 +264,42 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     (id) => loadChildren(() => serverSDK().client.session.children({ sessionID: id, directory: sdk().directory })),
   )
 
+  // A page that outlives a container restart keeps its DOM and loses its
+  // stream: the one projection fetch it missed is never asked again unless a
+  // turn moves. Coming back to the tab, or regaining the network, is the
+  // client's own evidence that the server may answer now, so it re-asks —
+  // the same resync law as the session self-heal.
+  if (typeof document !== "undefined" && typeof window !== "undefined") {
+    const resync = () => {
+      if (!sessionID()) return
+      void refetchGoal()
+      void refetchRoles()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") resync()
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("focus", resync)
+    window.addEventListener("online", resync)
+    onCleanup(() => {
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("focus", resync)
+      window.removeEventListener("online", resync)
+      clearRetry()
+    })
+  } else {
+    onCleanup(clearRetry)
+  }
+
   createEffect(() => {
     const events = sdk().event
     const id = sessionID()
-    // Another session is another goal, and another goal's ruling.
+    // Another session is another goal, and another goal's ruling. The retry
+    // schedule belongs to the old session's hole, not the new one's.
     setStore("ruling", undefined)
     setStore("checks", [])
+    clearRetry()
+    retryAttempts = 0
     if (!id) return
 
     // A click that arrived after the fact: the projection carries the judge's
@@ -219,7 +320,7 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
 
     const refresh = (event: { properties: { sessionID: string } }) => {
       if (event.properties.sessionID !== id) return
-      void refetch()
+      void refetchGoal()
       // A role appeared or moved: the children list is refetched with it.
       void refetchRoles()
     }
@@ -269,7 +370,7 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
         })
         // The judgement is a check like any other: it appears beside the session's rows.
         announce("judge")(event)
-        void refetch()
+        void refetchGoal()
       }),
     ]
     // The blunt refetches, typed on the same bus so the compiler stays honest,
@@ -279,11 +380,10 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     const looseRefetch = () => {
       if (Date.now() - lastLoose < 1000) return
       lastLoose = Date.now()
-      void refetch()
+      void refetchGoal()
       void refetchRoles()
     }
     offs.push(events.on("session.created", looseRefetch), events.on("session.updated", looseRefetch))
-    onCleanup(() => offs.forEach((off) => off()))
     onCleanup(() => offs.forEach((off) => off()))
   })
 
