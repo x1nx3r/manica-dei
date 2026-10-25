@@ -16,9 +16,12 @@ import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, asSch
 import { Effect } from "effect"
 import { MessageV2 } from "./message-v2"
 import { Session } from "./session"
+import { Goal } from "./goal"
+import * as GoalRequired from "./goal-required"
 import { SessionProcessor } from "./processor"
-import { PartID } from "./schema"
+import { PartID, type SessionID } from "./schema"
 import { EffectBridge } from "@/effect/bridge"
+import { InstanceState } from "@/effect/instance-state"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { isRecord } from "@/util/record"
@@ -55,6 +58,37 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
   const flags = yield* RuntimeFlags.Service
+  const goals = yield* Goal.Service
+  const sessions = yield* Session.Service
+
+  // ADR-0010: the root session's authorized goal is the implementation
+  // boundary. A `task` child has no goal row, so walk to the root: the child's
+  // work is the root's work. The check runs per tool call, not once per model
+  // step, because the agent can authorize a goal and keep working in the same
+  // turn.
+  const rootSessionID = Effect.fnUntraced(function* (sessionID: SessionID) {
+    let current = sessionID
+    for (let depth = 0; depth < 32; depth++) {
+      const info = yield* sessions.get(current).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      if (!info?.parentID) return current
+      current = info.parentID
+    }
+    return current
+  })
+
+  const goalGate = Effect.fnUntraced(function* (tool: string, args: Record<string, unknown>) {
+    if (!flags.goalRequired) return
+    const instance = yield* InstanceState.context
+    const root = yield* rootSessionID(input.session.id)
+    const goal = yield* goals.get(root)
+    return GoalRequired.refusal({
+      required: true,
+      ...(goal ? { goal: { authorized: goal.authorized } } : {}),
+      tool,
+      args,
+      worktree: instance.worktree,
+    })
+  })
 
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
     sessionID: input.session.id,
@@ -103,6 +137,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         return run.promise(
           Effect.gen(function* () {
             const ctx = context(args, options)
+            const refusal = yield* goalGate(item.id, isRecord(args) ? args : {})
+            if (refusal) return yield* Effect.fail(new Error(refusal))
             yield* plugin.trigger(
               "tool.execute.before",
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
@@ -399,6 +435,8 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
       run.promise(
         Effect.gen(function* () {
           const ctx = context(args, opts)
+          const refusal = yield* goalGate(key, isRecord(args) ? args : {})
+          if (refusal) return yield* Effect.fail(new Error(refusal))
           yield* plugin.trigger(
             "tool.execute.before",
             { tool: key, sessionID: ctx.sessionID, callID: opts.toolCallId },

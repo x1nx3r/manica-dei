@@ -4,6 +4,11 @@ Call this once, at the end of scoping, when you and the human have agreed what
 the work is and how you will know it is done. Not before: the goal is the
 outcome of the conversation, not its start.
 
+Until the human authorizes it, file-editing tools are refused; reading,
+searching, asking, and writing the ADR under `docs/adr/` remain available. Shell
+commands still run, but a change they make before authorization is outside the
+contract and will not be reviewed — do not use the shell to start the work.
+
 - goal: the goal as you now understand it, in your words — not the human's first
   message.
 - size: how big the task is — the number and blast radius of the decisions the

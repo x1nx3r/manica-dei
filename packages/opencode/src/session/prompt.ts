@@ -15,6 +15,7 @@ import type { JSONSchema7 } from "@ai-sdk/provider"
 import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { GoalLoop } from "./goal-loop"
+import { Goal } from "./goal"
 import { GoalQa as Qa } from "@opencode-ai/core/session/goal/qa"
 import { RepoRoster } from "@opencode-ai/core/repo-roster"
 import { Instruction } from "./instruction"
@@ -118,6 +119,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const status = yield* SessionStatus.Service
     const sessions = yield* Session.Service
+    const goals = yield* Goal.Service
     const agents = yield* Agent.Service
     const provider = yield* Provider.Service
     const processor = yield* SessionProcessor.Service
@@ -1466,6 +1468,8 @@ const layer = Layer.effect(
               Effect.provideService(MCP.Service, mcp),
               Effect.provideService(Truncate.Service, truncate),
               Effect.provideService(RuntimeFlags.Service, flags),
+              Effect.provideService(Goal.Service, goals),
+              Effect.provideService(Session.Service, sessions),
             )
 
             if (lastUser.format?.type === "json_schema") {
@@ -1852,6 +1856,7 @@ export const node = LayerNode.make({
     SessionSummary.node,
     SystemPrompt.node,
     GoalLoop.node,
+    Goal.node,
     LLM.node,
     EventV2Bridge.node,
     RuntimeFlags.node,
