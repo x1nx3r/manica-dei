@@ -8,7 +8,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { useBrowser } from "@/context/browser"
 import { useLanguage } from "@/context/language"
 import type { Framebuffer } from "@manica-dei/vnc"
-import { toKeysym } from "./keysym"
+import { createKeyReleaser, keyHandlers } from "./browser-keys"
 
 // ADR-0003: the human's window onto the session browser.
 //
@@ -28,6 +28,30 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
 
   let canvas: HTMLCanvasElement | undefined
   let container: HTMLDivElement | undefined
+
+  // Issue #31: RFB is stateful, and a keyup that lands outside the canvas never
+  // reaches the remote. Track the pressed set and release it whenever the pane
+  // stops owning the keyboard.
+  const keys = createKeyReleaser((keysym, down) => browser.key(keysym, down))
+  const handlers = keyHandlers(keys)
+
+  createEffect(() => {
+    if (browser.state.status !== "open") keys.release()
+  })
+
+  onMount(() => {
+    const release = () => keys.release()
+    const visibility = () => {
+      if (document.visibilityState === "hidden") keys.release()
+    }
+    window.addEventListener("blur", release)
+    document.addEventListener("visibilitychange", visibility)
+    onCleanup(() => {
+      window.removeEventListener("blur", release)
+      document.removeEventListener("visibilitychange", visibility)
+    })
+  })
+  onCleanup(() => keys.release())
 
   // The container's size and the frame's size, both reactive, so the canvas can
   // be fitted to the container. A canvas has no intrinsic layout, so the fit is
@@ -182,12 +206,7 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
 
   /** An ImageData for one region of a row-major RGBA framebuffer. */
   const regionImage = (framebuffer: Framebuffer, box: { x: number; y: number; width: number; height: number }) => {
-    if (
-      !scratch ||
-      !scratchBox ||
-      scratchBox.width !== box.width ||
-      scratchBox.height !== box.height
-    ) {
+    if (!scratch || !scratchBox || scratchBox.width !== box.width || scratchBox.height !== box.height) {
       scratch = new ImageData(box.width, box.height)
       scratchBox = { ...box }
     }
@@ -384,6 +403,7 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
               icon={<Icon name="close-small" />}
               aria-label={language.t("browser.close")}
               onClick={() => {
+                keys.release()
                 browser.close()
                 props.onClose?.()
               }}
@@ -469,20 +489,9 @@ export function BrowserPanel(props: { stacked?: boolean; onClose?: () => void } 
                 browser.pointer(position.x, position.y, bit)
                 browser.pointer(position.x, position.y, 0)
               }}
-              onKeyDown={(event) => {
-                // Keys become X11 keysyms, which is a table rather than a
-                // transform. Unmapped keys are dropped rather than guessed.
-                const keysym = toKeysym(event)
-                if (keysym === undefined) return
-                event.preventDefault()
-                browser.key(keysym, true)
-              }}
-              onKeyUp={(event) => {
-                const keysym = toKeysym(event)
-                if (keysym === undefined) return
-                event.preventDefault()
-                browser.key(keysym, false)
-              }}
+              onKeyDown={(event) => handlers.onKeyDown(event)}
+              onKeyUp={(event) => handlers.onKeyUp(event)}
+              onBlur={() => keys.release()}
             />
           </Show>
         </div>
