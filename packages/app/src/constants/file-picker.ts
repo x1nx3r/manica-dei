@@ -1,8 +1,17 @@
 export const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 
+export const ACCEPTED_ARCHIVE_TYPES = [
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/vnd.rar",
+  "application/x-rar-compressed",
+  "application/x-rar",
+]
+
 export const ACCEPTED_FILE_TYPES = [
   ...ACCEPTED_IMAGE_TYPES,
   "application/pdf",
+  ...ACCEPTED_ARCHIVE_TYPES,
   "text/*",
   "application/json",
   "application/ld+json",
@@ -53,6 +62,8 @@ export const ACCEPTED_FILE_TYPES = [
   ".yaml",
   ".yml",
   ".zsh",
+  ".zip",
+  ".rar",
 ]
 
 const MIME_EXT = new Map([
@@ -61,6 +72,11 @@ const MIME_EXT = new Map([
   ["image/gif", "gif"],
   ["image/webp", "webp"],
   ["application/pdf", "pdf"],
+  ["application/zip", "zip"],
+  ["application/x-zip-compressed", "zip"],
+  ["application/vnd.rar", "rar"],
+  ["application/x-rar-compressed", "rar"],
+  ["application/x-rar", "rar"],
   ["application/json", "json"],
   ["application/ld+json", "jsonld"],
   ["application/toml", "toml"],

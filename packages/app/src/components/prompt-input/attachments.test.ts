@@ -1,11 +1,30 @@
 import { describe, expect, test } from "bun:test"
 import { attachmentMime, pickAttachmentFiles } from "./files"
 import { pasteMode } from "./paste"
+import { ACCEPTED_FILE_EXTENSIONS } from "@/constants/file-picker"
 
 describe("attachmentMime", () => {
   test("keeps PDFs when the browser reports the mime", async () => {
     const file = new File(["%PDF-1.7"], "guide.pdf", { type: "application/pdf" })
     expect(await attachmentMime(file)).toBe("application/pdf")
+  })
+
+  test("accepts zip and rar archives, by mime or by extension", async () => {
+    expect(await attachmentMime(new File(["PK\u0003\u0004"], "project.zip", { type: "application/zip" }))).toBe(
+      "application/zip",
+    )
+    expect(await attachmentMime(new File(["PK\u0003\u0004"], "data.zip", { type: "application/octet-stream" }))).toBe(
+      "application/zip",
+    )
+    expect(await attachmentMime(new File(["Rar!\u001a\u0007"], "assets.rar", { type: "" }))).toBe("application/vnd.rar")
+    expect(
+      await attachmentMime(new File(["Rar!\u001a\u0007"], "bundle.rar", { type: "application/x-rar-compressed" })),
+    ).toBe("application/x-rar-compressed")
+  })
+
+  test("offers zip and rar in the picker's extension list", () => {
+    expect(ACCEPTED_FILE_EXTENSIONS).toContain("zip")
+    expect(ACCEPTED_FILE_EXTENSIONS).toContain("rar")
   })
 
   test("normalizes structured text types to text/plain", async () => {
