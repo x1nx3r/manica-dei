@@ -34,6 +34,7 @@ import { isScrollKeyTarget, scrollKey, scrollKeyOwner } from "@opencode-ai/ui/sc
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
 import { createAutoScroll } from "@opencode-ai/ui/hooks"
+import { canAutoFocus } from "@opencode-ai/core/util/dom"
 import { previewSelectedLines } from "@opencode-ai/session-ui/pierre/selection-bridge"
 import { Button } from "@opencode-ai/ui/button"
 import { showToast } from "@/utils/toast"
@@ -2016,7 +2017,7 @@ export default function Page() {
     on(
       () => params.id,
       (id) => {
-        if (!id) requestAnimationFrame(() => inputRef?.focus())
+        if (!id && canAutoFocus()) requestAnimationFrame(() => inputRef?.focus())
       },
     ),
   )

@@ -13,6 +13,7 @@ import { useLocale } from "@kobalte/core/i18n"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { Show, createEffect, createMemo, createSignal, type JSX } from "solid-js"
 import { getWorkerPool } from "../../pierre/worker"
+import { canAutoFocus } from "@opencode-ai/core/util/dom"
 import { SessionFilePanelV2, SessionFilePanelV2Empty } from "./session-file-panel-v2"
 
 export const SESSION_REVIEW_V2_SIDEBAR_WIDTH_DEFAULT = 240
@@ -62,6 +63,19 @@ export type SessionReviewV2SidebarProps = {
 export function SessionReviewV2Sidebar(props: SessionReviewV2SidebarProps) {
   const i18n = useI18n()
   const [resizing, setResizing] = createSignal(false)
+  let filter: HTMLInputElement | undefined
+
+  // The native `autofocus` attribute is blocked in a cross-origin iframe and
+  // logs a warning on every insertion. The fleet embeds the session that way,
+  // so the filter is focused only when the page may take focus at all, and the
+  // attribute is never rendered (issue #33).
+  createEffect(() => {
+    if (!props.open || !props.filterAutofocus) return
+    if (!canAutoFocus()) return
+    requestAnimationFrame(() => {
+      if (props.open && props.filterAutofocus) filter?.focus()
+    })
+  })
   const width = () => props.width ?? SESSION_REVIEW_V2_SIDEBAR_WIDTH_DEFAULT
   const minWidth = () => props.minWidth ?? SESSION_REVIEW_V2_SIDEBAR_WIDTH_MIN
   const maxWidth = () => props.maxWidth ?? SESSION_REVIEW_V2_SIDEBAR_WIDTH_MAX
@@ -92,8 +106,10 @@ export function SessionReviewV2Sidebar(props: SessionReviewV2SidebarProps) {
               value={props.filter}
               onInput={(event) => props.onFilterChange(event.currentTarget.value)}
               onKeyDown={props.onFilterKeyDown}
-              autofocus={props.filterAutofocus}
-              ref={props.filterRef}
+              ref={(element) => {
+                filter = element
+                props.filterRef?.(element)
+              }}
               role={props.filterControls ? "combobox" : undefined}
               aria-autocomplete={props.filterControls ? "list" : undefined}
               aria-controls={props.filterControls}

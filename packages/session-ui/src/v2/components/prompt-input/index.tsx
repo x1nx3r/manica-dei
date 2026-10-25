@@ -1,4 +1,5 @@
 import { createEffect, createMemo, For, Show, type Accessor, type JSX } from "solid-js"
+import { canAutoFocus } from "@opencode-ai/core/util/dom"
 import { FileIcon } from "@opencode-ai/ui/file-icon"
 import { Icon } from "@opencode-ai/ui/icon"
 import { IconButton } from "@opencode-ai/ui/icon-button"
@@ -625,7 +626,10 @@ export function PromptInputV2Popover(props: {
         {(search) => (
           <div class="px-2 py-1">
             <input
-              ref={(element) => requestAnimationFrame(() => element.focus())}
+              ref={(element) => {
+                if (!canAutoFocus()) return
+                requestAnimationFrame(() => element.focus())
+              }}
               value={search().value}
               aria-label={search().label}
               placeholder={search().placeholder}
