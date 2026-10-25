@@ -10,6 +10,7 @@ import { Session } from "@/session/session"
 import { MessageID, PartID, SessionID } from "@/session/schema"
 import { SessionProcessor } from "@/session/processor"
 import { SessionTools } from "@/session/tools"
+import { Goal } from "@/session/goal"
 import { Tool } from "@/tool/tool"
 import { ToolRegistry } from "@/tool/registry"
 import { Truncate } from "@/tool/truncate"
@@ -35,12 +36,22 @@ const model = {
   api: { id: "test-model" },
 } as Provider.Model
 
-function fakeMcp() {
+const fakeMcp = () => {
   return MCP.Service.of({
     tools: () => Effect.succeed({}),
     clients: () => Effect.succeed({}),
   } as Partial<MCP.Interface> as MCP.Interface)
 }
+
+// ADR-0010: the tool gate resolves the root session's goal. This test runs
+// with the flag off, so the fake services are never called.
+const fakeSession = Session.Service.of({
+  get: () => Effect.die("unused"),
+} as Partial<Session.Interface> as Session.Interface)
+
+const fakeGoal = Goal.Service.of({
+  get: () => Effect.succeed(undefined),
+} as Partial<Goal.Interface> as Goal.Interface)
 
 const fakePlugin = Plugin.Service.of({
   init: () => Effect.void,
@@ -66,6 +77,8 @@ const layer = Layer.mergeAll(
   Layer.succeed(Permission.Service, fakePermission),
   Layer.succeed(MCP.Service, fakeMcp()),
   Layer.succeed(Truncate.Service, fakeTruncate),
+  Layer.succeed(Session.Service, fakeSession),
+  Layer.succeed(Goal.Service, fakeGoal),
   RuntimeFlags.layer(),
   Layer.succeed(
     ToolRegistry.Service,
