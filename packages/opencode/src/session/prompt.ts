@@ -16,6 +16,7 @@ import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { GoalLoop } from "./goal-loop"
 import { Goal } from "./goal"
+import * as Upload from "./uploads"
 import { GoalQa as Qa } from "@opencode-ai/core/session/goal/qa"
 import { RepoRoster } from "@opencode-ai/core/repo-roster"
 import { Instruction } from "./instruction"
@@ -925,6 +926,30 @@ const layer = Layer.effect(
           const url = new URL(part.url)
           switch (url.protocol) {
             case "data:":
+              if (Upload.isArchive(part.mime, part.filename)) {
+                // A model does not read a zip or rar. Save the container in the
+                // session's upload store and tell the agent where it is, so the
+                // shell can list or extract it. Keeping the bytes out of the
+                // transcript also keeps them out of the provider request.
+                const saved = yield* Upload.save({
+                  sessionID: input.sessionID,
+                  messageID: info.id,
+                  filename: part.filename,
+                  url: part.url,
+                  limit: Upload.MAX_UPLOAD_BYTES,
+                }).pipe(Effect.provideService(FSUtil.Service, fsys))
+                return [
+                  {
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: saved.ok
+                      ? `[Attached archive: ${path.basename(saved.path)} (${part.mime ?? "archive"}, ${formatMcpResourceBytes(saved.size)}) saved to ${saved.path}. The path is absolute; use the shell to inspect or extract it.]`
+                      : `[Attached archive could not be saved: ${saved.error}]`,
+                  },
+                ]
+              }
               if (part.mime === "text/plain") {
                 return [
                   {
