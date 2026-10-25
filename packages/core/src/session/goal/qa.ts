@@ -111,11 +111,89 @@ export function isScratchpad(file: string | undefined): boolean {
  * it. `summary.computeDiff` over every message returns the cumulative session
  * diff, so from round two QA would re-read round one; this narrows it to the
  * change this round made.
+ *
+ * This is the narrow shape for a round whose user turn is the real one. A gate
+ * or QA retry is a synthetic continuation, and the work it continues belongs to
+ * the same round — see `goalRoundMessages`.
  */
 export function roundMessages<T extends RoundMessage>(messages: ReadonlyArray<T>, userID: string): T[] {
   return messages.filter(
     (message) => message.info.id === userID || (message.info.role === "assistant" && message.info.parentID === userID),
   )
+}
+
+/**
+ * The round's messages including the retries that follow a failed gate.
+ *
+ * A gate failure does not start a new goal round: the loop writes a synthetic
+ * continuation user turn and the dev keeps working. `roundMessages` from that
+ * turn therefore reviews only the retry, and when the retry fixed the
+ * environment outside the repositories the diff is empty (issue #26: the
+ * `Makefile` shim beside a nested repo).
+ *
+ * Walk back from the current turn to the last **real** user message — a
+ * continuation is a synthetic turn the loop wrote — and take everything from
+ * there. The slice is only the window; `diffWindow` turns its step snapshots
+ * into the `from`/`to` pair.
+ */
+export function goalRoundMessages<T extends RoundMessage>(
+  messages: ReadonlyArray<T>,
+  userID: string,
+  continuation: (message: T) => boolean,
+): T[] {
+  const current = messages.findIndex((message) => message.info.id === userID)
+  if (current < 0) return []
+  let start = 0
+  for (let index = current; index >= 0; index--) {
+    const message = messages[index]!
+    if (message.info.role === "user" && !continuation(message)) {
+      start = index
+      break
+    }
+  }
+  return messages.slice(start)
+}
+
+/** The parts `diffWindow` reads: a step's snapshot handle. */
+export interface SnapshotMessage {
+  readonly parts: ReadonlyArray<{ readonly type: string; readonly snapshot?: string }>
+}
+
+/**
+ * The pair of snapshots a review diff spans: the first step's start and the
+ * last step's finish in the given messages, or the explicit handles the loop
+ * carries.
+ *
+ * Explicit handles are how a round since the last review is expressed: the
+ * baseline is the state the previous verdict bound to, and the round's own
+ * state is `to`. Without one, the window is the messages' own steps — the
+ * first review of a goal, including any gate retries inside it.
+ */
+export function diffWindow(
+  messages: ReadonlyArray<SnapshotMessage>,
+  override?: { readonly from?: string; readonly to?: string },
+): { from?: string; to?: string } {
+  let from = override?.from
+  let to = override?.to
+  if (!from) {
+    for (const item of messages) {
+      for (const part of item.parts) {
+        if (part.type === "step-start" && part.snapshot) {
+          from = part.snapshot
+          break
+        }
+      }
+      if (from) break
+    }
+  }
+  if (!to) {
+    for (const item of messages) {
+      for (const part of item.parts) {
+        if (part.type === "step-finish" && part.snapshot) to = part.snapshot
+      }
+    }
+  }
+  return { ...(from ? { from } : {}), ...(to ? { to } : {}) }
 }
 
 /**
@@ -305,13 +383,19 @@ export function abstentionContinuation(goal: string): string {
  * broken QA must not end a run that was still working, and the loop counts
  * consecutive failures so a misconfiguration stops the run instead of looping
  * blind (ADR-0006, "the loop has a floor").
+ *
+ * The reason, when the call site has one, is the difference between "the round
+ * had no repo change" and "the QA agent did not answer" — the dev can act on
+ * the first.
  */
-export function errorContinuation(goal: string): string {
+export function errorContinuation(goal: string, reason?: string): string {
   return [
     "[Continuing toward your standing goal — the QA pass could not run]",
     `Goal: ${goal}`,
     "",
-    "The review did not complete, so this round was not certified. Continue the work; if the failure repeats, the loop stops and names the QA configuration rather than loop blind.",
+    "The review did not complete, so this round was not certified.",
+    ...(reason ? [`Reason: ${reason}`, ""] : []),
+    "Continue the work; if the failure repeats, the loop stops and names the reason rather than loop blind.",
   ].join("\n")
 }
 

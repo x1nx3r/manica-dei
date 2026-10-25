@@ -34,8 +34,6 @@ export interface Interface {
   readonly authorize: (sessionID: SessionID) => Effect.Effect<void>
   /** Moves the goal to the phase whose role is now acting (ADR-0006). */
   readonly setPhase: (input: { sessionID: SessionID; phase: SessionGoal.Phase }) => Effect.Effect<void>
-  /** Binds the current round to the workspace state it is decided against. */
-  readonly bindState: (input: { sessionID: SessionID; state?: string }) => Effect.Effect<void>
   /** Stores QA's record for the round the loop is deciding. */
   readonly setRecord: (input: { sessionID: SessionID; record: SessionGoal.Record }) => Effect.Effect<void>
   /** Clears QA's record once the loop has weighed it. */
@@ -157,15 +155,6 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
     })
 
-    const bindState = Effect.fn("Goal.bindState")(function* (input: { sessionID: SessionID; state?: string }) {
-      yield* db
-        .update(GoalTable)
-        .set({ state_hash: input.state ?? null })
-        .where(eq(GoalTable.session_id, input.sessionID))
-        .run()
-        .pipe(Effect.orDie)
-    })
-
     const setRecord = Effect.fn("Goal.setRecord")(function* (input: {
       sessionID: SessionID
       record: SessionGoal.Record
@@ -253,7 +242,19 @@ const layer = Layer.effect(
       yield* db.delete(GoalTable).where(eq(GoalTable.session_id, sessionID)).run().pipe(Effect.orDie)
     })
 
-    return Service.of({ set, get, authorize, setPhase, bindState, setRecord, clearRecord, setGates, setStatus, burnTurn, record, clear })
+    return Service.of({
+      set,
+      get,
+      authorize,
+      setPhase,
+      setRecord,
+      clearRecord,
+      setGates,
+      setStatus,
+      burnTurn,
+      record,
+      clear,
+    })
   }),
 )
 

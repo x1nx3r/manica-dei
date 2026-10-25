@@ -141,9 +141,11 @@ export const Info = Schema.Struct({
    */
   qa_record: Record.pipe(optional),
   /**
-   * The workspace state the round binds to: the snapshot hash of the message
-   * the round is decided against. The record's `state` must equal it, or the
-   * record is stale (ADR-0006, "state binding").
+   * The workspace state of the last judged round — the state the last verdict
+   * bound to, and the baseline the next review starts from (issue #26). Null
+   * before the first verdict. The current round's state lives in its record;
+   * a record whose state does not match the round is stale (ADR-0006, "state
+   * binding").
    */
   state_hash: Schema.NullOr(Schema.String),
   status: Status,

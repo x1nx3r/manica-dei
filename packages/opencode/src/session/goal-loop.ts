@@ -33,6 +33,12 @@ export type Decision =
       readonly state: string
       readonly evidence: ReadonlyArray<Judge.GateEvidence>
       /**
+       * The workspace state the last verdict bound to — where this round's
+       * review starts. Absent before the first judged round; the diff then
+       * spans the round's own step snapshots (including gate retries).
+       */
+      readonly baseline?: string
+      /**
        * The round this pass is for: `turns_used + 1` at decide time. The call
        * site spells it into the reviewer session's metadata, so a client that
        * arrives late can read the pass's place in the run (ADR-0008, "the
@@ -86,8 +92,10 @@ export interface DecideInput {
   /**
    * The last QA pass errored or produced nothing readable. The loop fails open
    * to `dev` and counts the failure; after `MAX_CONSECUTIVE_FAILURES` it stops.
+   * A reason, when the call site has one, rides both the continuation and the
+   * stopping note so "no repo changed" never reads as "the QA model is broken".
    */
-  readonly qaFailure?: boolean
+  readonly qaFailure?: boolean | { readonly reason: string }
   /** Consecutive judge and QA failures before this call, by kind. */
   readonly failures: FailureCounts
 }
@@ -176,6 +184,7 @@ const layer = Layer.effect(
       // configuration once they are consecutive (ADR-0006, "the loop has a floor").
       if (input.qaFailure) {
         const failures: FailureCounts = { ...input.failures, qa: input.failures.qa + 1 }
+        const reason = typeof input.qaFailure === "object" ? input.qaFailure.reason : undefined
         // A partial pass (the record written, the handoff not) must not be
         // weighed later; the round goes back to `dev` clean. The round spent a
         // turn even though no judge closed it, like every other non-judge exit.
@@ -184,8 +193,8 @@ const layer = Layer.effect(
         yield* goals.burnTurn(input.sessionID)
         const decision: Decision =
           failures.qa >= MAX_CONSECUTIVE_FAILURES
-            ? { _tag: "stop", note: QA_FAILURE_NOTE }
-            : { _tag: "continue", prompt: Qa.errorContinuation(goal.goal) }
+            ? { _tag: "stop", note: reason ? `The QA pass could not run: ${reason}` : QA_FAILURE_NOTE }
+            : { _tag: "continue", prompt: Qa.errorContinuation(goal.goal, reason) }
         return { decision, failures }
       }
 
@@ -211,9 +220,10 @@ const layer = Layer.effect(
         ])
         // QA already ran this round. A record the work outran is stale, and a
         // verdict may not survive the edit that invalidates it (ADR-0006,
-        // "state binding").
-        const bound = goal.state_hash
-        if (record.state !== round || (bound !== null && record.state !== bound)) {
+        // "state binding"). The record binds to the current round's state; the
+        // last judged state is the *baseline* the review started from, not a
+        // second binding to compare against.
+        if (record.state !== round) {
           yield* goals.clearRecord(input.sessionID)
           yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
           // The round is spent even though no judge closed it.
@@ -392,16 +402,20 @@ const layer = Layer.effect(
         yield* goals.setGates({ sessionID: input.sessionID, gates: next })
       }
 
-      // The round is bound and QA is due. The call site runs the pass, persists
+      // The round is due and QA is called. The call site runs the pass, persists
       // the record, and comes back with it (ADR-0006, "the chain of signatures":
       // nobody signs what they made — the dev cannot sign off on the dev).
-      yield* goals.bindState({ sessionID: input.sessionID, state: round })
+      // The baseline is the state the last verdict bound to: the review starts
+      // where the last review ended, so a gate retry inside this round keeps
+      // the work that preceded the failure (issue #26).
+      const baseline = goal.state_hash ?? undefined
       yield* setPhase({ sessionID: input.sessionID, phase: "qa" })
       return unchanged({
         _tag: "qa",
         contract: goal.contract,
         state: round,
         evidence,
+        ...(baseline ? { baseline } : {}),
         round: goal.turns_used + 1,
       })
     })
