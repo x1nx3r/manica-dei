@@ -16,6 +16,7 @@ import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { GoalLoop } from "./goal-loop"
 import { GoalQa as Qa } from "@opencode-ai/core/session/goal/qa"
+import { RepoRoster } from "@opencode-ai/core/repo-roster"
 import { Instruction } from "./instruction"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@opencode-ai/core/session/runner/max-steps"
@@ -467,6 +468,11 @@ const layer = Layer.effect(
       msgs: SessionV1.WithParts[]
       assistantMessage?: SessionV1.WithParts
       decision: Extract<GoalLoop.Decision, { _tag: "qa" }>
+      /** The session's cwd, named when the round has nothing to review. */
+      cwd: string
+      /** The directory the repo roster is scanned from. */
+      workspace: string
+      rootIsRepo: boolean
     }) {
       const promptOps = yield* ops()
       const { task: taskTool } = yield* registry.named()
@@ -480,12 +486,27 @@ const layer = Layer.effect(
       // agent's account of it. `lastResponse` is never passed: the reviewer that
       // reads the author's prose is the reviewer that agrees with it. The
       // scratchpad is filtered by `Qa.renderDiff`, not by a gitignore.
-      const round = Qa.roundMessages(input.msgs, input.user.id)
-      const diff = yield* summary.computeDiff({ messages: round })
+      //
+      // A gate retry is a synthetic continuation inside the same round, so the
+      // window walks back to the last real user turn; and once a verdict has
+      // bound a state, the window starts there instead of re-reading the whole
+      // goal (issue #26).
+      const continuation = (message: SessionV1.WithParts) =>
+        message.parts.some((part) => part.type === "text" && part.synthetic === true)
+      const round = Qa.goalRoundMessages(input.msgs, input.user.id, continuation)
+      const diff = yield* summary.computeDiff({
+        messages: round,
+        ...(input.decision.baseline ? { from: input.decision.baseline, to: input.decision.state } : {}),
+      })
       // An empty diff is the phantom case: QA cannot review a change it cannot
       // see, so the pass is inadmissible rather than certified (ADR-0006).
+      // Name the workspace and the roster: "no repository changed" is a fact
+      // the dev can act on, not a QA configuration failure.
       if (!Qa.isReviewableDiff(diff)) {
-        return yield* Effect.fail(new Error("the round produced no reviewable diff"))
+        const repos = yield* RepoRoster.discover({ workspace: input.workspace, rootIsRepo: input.rootIsRepo })
+        return yield* Effect.fail(
+          new Error(`the round produced no reviewable diff (cwd: ${input.cwd}; repos: ${RepoRoster.render(repos)})`),
+        )
       }
       const prompt = Qa.buildQaPrompt({
         contract: input.decision.contract,
@@ -1265,7 +1286,7 @@ const layer = Layer.effect(
             // failed QA fails open to `dev` on the second.
             let decision: GoalLoop.Decision
             let evidence: Extract<GoalLoop.Decision, { _tag: "qa" }>["evidence"] | undefined
-            let qaFailed = false
+            let qaFailure: { reason: string } | undefined
             while (true) {
               const result = yield* goalLoop.decide({
                 sessionID,
@@ -1275,25 +1296,30 @@ const layer = Layer.effect(
                 modelID: lastUser.model.modelID,
                 state,
                 ...(evidence ? { evidence } : {}),
-                ...(qaFailed ? { qaFailure: true } : {}),
+                ...(qaFailure ? { qaFailure } : {}),
                 failures,
               })
               failures = result.failures
               decision = result.decision
               if (decision._tag !== "qa") break
               evidence = decision.evidence
-              qaFailed = false
+              qaFailure = undefined
               const qa = yield* runQa({
                 sessionID,
                 user: lastUser,
                 msgs,
                 assistantMessage: lastAssistantMsg,
                 decision,
+                cwd: ctx.directory,
+                workspace: ctx.project.vcs === "git" ? ctx.worktree : ctx.directory,
+                rootIsRepo: ctx.project.vcs === "git",
               }).pipe(Effect.exit)
               if (Exit.isFailure(qa)) {
                 // Fail-open: the loop moves back to `dev` and counts the failure,
                 // stopping after a run of them (ADR-0006, "the loop has a floor").
-                qaFailed = true
+                const error = Cause.squash(qa.cause)
+                const message = error instanceof Error ? error.message : String(error)
+                qaFailure = { reason: message.length > 500 ? `${message.slice(0, 500)}…` : message }
                 yield* Effect.logWarning("QA pass failed", {
                   "session.id": sessionID,
                   cause: Cause.pretty(qa.cause),

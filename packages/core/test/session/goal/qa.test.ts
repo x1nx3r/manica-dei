@@ -210,7 +210,13 @@ describe("GoalQa.errorContinuation", () => {
     const prompt = GoalQa.errorContinuation("add escalation")
     expect(prompt).toContain("could not run")
     expect(prompt).toContain("not certified")
-    expect(prompt).toContain("names the QA configuration")
+    expect(prompt).toContain("names the reason")
+  })
+
+  test("carries the reason when the call site has one", () => {
+    const prompt = GoalQa.errorContinuation("add escalation", "the round produced no reviewable diff (cwd: /w)")
+    expect(prompt).toContain("Reason: the round produced no reviewable diff")
+    expect(prompt).toContain("cwd: /w")
   })
 })
 
@@ -289,6 +295,67 @@ describe("GoalQa.roundMessages", () => {
     ]
     const round = GoalQa.roundMessages(messages, "u2")
     expect(round.map((item) => item.info.id)).toEqual(["u2", "a2", "a2b"])
+  })
+})
+
+describe("GoalQa.goalRoundMessages", () => {
+  const message = (id: string, role: string, parentID?: string) => ({
+    info: { id, role, ...(parentID ? { parentID } : {}) },
+    parts: [],
+  })
+  const continuation = (item: { info: { id: string } }) => item.info.id.startsWith("s")
+
+  test("a gate retry keeps the work before the failure in the round", () => {
+    // Issue #26: `s1` is the loop's synthetic continuation after a failed gate.
+    // The retry's own work is parented to `s1`; the repo change is under `u1`.
+    const messages = [
+      message("u1", "user"),
+      message("a1", "assistant", "u1"),
+      message("s1", "user"),
+      message("a2", "assistant", "s1"),
+    ]
+    expect(GoalQa.goalRoundMessages(messages, "s1", continuation).map((item) => item.info.id)).toEqual([
+      "u1",
+      "a1",
+      "s1",
+      "a2",
+    ])
+  })
+
+  test("a real user turn starts a new window", () => {
+    const messages = [
+      message("u1", "user"),
+      message("a1", "assistant", "u1"),
+      message("u2", "user"),
+      message("a2", "assistant", "u2"),
+    ]
+    expect(GoalQa.goalRoundMessages(messages, "u2", continuation).map((item) => item.info.id)).toEqual(["u2", "a2"])
+  })
+})
+
+describe("GoalQa.diffWindow", () => {
+  const step = (type: string, snapshot: string) => ({ parts: [{ type, snapshot }] })
+
+  test("a gate-retry round spans the repo change, not just the retry", () => {
+    // `md1-A` is the goal round's first step (the nested repo change); the gate
+    // fails; the retry's step starts at `md1-B` and changes only the environment.
+    // The window must still start at A (issue #26).
+    const messages = [
+      step("step-start", "md1-A"),
+      step("step-finish", "md1-B"),
+      step("step-start", "md1-B"),
+      step("step-finish", "md1-C"),
+    ]
+    expect(GoalQa.diffWindow(messages)).toEqual({ from: "md1-A", to: "md1-C" })
+  })
+
+  test("the last reviewed state starts the next round's window", () => {
+    const messages = [step("step-start", "md1-B"), step("step-finish", "md1-C")]
+    expect(GoalQa.diffWindow(messages, { from: "md1-B", to: "md1-C" })).toEqual({ from: "md1-B", to: "md1-C" })
+  })
+
+  test("no step snapshots yields no window", () => {
+    expect(GoalQa.diffWindow([{ parts: [] }])).toEqual({})
   })
 })
 

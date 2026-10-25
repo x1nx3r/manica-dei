@@ -162,7 +162,7 @@ describe("session.goal-loop", () => {
     }),
   )
 
-  it.instance("no QA record: the loop asks for a pass and binds the round", () =>
+  it.instance("no QA record: the loop asks for a pass, with no baseline on the first round", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
       const session = yield* SessionNs.Service
@@ -175,9 +175,13 @@ describe("session.goal-loop", () => {
 
       const result = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(result.decision._tag).toBe("qa")
-      // The round is bound to the state QA will review, and the phase is `qa`.
+      if (result.decision._tag === "qa") {
+        expect(result.decision.state).toBe("snap-1")
+        expect(result.decision.baseline).toBeUndefined()
+      }
       expect((yield* goal.get(info.id))?.phase).toBe("qa")
-      expect((yield* goal.get(info.id))?.state_hash).toBe("snap-1")
+      // Nothing has been judged, so there is no review baseline yet.
+      expect((yield* goal.get(info.id))?.state_hash).toBeNull()
       expect(judgeCalls).toBe(0)
 
       yield* session.remove(info.id)
@@ -225,7 +229,10 @@ describe("session.goal-loop", () => {
 
       yield* goal.set({ sessionID: info.id, goal: "add the widget" })
       yield* goal.authorize(info.id)
-      yield* loop.submitRecord({ sessionID: info.id, record: { state: "snap-1", verdict: "clean", probes: [], findings: [] } })
+      yield* loop.submitRecord({
+        sessionID: info.id,
+        record: { state: "snap-1", verdict: "clean", probes: [], findings: [] },
+      })
 
       const result = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(result.decision._tag).toBe("continue")
@@ -357,7 +364,7 @@ describe("session.goal-loop", () => {
     }),
   )
 
-  it.instance("a record that does not match the bound state is stale, and cannot be weighed", () =>
+  it.instance("a record that does not match the round's state is stale, and cannot be weighed", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
       const session = yield* SessionNs.Service
@@ -367,9 +374,8 @@ describe("session.goal-loop", () => {
 
       yield* goal.set({ sessionID: info.id, goal: "add the widget" })
       yield* goal.authorize(info.id)
-      // The round binds to `snap-1`; the record reviewed `snap-2`. It is stale.
-      yield* goal.bindState({ sessionID: info.id, state: "snap-2" })
-      yield* loop.submitRecord({ sessionID: info.id, record: cleanRecord("snap-1") })
+      // The decision is about `snap-1`; the record reviewed `snap-2`. It is stale.
+      yield* loop.submitRecord({ sessionID: info.id, record: cleanRecord("snap-2") })
 
       const result = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(result.decision._tag).toBe("continue")
@@ -477,6 +483,94 @@ describe("session.goal-loop", () => {
       yield* loop.decide(decideInput(info.id as never, test.directory))
       // The verdict binds to the state the round was decided against.
       expect((yield* goal.get(info.id))?.state_hash).toBe("snap-1")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a round after a verdict reviews from the last judged state", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      yield* loop.submitRecord({ sessionID: info.id, record: cleanRecord("snap-1") })
+      judgeResult = { judgement: { verdict: "continue", reason: "more to do" } }
+      yield* loop.decide({ ...decideInput(info.id as never, test.directory), state: "snap-1" })
+      expect((yield* goal.get(info.id))?.state_hash).toBe("snap-1")
+
+      // The next round starts where the verdict ended, not at the session root.
+      const next = yield* loop.decide({ ...decideInput(info.id as never, test.directory), state: "snap-2" })
+      expect(next.decision._tag).toBe("qa")
+      if (next.decision._tag === "qa") {
+        expect(next.decision.state).toBe("snap-2")
+        expect(next.decision.baseline).toBe("snap-1")
+      }
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a QA failure does not move the review baseline", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      yield* loop.submitRecord({ sessionID: info.id, record: cleanRecord("snap-1") })
+      judgeResult = { judgement: { verdict: "continue", reason: "more to do" } }
+      yield* loop.decide({ ...decideInput(info.id as never, test.directory), state: "snap-1" })
+
+      // The pass could not run; the round it failed to review is still the
+      // baseline the next pass must cover (issue #26's gate-retry shape).
+      const failed = yield* loop.decide({
+        ...decideInput(info.id as never, test.directory),
+        state: "snap-2",
+        qaFailure: { reason: "the round produced no reviewable diff" },
+      })
+      expect(failed.decision._tag).toBe("continue")
+      expect((yield* goal.get(info.id))?.state_hash).toBe("snap-1")
+
+      const retry = yield* loop.decide({ ...decideInput(info.id as never, test.directory), state: "snap-3" })
+      expect(retry.decision._tag).toBe("qa")
+      if (retry.decision._tag === "qa") expect(retry.decision.baseline).toBe("snap-1")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a stopped QA names the reason it was given", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+
+      const terminal = yield* loop.decide({
+        ...decideInput(info.id as never, test.directory),
+        qaFailure: {
+          reason: "the round produced no reviewable diff (cwd: /w; repos: carbon (/w/carbon))",
+        },
+        failures: { parse: 0, transport: 0, qa: 2 },
+      })
+      expect(terminal.decision).toMatchObject({ _tag: "stop" })
+      if (terminal.decision._tag === "stop") {
+        expect(terminal.decision.note).toContain("no reviewable diff")
+        expect(terminal.decision.note).toContain("carbon")
+        expect(terminal.decision.note).not.toContain("goal-qa")
+      }
 
       yield* session.remove(info.id)
     }),
@@ -695,7 +789,13 @@ describe("session.goal-loop", () => {
           state: "snap-1",
           verdict: "clean",
           probes: [
-            { criterion: "the widget renders", derived: false, command: "bun test widget", output: "1 pass", result: "pass" },
+            {
+              criterion: "the widget renders",
+              derived: false,
+              command: "bun test widget",
+              output: "1 pass",
+              result: "pass",
+            },
           ],
           findings: [],
         },
@@ -730,7 +830,13 @@ describe("session.goal-loop", () => {
           state: "snap-1",
           verdict: "clean",
           probes: [
-            { criterion: "the widget renders", derived: true, command: "bun test widget", output: "1 pass", result: "pass" },
+            {
+              criterion: "the widget renders",
+              derived: true,
+              command: "bun test widget",
+              output: "1 pass",
+              result: "pass",
+            },
           ],
           findings: [],
         },
@@ -762,8 +868,20 @@ describe("session.goal-loop", () => {
           state: "snap-1",
           verdict: "clean",
           probes: [
-            { criterion: "the widget renders", derived: true, command: "bun test widget", output: "1 pass", result: "pass" },
-            { criterion: "the widget renders", derived: true, command: "query the queue", output: "queue: (empty)", result: "pass" },
+            {
+              criterion: "the widget renders",
+              derived: true,
+              command: "bun test widget",
+              output: "1 pass",
+              result: "pass",
+            },
+            {
+              criterion: "the widget renders",
+              derived: true,
+              command: "query the queue",
+              output: "queue: (empty)",
+              result: "pass",
+            },
           ],
           findings: [],
         },
@@ -811,11 +929,10 @@ describe("session.goal-loop", () => {
       yield* goal.set({ sessionID: info.id, goal: "add the widget" })
       yield* goal.authorize(info.id)
       // The torn handoff, exactly as a crash between `submitRecord`'s two writes
-      // would leave it: the round bound its state and moved to `qa`, QA
-      // persisted its record, and the phase move to `judge` never happened. The
-      // record is real, but the round never handed it off — so it may not
-      // conclude. This is the one state the guard exists for.
-      yield* goal.bindState({ sessionID: info.id, state: "snap-1" })
+      // would leave it: the round moved to `qa`, QA persisted its record, and
+      // the phase move to `judge` never happened. The record is real, but the
+      // round never handed it off — so it may not conclude. This is the one
+      // state the guard exists for.
       yield* goal.setPhase({ sessionID: info.id, phase: "qa" })
       yield* goal.setRecord({ sessionID: info.id, record: cleanRecord() })
       judgeResult = { judgement: { verdict: "done", reason: "the tests pass" } }
@@ -970,7 +1087,10 @@ describe("session.goal-loop", () => {
       // The judge's own session — the pointer the verdict event must carry, so a
       // client can link the ruling to its transcript (ADR-0008, "the seam").
       const judgeSession = SessionID.make("ses_judge_1")
-      judgeResult = { judgement: { verdict: "continue", reason: "the finding holds", handoff }, roleSessionID: judgeSession }
+      judgeResult = {
+        judgement: { verdict: "continue", reason: "the finding holds", handoff },
+        roleSessionID: judgeSession,
+      }
       const ruled = yield* loop.decide(decideInput(info.id as never, test.directory))
       expect(ruled.decision._tag).toBe("continue")
       // The pointer is not only on the event: it is on the row, so `GET

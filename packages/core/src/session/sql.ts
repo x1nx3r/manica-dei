@@ -144,8 +144,8 @@ export const GoalTable = sqliteTable("session_goal", {
   // Fork ADR-0006: QA's record for the round it reviewed. Present only between
   // a QA pass and the loop weighing it; the judge reads it.
   qa_record: text({ mode: "json" }).$type<SessionGoal.Record>(),
-  // The workspace state the round binds to. The record's `state` must equal it,
-  // or the record is stale (ADR-0006, "state binding").
+  // The workspace state of the last judged round: the baseline the next review
+  // starts from (issue #26). Null before the first verdict.
   state_hash: text(),
   status: text().notNull().$type<SessionGoal.Status>(),
   ...Timestamps,
