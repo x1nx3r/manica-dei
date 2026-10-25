@@ -3,6 +3,7 @@ import { createEffect, For, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { useI18n } from "../context/i18n"
+import { canAutoFocus } from "@opencode-ai/core/util/dom"
 import { Icon, type IconProps } from "./icon"
 import { IconButton } from "./icon-button"
 import { TextField } from "./text-field"
@@ -283,7 +284,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                 <Icon name="magnifying-glass" />
               </Show>
               <TextField
-                autofocus={searchProps().autofocus}
+                autofocus={searchProps().autofocus && canAutoFocus()}
                 variant="ghost"
                 data-slot="list-search-input"
                 type="text"

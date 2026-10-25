@@ -4,6 +4,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { Tag } from "@opencode-ai/ui/v2/badge-v2"
 import { KeybindV2 } from "@opencode-ai/ui/v2/keybind-v2"
 import { getDirectory, getFilename } from "@opencode-ai/core/util/path"
+import { canAutoFocus } from "@opencode-ai/core/util/dom"
 
 export type AtOption =
   | { type: "agent"; name: string; display: string }
@@ -261,7 +262,10 @@ export const PromptPopover: Component<PromptPopoverProps> = (props) => {
             <Show when={props.slashMenu}>
               <div class="px-2 py-1">
                 <input
-                  ref={(el) => requestAnimationFrame(() => el.focus())}
+                  ref={(el) => {
+                    if (!canAutoFocus()) return
+                    requestAnimationFrame(() => el.focus())
+                  }}
                   value={props.slashMenuQuery}
                   onInput={(event) => props.onSlashMenuInput(event.currentTarget.value)}
                   onKeyDown={props.onSlashMenuKeyDown}
