@@ -1,4 +1,5 @@
-import { ACCEPTED_ARCHIVE_TYPES, ACCEPTED_FILE_TYPES, ACCEPTED_IMAGE_TYPES } from "@/constants/file-picker"
+import { ACCEPTED_FILE_TYPES, ACCEPTED_IMAGE_TYPES } from "@/constants/file-picker"
+import { archiveMime, isArchiveMime } from "@opencode-ai/core/util/attachment"
 
 export { ACCEPTED_FILE_TYPES }
 
@@ -34,8 +35,7 @@ export function pickAttachmentFiles(input: {
     .catch(input.onError)
 }
 
-const IMAGE_MIMES = new Set(ACCEPTED_IMAGE_TYPES)
-const ARCHIVE_MIMES = new Set(ACCEPTED_ARCHIVE_TYPES)
+const IMAGE_MIMES = new Set<string>(ACCEPTED_IMAGE_TYPES)
 const IMAGE_EXTS = new Map([
   ["gif", "image/gif"],
   ["jpeg", "image/jpeg"],
@@ -87,7 +87,7 @@ export async function attachmentMime(file: File) {
   const type = kind(file.type)
   if (IMAGE_MIMES.has(type)) return type
   if (type === "application/pdf") return type
-  if (ARCHIVE_MIMES.has(type)) return type
+  if (isArchiveMime(type)) return type
 
   const suffix = ext(file.name)
   const fallback = IMAGE_EXTS.get(suffix) ?? (suffix === "pdf" ? "application/pdf" : undefined)
@@ -95,8 +95,8 @@ export async function attachmentMime(file: File) {
   // Archives are containers, not text: an empty or generic browser type still
   // resolves from the extension, before the content sniff would call the bytes
   // binary and reject them.
-  if (suffix === "zip") return "application/zip"
-  if (suffix === "rar") return "application/vnd.rar"
+  const archive = archiveMime(file.name)
+  if (archive) return archive
 
   if (textMime(type)) return "text/plain"
   const bytes = new Uint8Array(await file.slice(0, SAMPLE).arrayBuffer())
