@@ -2,6 +2,11 @@ import path from "path"
 import { Effect } from "effect"
 import { Global } from "@opencode-ai/core/global"
 import { FSUtil } from "@opencode-ai/core/fs-util"
+import {
+  ARCHIVE_EXTENSIONS as ARCHIVE_EXTENSION_LIST,
+  ARCHIVE_MIME_TYPES,
+  archiveExtension,
+} from "@opencode-ai/core/util/attachment"
 
 /**
  * Fork: archives are uploads, not model attachments.
@@ -13,27 +18,14 @@ import { FSUtil } from "@opencode-ai/core/fs-util"
  * enters a snapshot, a diff, or a review.
  */
 
-export const ARCHIVE_MIMES = new Set([
-  "application/zip",
-  "application/x-zip",
-  "application/x-zip-compressed",
-  "application/vnd.rar",
-  "application/x-rar",
-  "application/x-rar-compressed",
-])
+export const ARCHIVE_MIMES = new Set<string>(ARCHIVE_MIME_TYPES)
 
-export const ARCHIVE_EXTENSIONS = new Set(["zip", "rar"])
+export const ARCHIVE_EXTENSIONS = new Set<string>(ARCHIVE_EXTENSION_LIST)
+
+export { archiveExtension }
 
 /** The cap before a base64 upload becomes a memory problem. */
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-
-export function archiveExtension(filename: string | undefined): "zip" | "rar" | undefined {
-  const base = filename?.replaceAll("\\", "/").split("/").pop() ?? ""
-  const index = base.lastIndexOf(".")
-  if (index <= 0) return
-  const suffix = base.slice(index + 1).toLowerCase()
-  return suffix === "zip" || suffix === "rar" ? suffix : undefined
-}
 
 export function isArchive(mime: string | undefined, filename?: string): boolean {
   if (mime && ARCHIVE_MIMES.has(mime)) return true

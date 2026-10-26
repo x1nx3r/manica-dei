@@ -1,103 +1,15 @@
-export const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+import {
+  ACCEPTED_FILE_EXTENSIONS,
+  ACCEPTED_FILE_TYPES,
+  ARCHIVE_MIME_TYPES,
+  IMAGE_MIME_TYPES,
+} from "@opencode-ai/core/util/attachment"
 
-export const ACCEPTED_ARCHIVE_TYPES = [
-  "application/zip",
-  "application/x-zip-compressed",
-  "application/vnd.rar",
-  "application/x-rar-compressed",
-  "application/x-rar",
-]
-
-export const ACCEPTED_FILE_TYPES = [
-  ...ACCEPTED_IMAGE_TYPES,
-  "application/pdf",
-  ...ACCEPTED_ARCHIVE_TYPES,
-  "text/*",
-  "application/json",
-  "application/ld+json",
-  "application/toml",
-  "application/x-toml",
-  "application/x-yaml",
-  "application/xml",
-  "application/yaml",
-  ".c",
-  ".cc",
-  ".cjs",
-  ".conf",
-  ".cpp",
-  ".css",
-  ".csv",
-  ".cts",
-  ".env",
-  ".go",
-  ".gql",
-  ".graphql",
-  ".h",
-  ".hh",
-  ".hpp",
-  ".htm",
-  ".html",
-  ".ini",
-  ".java",
-  ".js",
-  ".json",
-  ".jsx",
-  ".log",
-  ".md",
-  ".mdx",
-  ".mjs",
-  ".mts",
-  ".py",
-  ".rb",
-  ".rs",
-  ".sass",
-  ".scss",
-  ".sh",
-  ".sql",
-  ".toml",
-  ".ts",
-  ".tsx",
-  ".txt",
-  ".xml",
-  ".yaml",
-  ".yml",
-  ".zsh",
-  ".zip",
-  ".rar",
-]
-
-const MIME_EXT = new Map([
-  ["image/png", "png"],
-  ["image/jpeg", "jpg"],
-  ["image/gif", "gif"],
-  ["image/webp", "webp"],
-  ["application/pdf", "pdf"],
-  ["application/zip", "zip"],
-  ["application/x-zip-compressed", "zip"],
-  ["application/vnd.rar", "rar"],
-  ["application/x-rar-compressed", "rar"],
-  ["application/x-rar", "rar"],
-  ["application/json", "json"],
-  ["application/ld+json", "jsonld"],
-  ["application/toml", "toml"],
-  ["application/x-toml", "toml"],
-  ["application/x-yaml", "yaml"],
-  ["application/xml", "xml"],
-  ["application/yaml", "yaml"],
-])
-
-const TEXT_EXT = ["txt", "text", "md", "markdown", "log", "csv"]
-
-export const ACCEPTED_FILE_EXTENSIONS = Array.from(
-  new Set(
-    ACCEPTED_FILE_TYPES.flatMap((item) => {
-      if (item.startsWith(".")) return [item.slice(1)]
-      if (item === "text/*") return TEXT_EXT
-      const out = MIME_EXT.get(item)
-      return out ? [out] : []
-    }),
-  ),
-).sort()
+// The lists live in `@opencode-ai/core/util/attachment` so the legacy and v2
+// composers cannot drift apart (issue #36).
+export const ACCEPTED_IMAGE_TYPES = IMAGE_MIME_TYPES
+export const ACCEPTED_ARCHIVE_TYPES = ARCHIVE_MIME_TYPES
+export { ACCEPTED_FILE_TYPES, ACCEPTED_FILE_EXTENSIONS }
 
 export function filePickerFilters(name: string, ext?: string[]) {
   if (!ext || ext.length === 0) return undefined

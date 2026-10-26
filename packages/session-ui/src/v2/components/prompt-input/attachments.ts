@@ -1,64 +1,11 @@
 import { onMount } from "solid-js"
 import { makeEventListener } from "@solid-primitives/event-listener"
+import { ACCEPTED_FILE_TYPES, archiveMime, isArchiveMime } from "@opencode-ai/core/util/attachment"
 import type { PromptInputV2Attachment, PromptInputV2Prompt } from "./types"
 
-const accepted = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-  "text/*",
-  "application/json",
-  "application/ld+json",
-  "application/toml",
-  "application/x-toml",
-  "application/x-yaml",
-  "application/xml",
-  "application/yaml",
-  ".c",
-  ".cc",
-  ".cjs",
-  ".conf",
-  ".cpp",
-  ".css",
-  ".csv",
-  ".cts",
-  ".env",
-  ".go",
-  ".gql",
-  ".graphql",
-  ".h",
-  ".hh",
-  ".hpp",
-  ".htm",
-  ".html",
-  ".ini",
-  ".java",
-  ".js",
-  ".json",
-  ".jsx",
-  ".log",
-  ".md",
-  ".mdx",
-  ".mjs",
-  ".mts",
-  ".py",
-  ".rb",
-  ".rs",
-  ".sass",
-  ".scss",
-  ".sh",
-  ".sql",
-  ".toml",
-  ".ts",
-  ".tsx",
-  ".txt",
-  ".xml",
-  ".yaml",
-  ".yml",
-  ".zsh",
-]
+// One list for both composers; `@opencode-ai/core/util/attachment` is the
+// source so an added type cannot reach only one of them (issue #36).
+export const ACCEPTED_ATTACHMENT_TYPES = ACCEPTED_FILE_TYPES
 
 type PromptTarget = {
   current: () => PromptInputV2Prompt
@@ -213,7 +160,9 @@ export function createPromptInputV2Attachments(
         return
       }
       void input
-        .picker({ defaultPath: input.directory(), multiple: true, accept: accepted }, (file) => add(file))
+        .picker({ defaultPath: input.directory(), multiple: true, accept: ACCEPTED_ATTACHMENT_TYPES }, (file) =>
+          add(file),
+        )
         .catch(input.onError)
     },
   }
@@ -244,13 +193,18 @@ const textMimes = new Set([
   "application/yaml",
 ])
 
-async function attachmentMime(file: File) {
+export async function attachmentMime(file: File) {
   const type = file.type.split(";", 1)[0]?.trim().toLowerCase() ?? ""
   if (imageMimes.has(type) || type === "application/pdf") return type
+  if (isArchiveMime(type)) return type
   const index = file.name.lastIndexOf(".")
   const suffix = index === -1 ? "" : file.name.slice(index + 1).toLowerCase()
   const fallback = imageExtensions.get(suffix) ?? (suffix === "pdf" ? "application/pdf" : undefined)
   if ((!type || type === "application/octet-stream") && fallback) return fallback
+  // The browser can report an empty or generic type for an archive. Resolve it
+  // from the extension before the content sniff calls the bytes binary.
+  const archive = archiveMime(file.name)
+  if (archive) return archive
   if (type.startsWith("text/") || textMimes.has(type) || type.endsWith("+json") || type.endsWith("+xml")) {
     return "text/plain"
   }
