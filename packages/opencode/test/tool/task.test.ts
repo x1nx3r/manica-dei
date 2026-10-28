@@ -1,4 +1,4 @@
-import { afterEach, describe, expect } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -11,12 +11,13 @@ import { Config } from "@/config/config"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { Ripgrep } from "@opencode-ai/core/ripgrep"
 import { Session } from "@/session/session"
+import { Goal } from "@/session/goal"
 import type { SessionPrompt } from "../../src/session/prompt"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
 import { SessionRunState } from "@/session/run-state"
 import { SessionStatus } from "@/session/status"
 
-import { TaskTool, type TaskPromptOps } from "../../src/tool/task"
+import { TaskTool, type TaskPromptOps, subagentContext } from "../../src/tool/task"
 import { Truncate } from "@/tool/truncate"
 import { ToolRegistry } from "@/tool/registry"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -43,6 +44,7 @@ const layer = (flags: Partial<RuntimeFlags.Info> = {}) =>
       Config.node,
       CrossSpawnSpawner.node,
       Session.node,
+      Goal.node,
       SessionProjector.node,
       SessionRunState.node,
       SessionStatus.node,
@@ -65,6 +67,43 @@ function defer<T>() {
   })
   return { promise, resolve }
 }
+
+const contract = {
+  outcome: "the widget renders",
+  verification: "bun test widget",
+  constraints: "nothing else changes",
+  boundaries: "packages/widget",
+  stop_when: "the spec is ambiguous",
+}
+
+describe("subagentContext", () => {
+  test("a root goal includes the contract and the verification", () => {
+    const text = subagentContext({
+      goal: "add the widget",
+      authorized: true,
+      contract,
+    } as never)
+    expect(text).toContain("Goal: add the widget")
+    expect(text).toContain("Verification: bun test widget")
+    expect(text).toContain("Do not call the goal tool")
+    expect(text).toContain("The root gate runs the verification")
+    expect(text).not.toContain("not authorized")
+  })
+
+  test("an unauthorized root goal says so", () => {
+    const text = subagentContext({
+      goal: "add the widget",
+      authorized: false,
+      contract,
+    } as never)
+    expect(text).toContain("set but not authorized")
+  })
+
+  test("a root with no goal says not to set one", () => {
+    const text = subagentContext(undefined)
+    expect(text).toContain("has no goal; do not set one")
+  })
+})
 
 const seed = Effect.fn("TaskToolTest.seed")(function* (title = "Pinned") {
   const session = yield* Session.Service
@@ -281,6 +320,76 @@ describe("tool.task", () => {
       expect(result.output).toContain(`<task id="${child.id}" state="completed">`)
       expect(seen?.sessionID).toBe(child.id)
       expect(seen?.variant).toBe("xhigh")
+    }),
+  )
+
+  it.instance("a subagent task carries the root goal and verification", () =>
+    Effect.gen(function* () {
+      const goals = yield* Goal.Service
+      const { chat, assistant } = yield* seed()
+      yield* goals.set({ sessionID: chat.id, goal: "add the widget", contract })
+      yield* goals.authorize(chat.id)
+
+      const tool = yield* TaskTool
+      const def = yield* tool.init()
+      let seen: SessionPrompt.PromptInput | undefined
+
+      yield* def.execute(
+        {
+          description: "inspect bug",
+          prompt: "look into the cache key path",
+          subagent_type: "general",
+        },
+        {
+          sessionID: chat.id,
+          messageID: assistant.id,
+          agent: "build",
+          abort: new AbortController().signal,
+          extra: { promptOps: stubOps({ onPrompt: (input) => (seen = input) }) },
+          messages: [],
+          metadata: () => Effect.void,
+          ask: () => Effect.void,
+        },
+      )
+
+      const context = seen?.parts[0]
+      expect(context?.type).toBe("text")
+      if (context?.type === "text") {
+        expect(context.text).toContain("Goal: add the widget")
+        expect(context.text).toContain("Verification: bun test widget")
+        expect(context.text).toContain("Do not call the goal tool")
+        expect(context.text).not.toContain("not authorized")
+      }
+      expect(seen?.parts.at(-1)).toEqual({ type: "text", text: "look into the cache key path" })
+    }),
+  )
+
+  it.instance("a hidden role does not receive the subagent context", () =>
+    Effect.gen(function* () {
+      const { chat, assistant } = yield* seed()
+      const tool = yield* TaskTool
+      const def = yield* tool.init()
+      let seen: SessionPrompt.PromptInput | undefined
+
+      yield* def.execute(
+        {
+          description: "review the round",
+          prompt: "review the round",
+          subagent_type: "goal-qa",
+        },
+        {
+          sessionID: chat.id,
+          messageID: assistant.id,
+          agent: "build",
+          abort: new AbortController().signal,
+          extra: { promptOps: stubOps({ onPrompt: (input) => (seen = input) }) },
+          messages: [],
+          metadata: () => Effect.void,
+          ask: () => Effect.void,
+        },
+      )
+
+      expect(seen?.parts).toEqual([{ type: "text", text: "review the round" }])
     }),
   )
 
@@ -846,9 +955,13 @@ describe("tool.task", () => {
       expect(result.output).toContain("Background task updated")
       first.resolve()
       expect((yield* jobs.get(started.metadata.sessionId))?.status).toBe("running")
-      expect((yield* Effect.promise(() => updated.promise)).parts).toEqual([
-        { type: "text", text: "also inspect cancellation" },
-      ])
+      const updatedPrompt = yield* Effect.promise(() => updated.promise)
+      // The subagent context is prepended; the task stays the last part.
+      expect(updatedPrompt.parts[0]?.type).toBe("text")
+      if (updatedPrompt.parts[0]?.type === "text") {
+        expect(updatedPrompt.parts[0].text).toContain("This session is a subagent")
+      }
+      expect(updatedPrompt.parts.at(-1)).toEqual({ type: "text", text: "also inspect cancellation" })
 
       second.resolve()
       const waited = yield* jobs.wait({ id: started.metadata.sessionId, timeout: 1_000 })

@@ -39,7 +39,8 @@ The root cause is a permission and a prompt assumption:
 root's contract; it does not create another goal, another contract, or another
 human authorization.
 
-The boundary is enforced at two layers:
+The boundary is enforced at two layers, and the child is told what it is
+working under:
 
 1. **Permission.** Every agent with `mode: "subagent"` gets `goal: "deny"`
    merged **after** the operator config, because permission evaluation is
@@ -52,6 +53,11 @@ The boundary is enforced at two layers:
 
    This covers an `all`-mode agent used as a subagent, whose permission is not
    `mode: "subagent"`.
+3. **The task context.** For a non-hidden subagent, `task` prepends the root
+   goal and contract — including the verification — to the child's prompt. It
+   states that the root owns the goal, that the child must not call the goal
+   tool, and that it must not ask for authorization. Hidden roles (`goal-qa`,
+   `goal-judge`) are skipped: their prompt is their diet.
 
 The root's own authorization question remains: one question per run, at the
 point the human agrees to the contract. It is the product's boundary, not
@@ -69,10 +75,10 @@ overhead to remove.
 - **A subagent that needs its own contract and review is a separate root
   session** (a fork), not a `task` child. That is the correct tool for an
   independent piece of work.
-- **The child still needs the root's context.** The next step is to inject the
-  root goal and contract into the task prompt, so a child knows what it is
-  working under and does not ask for a verification it already has. The goal
-  denial is the enforcement; the injection is the stance.
+- **The child receives the root's context.** `task` prepends the root goal and
+  contract, including the verification, to a non-hidden subagent's prompt. A
+  child knows what it is working under and does not ask for a verification it
+  already has. The goal denial is the enforcement; the injection is the stance.
 
 ## Out of scope
 
