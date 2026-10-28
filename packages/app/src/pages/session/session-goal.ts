@@ -258,23 +258,55 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     }, delay)
   }
 
+  // The strip is a footer, not a precondition for the session. Reading the
+  // resources directly would register their pending fetches with the session
+  // page's Suspense boundary: every goal or children refetch would unmount the
+  // whole page, including an open file tab. The `.latest` accessor of a
+  // resource with an initial value never reads through the boundary, so a
+  // refetch keeps the previous strip while it runs. The wrappers carry the
+  // session id because a resource keeps its old value across a source change;
+  // the memos below hide the previous session's data until the new fetch lands.
+  type GoalProjection = { sessionID: string; info: SessionGoalInfo | undefined }
+  type GoalRoles = { sessionID: string; roles: SessionGoalRole[] }
+  const noRoles: SessionGoalRole[] = []
+
   const [goal, { refetch: refetchGoal }] = createResource(
     () => sessionID(),
-    async (id) => {
+    async (id): Promise<GoalProjection | null> => {
+      if (!id) return null
       const outcome = await loadGoalOutcome(() =>
         serverSDK().client.session.goal({ sessionID: id, directory: sdk().directory }),
       )
       if (outcome.info) retryAttempts = 0
       if (outcome.retry) scheduleRetry()
       else clearRetry()
-      return outcome.info
+      return { sessionID: id, info: outcome.info }
     },
+    { initialValue: null },
   )
 
   const [roles, { refetch: refetchRoles }] = createResource(
     () => sessionID(),
-    (id) => loadChildren(() => serverSDK().client.session.children({ sessionID: id, directory: sdk().directory })),
+    async (id): Promise<GoalRoles | null> => {
+      if (!id) return null
+      const list = await loadChildren(() =>
+        serverSDK().client.session.children({ sessionID: id, directory: sdk().directory }),
+      )
+      return { sessionID: id, roles: list }
+    },
+    { initialValue: null },
   )
+
+  const info = createMemo(() => {
+    const value = goal.latest
+    if (!value || value.sessionID !== sessionID()) return undefined
+    return value.info
+  })
+  const roleList = createMemo(() => {
+    const value = roles.latest
+    if (!value || value.sessionID !== sessionID()) return noRoles
+    return value.roles
+  })
 
   // A page that outlives a container restart keeps its DOM and loses its
   // stream: the one projection fetch it missed is never asked again unless a
@@ -319,7 +351,7 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     // when the client was not present for the judgement. The events are the
     // precise trail and the projection is the row's own truth.
     createEffect(() => {
-      const latest = goal()
+      const latest = info()
       if (!latest) return
       const verdictSession = latest.last_verdict_session
       const verdict = latest.last_verdict
@@ -403,13 +435,11 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     onCleanup(() => offs.forEach((off) => off()))
   })
 
-  const info = createMemo(() => goal())
-
   return {
     /** The projection, or `undefined` for a session the loop has not run on. */
     info,
     /** The run's labeled role sessions, from the children route (ADR-0008). */
-    roles: createMemo(() => roles() ?? []),
+    roles: roleList,
     /** Each role's outcome as the trail announced it, keyed by the role's session. */
     checks: () => store.checks,
     /** The last judgement, when the trail delivered one to this client. */
