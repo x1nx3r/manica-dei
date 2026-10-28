@@ -100,14 +100,11 @@ export const sessionHandlers = HttpApiBuilder.group(InstanceHttpApi, "session", 
 
     const goal = Effect.fn("SessionHttpApi.goal")(function* (ctx: { params: { sessionID: SessionID } }) {
       yield* requireSession(ctx.params.sessionID)
+      // "No goal" is a normal state, not a missing resource: 200 with
+      // `has_goal: false` so a session page can settle quietly (issue #35). A
+      // missing *session* still 404s through `requireSession`.
       const info = yield* goalSvc.get(ctx.params.sessionID)
-      if (!info) {
-        return yield* new ApiNotFoundError({
-          name: "NotFoundError",
-          data: { message: `Goal not found: ${ctx.params.sessionID}` },
-        })
-      }
-      return info
+      return info ? { has_goal: true, projection: info } : { has_goal: false }
     })
 
     const diff = Effect.fn("SessionHttpApi.diff")(function* (ctx: {

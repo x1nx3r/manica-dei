@@ -126,7 +126,19 @@ export async function loadGoalOutcome(
   try {
     const result = await request()
     if (result.error) return { info: undefined, retry: !goalMissing(result.error) }
-    const info = goalProjection(result.data)
+    const data = result.data
+    // The route answers 200 with `{ has_goal: false }` for a session that has
+    // no goal. That is a fact, not a failed request: retrying it would turn a
+    // normal state into a poll (issue #35). The bare shapes keep older servers
+    // readable.
+    if (data && typeof data === "object" && "has_goal" in data) {
+      const response = data as { has_goal?: unknown; projection?: unknown }
+      if (response.has_goal !== true) return { info: undefined, retry: false }
+      const info = goalProjection(response.projection)
+      return { info, retry: info === undefined }
+    }
+    if (data === null) return { info: undefined, retry: false }
+    const info = goalProjection(data)
     // A 200 that is not a projection is a stub, a proxy or a version skew, and
     // it can be either permanent or a server mid-restart: retry it on the same
     // capped schedule rather than guess.
@@ -377,7 +389,11 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     // at most once a second, because they fire on message traffic and not on
     // goal moves. Registered beside the goal events and deregistered with them.
     let lastLoose = 0
-    const looseRefetch = () => {
+    const looseRefetch = (event: { properties: { sessionID?: string } }) => {
+      // The bus carries every session in the directory. A child or unrelated
+      // session must not make the active session ask for its goal (issue #35);
+      // the goal-specific events below already filter the same way.
+      if (event.properties.sessionID !== id) return
       if (Date.now() - lastLoose < 1000) return
       lastLoose = Date.now()
       void refetchGoal()

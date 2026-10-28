@@ -111,6 +111,34 @@ describe("loadGoalOutcome", () => {
     await expect(loadGoalOutcome(async () => ({ data: info }))).resolves.toEqual({ info, retry: false })
   })
 
+  test("has_goal:false is a fact, not a failed request", async () => {
+    // The route answers 200 for a session with no goal (issue #35). It must not
+    // enter the retry schedule.
+    await expect(loadGoalOutcome(async () => ({ data: { has_goal: false } }))).resolves.toEqual({
+      info: undefined,
+      retry: false,
+    })
+  })
+
+  test("has_goal:true carries the projection", async () => {
+    const info = goal()
+    await expect(loadGoalOutcome(async () => ({ data: { has_goal: true, projection: info } }))).resolves.toEqual({
+      info,
+      retry: false,
+    })
+  })
+
+  test("has_goal:true without a projection is a malformed body and is retried", async () => {
+    await expect(loadGoalOutcome(async () => ({ data: { has_goal: true } }))).resolves.toEqual({
+      info: undefined,
+      retry: true,
+    })
+  })
+
+  test("a legacy bare null is also final", async () => {
+    await expect(loadGoalOutcome(async () => ({ data: null }))).resolves.toEqual({ info: undefined, retry: false })
+  })
+
   test("a 404 is the loop saying it has no goal, and is final", async () => {
     // The two answers `loadGoal` must not distinguish but the client must:
     // absence is a fact, an unanswerable server is a hole to retry.

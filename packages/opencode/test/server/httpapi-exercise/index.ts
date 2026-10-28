@@ -1282,8 +1282,11 @@ const scenarios: Scenario[] = [
     }))
     .json(200, (body) => {
       object(body)
-      check(isRecord(body) && body.goal === "cover session goal", "goal should match seeded state")
-      check(isRecord(body) && body.phase === "dev", "a fresh goal is in the dev phase")
+      check(isRecord(body) && body.has_goal === true, "a seeded goal should be present")
+      const projection = isRecord(body) ? body.projection : undefined
+      object(projection)
+      check(isRecord(projection) && projection.goal === "cover session goal", "goal should match seeded state")
+      check(isRecord(projection) && projection.phase === "dev", "a fresh goal is in the dev phase")
     }),
   http.protected
     .get("/session/{sessionID}/diff", "session.diff")

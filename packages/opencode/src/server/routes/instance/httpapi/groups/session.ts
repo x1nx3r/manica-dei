@@ -173,7 +173,17 @@ export const SessionApi = HttpApi.make("session")
           // Every field is a wire-safe schema value. `qa_record.probes[].output`
           // and `findings[].evidence` carry raw command output; the transcript
           // already exposes the same, so this is no new leak.
-          success: described(SessionGoal.Info, "Goal projection"),
+          // A session without a goal is a normal state, not a failed request:
+          // `has_goal: false` lets the client settle without a console 404
+          // (issue #35). `has_goal` is explicit because the OpenAPI generator
+          // flattens a nullable `$ref` to the ref itself.
+          success: described(
+            Schema.Struct({
+              has_goal: Schema.Boolean,
+              projection: Schema.optional(SessionGoal.Info),
+            }),
+            "Goal projection, or has_goal: false when the session has no goal",
+          ),
           error: [HttpApiError.BadRequest, ApiNotFoundError],
         }).annotateMerge(
           OpenApi.annotations({
