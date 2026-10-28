@@ -1,5 +1,8 @@
 Set the session's goal, and — when the human agrees — authorize it to run unattended.
 
+Only the root session sets a goal. A subagent works under the root's contract
+and reports back; it does not call this tool.
+
 Call this once, at the end of scoping, when you and the human have agreed what
 the work is and how you will know it is done. Not before: the goal is the
 outcome of the conversation, not its start.

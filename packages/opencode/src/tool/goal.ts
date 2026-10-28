@@ -45,6 +45,20 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
       parameters: Parameters,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
         Effect.gen(function* () {
+          // ADR-0011: the goal is the root session's authorization boundary.
+          // A subagent executes a delegated task under the root's contract; it
+          // does not create another goal, another contract, or another human
+          // authorization question (issue #38's run: three child goals asked
+          // for authorization and stalled the root for 1h48m).
+          const owner = yield* sessions.get(ctx.sessionID).pipe(Effect.orDie)
+          if (owner.parentID) {
+            return yield* Effect.fail(
+              new Error(
+                "Goals belong to the root session. Complete the delegated task; the parent owns the contract and verification.",
+              ),
+            )
+          }
+
           // A huge goal is not one task. Do not set it; propose a split.
           if (params.size === "huge") {
             return {

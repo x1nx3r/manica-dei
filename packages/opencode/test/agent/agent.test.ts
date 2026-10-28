@@ -120,6 +120,44 @@ it.instance("explore agent denies edit and write", () =>
   }),
 )
 
+// ADR-0011: the goal belongs to the root session. The general subagent's
+// defaults allow every tool but todowrite, so this deny is the boundary that
+// stops a child from opening its own authorization question.
+it.instance("subagents may not set a goal", () =>
+  Effect.gen(function* () {
+    const general = yield* load((svc) => svc.get("general"))
+    expect(general?.mode).toBe("subagent")
+    expect(evalPerm(general, "goal")).toBe("deny")
+
+    const qa = yield* load((svc) => svc.get("goal-qa"))
+    expect(qa?.mode).toBe("subagent")
+    expect(evalPerm(qa, "goal")).toBe("deny")
+
+    const build = yield* load((svc) => svc.get("build"))
+    expect(build?.mode).toBe("primary")
+    expect(evalPerm(build, "goal")).toBe("allow")
+  }),
+)
+
+it.instance(
+  "operator config cannot grant a subagent the goal tool",
+  () =>
+    Effect.gen(function* () {
+      const general = yield* load((svc) => svc.get("general"))
+      expect(evalPerm(general, "goal")).toBe("deny")
+
+      const build = yield* load((svc) => svc.get("build"))
+      expect(evalPerm(build, "goal")).toBe("allow")
+    }),
+  {
+    config: {
+      permission: {
+        goal: "allow",
+      },
+    },
+  },
+)
+
 it.instance("explore agent asks for external directories and allows whitelisted external paths", () =>
   Effect.gen(function* () {
     const explore = yield* load((svc) => svc.get("explore"))
