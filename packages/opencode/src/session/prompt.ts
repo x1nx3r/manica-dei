@@ -518,41 +518,60 @@ const layer = Layer.effect(
         evidence: input.decision.evidence,
       })
 
-      const result = yield* taskTool.execute(
-        { prompt, description: "QA the goal", subagent_type: "goal-qa" },
-        {
-          agent: input.user.agent,
-          messageID: input.assistantMessage?.info.id ?? input.user.id,
-          sessionID: input.sessionID,
-          abort: new AbortController().signal,
-          callID: ulid(),
-          extra: {
-            bypassAgentCheck: true,
-            promptOps,
-            // Fork ADR-0008: the run's roles are labeled at *creation*, not only
-            // at the handoff, so "The Run" can show a pass while it is in
-            // flight — a `session.goal.review` event comes only after the pass
-            // completes, and the loop's phases before that say nothing about
-            // which pass the child belongs to.
-            metadata: { goal_role: "qa", goal_round: input.decision.round },
+      const execute = (prompt: string, taskID?: string) =>
+        taskTool.execute(
+          {
+            prompt,
+            description: "QA the goal",
+            subagent_type: "goal-qa",
+            ...(taskID ? { task_id: taskID } : {}),
           },
-          // The round's messages, not the session's: `task.ts` ignores this
-          // today, and the diet forbids the transcript reaching QA, so the
-          // field carries only what QA is allowed to see.
-          messages: round,
-          metadata: () => Effect.void,
-          ask: (req: any) =>
-            permission
-              .ask({
-                ...req,
-                sessionID: input.sessionID,
-                ruleset: Permission.merge(qaAgent?.permission ?? [], parent.permission ?? []),
-              })
-              .pipe(Effect.orDie),
-        },
-      )
+          {
+            agent: input.user.agent,
+            messageID: input.assistantMessage?.info.id ?? input.user.id,
+            sessionID: input.sessionID,
+            abort: new AbortController().signal,
+            callID: ulid(),
+            extra: {
+              bypassAgentCheck: true,
+              promptOps,
+              // Fork ADR-0008: the run's roles are labeled at *creation*, not only
+              // at the handoff, so "The Run" can show a pass while it is in
+              // flight — a `session.goal.review` event comes only after the pass
+              // completes, and the loop's phases before that say nothing about
+              // which pass the child belongs to.
+              metadata: { goal_role: "qa", goal_round: input.decision.round },
+            },
+            // The round's messages, not the session's: `task.ts` ignores this
+            // today, and the diet forbids the transcript reaching QA, so the
+            // field carries only what QA is allowed to see.
+            messages: round,
+            metadata: () => Effect.void,
+            ask: (req: any) =>
+              permission
+                .ask({
+                  ...req,
+                  sessionID: input.sessionID,
+                  ruleset: Permission.merge(qaAgent?.permission ?? [], parent.permission ?? []),
+                })
+                .pipe(Effect.orDie),
+          },
+        )
 
-      const record = Qa.parseRecord(result.output, input.decision.state)
+      // A malformed record is a protocol failure between QA and the loop, not
+      // an abstention. Ask the same child to reserialize what it already found;
+      // never run a fresh review, never turn the fallback into a clean record,
+      // and never burn a development round on it (issue #38).
+      let result = yield* execute(prompt)
+      let parsed = Qa.parseRecord(result.output, input.decision.state)
+      let nudges = 0
+      while (!parsed.ok && nudges < 2) {
+        nudges += 1
+        result = yield* execute(Qa.formatNudge(parsed.error), result.metadata.sessionId)
+        parsed = Qa.parseRecord(result.output, input.decision.state)
+      }
+      if (!parsed.ok) return yield* Effect.fail(new Qa.QaFormatError(parsed.error))
+      const record = parsed.record
       // Fork ADR-0008: the record is a typed part, not prose. Attach it to the
       // QA pass's assistant message in the child session, carrying the same
       // value handed to `submitRecord`, so a surface reads the record's fields.
@@ -1313,7 +1332,7 @@ const layer = Layer.effect(
             // failed QA fails open to `dev` on the second.
             let decision: GoalLoop.Decision
             let evidence: Extract<GoalLoop.Decision, { _tag: "qa" }>["evidence"] | undefined
-            let qaFailure: { reason: string } | undefined
+            let qaFailure: { reason: string; kind?: "format" | "failure" } | undefined
             while (true) {
               const result = yield* goalLoop.decide({
                 sessionID,
@@ -1344,9 +1363,16 @@ const layer = Layer.effect(
               if (Exit.isFailure(qa)) {
                 // Fail-open: the loop moves back to `dev` and counts the failure,
                 // stopping after a run of them (ADR-0006, "the loop has a floor").
+                // A QA format error is different: the pass produced a record the
+                // loop could not read after its resubmits, so `decide` stops
+                // instead of sending the dev another round (issue #38).
                 const error = Cause.squash(qa.cause)
-                const message = error instanceof Error ? error.message : String(error)
-                qaFailure = { reason: message.length > 500 ? `${message.slice(0, 500)}…` : message }
+                const format = error instanceof Qa.QaFormatError
+                const message = format ? error.detail : error instanceof Error ? error.message : String(error)
+                qaFailure = {
+                  reason: message.length > 500 ? `${message.slice(0, 500)}…` : message,
+                  ...(format ? { kind: "format" as const } : {}),
+                }
                 yield* Effect.logWarning("QA pass failed", {
                   "session.id": sessionID,
                   cause: Cause.pretty(qa.cause),

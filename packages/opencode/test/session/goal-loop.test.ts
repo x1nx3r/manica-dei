@@ -576,6 +576,37 @@ describe("session.goal-loop", () => {
     }),
   )
 
+  it.instance("a QA format failure stops without burning a development round", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+
+      const terminal = yield* loop.decide({
+        ...decideInput(info.id as never, test.directory),
+        qaFailure: { reason: "the reply does not contain a JSON object", kind: "format" },
+      })
+
+      expect(terminal.decision).toMatchObject({ _tag: "stop" })
+      if (terminal.decision._tag === "stop") {
+        expect(terminal.decision.note).toContain("format-error")
+        expect(terminal.decision.note).toContain("does not contain a JSON object")
+        expect(terminal.decision.note).toContain("rather than send the developer")
+      }
+      expect(terminal.failures.qa).toBe(0)
+      expect((yield* goal.get(info.id))?.turns_used).toBe(0)
+      expect((yield* goal.get(info.id))?.phase).toBe("dev")
+      expect((yield* goal.get(info.id))?.status).toBe("active")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
   it.instance("a blocked verdict is blocked, not done", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance

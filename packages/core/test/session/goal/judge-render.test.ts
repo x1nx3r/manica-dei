@@ -11,7 +11,9 @@ import { GoalJudge } from "../../../src/session/goal/judge"
 describe("Judge.buildJudgePrompt's record section", () => {
   const rawRecord = String.raw`{"state":"de532f29cb3f29989d95f87188f06fe0f4b2134d","verdict":"clean","probes":[{"criterion":"the check that proves the outcome","derived":false,"command":"bun test widget","output":"$ bun test widget\\nEXIT=0","result":"pass"},{"criterion":"a derived probe","derived":true,"command":"curl widget","output":"OK line 1\nOK line 2","result":"pass"}],"findings":[]}`
 
-  const record = GoalQa.parseRecord(rawRecord, "de532f29cb3f29989d95f87188f06fe0f4b2134d")
+  const parsed = GoalQa.parseRecord(rawRecord, "de532f29cb3f29989d95f87188f06fe0f4b2134d")
+  if (!parsed.ok) throw new Error(parsed.error)
+  const record = parsed.record
   const prompt = GoalJudge.buildJudgePrompt({
     goal: "the goal",
     contract: { outcome: "o", verification: "v", constraints: "c", boundaries: "b", stop_when: "s" },
@@ -66,10 +68,12 @@ describe("Judge.buildJudgePrompt's record section", () => {
 
 describe("GoalJudge's own rendering", () => {
   test("the same record through the judge's render keeps single lines", () => {
-    const record = GoalQa.parseRecord(
+    const parsed = GoalQa.parseRecord(
       '{"state":"s","verdict":"clean","probes":[{"criterion":"c","derived":true,"command":"cmd","output":"one\\ntwo","result":"pass"}],"findings":[]}',
       "s",
     )
+    if (!parsed.ok) throw new Error(parsed.error)
+    const record = parsed.record
     const prompt = GoalJudge.buildJudgePrompt({
       goal: "g",
       contract: { outcome: "o", verification: "v", constraints: "c", boundaries: "b", stop_when: "s" },
