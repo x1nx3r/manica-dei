@@ -65,8 +65,14 @@ describe("GoalQa.buildQaPrompt", () => {
 })
 
 describe("GoalQa.parseRecord — accepted shapes", () => {
+  const parsed = (raw: string) => {
+    const result = GoalQa.parseRecord(raw, state)
+    if (!result.ok) throw new Error(result.error)
+    return result.record
+  }
+
   test("a contradicted record keeps its probes and findings", () => {
-    const record = GoalQa.parseRecord(
+    const record = parsed(
       JSON.stringify({
         state,
         verdict: "contradicted",
@@ -75,7 +81,6 @@ describe("GoalQa.parseRecord — accepted shapes", () => {
         ],
         findings: [{ criterion: "reaches HR", detail: "nothing calls escalate", evidence: "leave.ts:79" }],
       }),
-      state,
     )
     expect(record.verdict).toBe("contradicted")
     expect(record.probes).toHaveLength(1)
@@ -84,45 +89,73 @@ describe("GoalQa.parseRecord — accepted shapes", () => {
   })
 
   test("noise around the object is ignored", () => {
-    const record = GoalQa.parseRecord(
-      'Let me think.\n```json\n{"state":"snap-1","verdict":"clean","probes":[],"findings":[]}\n```',
-      state,
-    )
+    const record = parsed('Let me think.\n```json\n{"state":"snap-1","verdict":"clean","probes":[],"findings":[]}\n```')
+    expect(record.verdict).toBe("clean")
+  })
+
+  test("valid JSON followed by a sentence still reads the object", () => {
+    const record = parsed('{"state":"snap-1","verdict":"clean","probes":[],"findings":[]} That is the record.')
     expect(record.verdict).toBe("clean")
   })
 
   test("keeps the state QA reviewed — a mismatch is the loop's to reject", () => {
-    const record = GoalQa.parseRecord('{"state":"snap-9","verdict":"clean","probes":[],"findings":[]}', state)
+    const record = parsed('{"state":"snap-9","verdict":"clean","probes":[],"findings":[]}')
     expect(record.state).toBe("snap-9")
   })
 
   test("a missing state is bound to the round's state", () => {
-    const record = GoalQa.parseRecord('{"verdict":"clean","probes":[],"findings":[]}', state)
+    const record = parsed('{"verdict":"clean","probes":[],"findings":[]}')
     expect(record.state).toBe("snap-1")
   })
 })
 
-describe("GoalQa.parseRecord — unreadable replies are an abstention", () => {
-  test("garbage, empties, and bad verdicts abstain", () => {
+describe("GoalQa.parseRecord — an unreadable reply is a format error", () => {
+  test("garbage, empties, and bad verdicts are not records", () => {
     for (const raw of ["", "   ", "not json", "[]", "42", '{"verdict":"finished"}', '{"no":"state"}']) {
-      const record = GoalQa.parseRecord(raw, state)
-      expect(record).toEqual(GoalQa.abstention(state))
+      const result = GoalQa.parseRecord(raw, state)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.length).toBeGreaterThan(0)
     }
   })
 
-  test("malformed probes and findings are dropped, not trusted", () => {
-    const record = GoalQa.parseRecord(
+  test("a missing final brace is a format error, not a clean ablation", () => {
+    const raw = '{"state":"snap-1","verdict":"contradicted","probes":[{"criterion":"x","result":"fail"}],"findings":[]'
+    const result = GoalQa.parseRecord(raw, state)
+    expect(result.ok).toBe(false)
+  })
+
+  test("an unbalanced nested object is a format error", () => {
+    const raw =
+      '{"state":"snap-1","verdict":"contradicted","probes":[{"criterion":"x","output":{"a":1]}],"findings":[]}'
+    const result = GoalQa.parseRecord(raw, state)
+    expect(result.ok).toBe(false)
+  })
+
+  test("malformed probe entries are dropped, not trusted", () => {
+    const result = GoalQa.parseRecord(
       '{"state":"snap-1","verdict":"contradicted","probes":[{"criterion":"x"},{"result":"pass","command":"c"}],"findings":[1]}',
       state,
     )
-    expect(record.probes).toEqual([{ criterion: "", derived: false, command: "c", output: "", result: "pass" }])
-    expect(record.findings).toEqual([])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.record.probes).toEqual([{ criterion: "", derived: false, command: "c", output: "", result: "pass" }])
+    expect(result.record.findings).toEqual([])
+  })
+})
+
+describe("GoalQa.formatNudge", () => {
+  test("asks for the same record, not a new review", () => {
+    const prompt = GoalQa.formatNudge("the reply does not contain a JSON object")
+    expect(prompt).toContain("Format error: the reply does not contain a JSON object")
+    expect(prompt).toContain("Do not run new probes")
+    expect(prompt).toContain("Do not change the findings")
+    expect(prompt).toContain('"verdict":"clean"|"contradicted"')
   })
 })
 
 describe("GoalQa.relayContinuation", () => {
   test("relays the findings verbatim but withholds each probe's command", () => {
-    const record = GoalQa.parseRecord(
+    const parsed = GoalQa.parseRecord(
       JSON.stringify({
         state,
         verdict: "contradicted",
@@ -139,7 +172,8 @@ describe("GoalQa.relayContinuation", () => {
       }),
       state,
     )
-    const prompt = GoalQa.relayContinuation("add escalation", record)
+    if (!parsed.ok) throw new Error(parsed.error)
+    const prompt = GoalQa.relayContinuation("add escalation", parsed.record)
     expect(prompt).toContain("nothing calls escalate")
     expect(prompt).toContain("leave.ts:79")
     // The observation is the symptom the dev can chase; the command is withheld

@@ -269,29 +269,71 @@ export function buildQaPrompt(input: QaPromptInput): string {
 }
 
 /**
- * Reads a record from QA's reply. Never throws: an unreadable reply is an
- * abstention — a `clean` record bound to the round's state with no probes — so
- * a broken QA pass sends the loop back to work instead of passing silently.
+ * The result of reading QA's reply.
+ *
+ * A format failure is a protocol failure, not a substantive abstention: the
+ * reviewer may have found a real contradiction and then failed to serialize it.
+ * The call site nudges the same child to resend; it must never turn the failure
+ * into a `clean` record (issue #38).
  */
-export function parseRecord(raw: string, state: string): SessionGoal.Record {
+export type ParsedRecord =
+  | { readonly ok: true; readonly record: SessionGoal.Record }
+  | { readonly ok: false; readonly error: string }
+
+/**
+ * Reads a record from QA's reply. Never throws: an unreadable reply is
+ * `{ ok: false }`, carrying the reason for the nudge, not an abstention.
+ */
+export function parseRecord(raw: string, state: string): ParsedRecord {
   const object = GoalJudge.extractObject(raw)
-  if (!object) return abstention(state)
+  if (!object) return { ok: false, error: "the reply does not contain a JSON object" }
   const verdict = object["verdict"]
-  if (verdict !== "clean" && verdict !== "contradicted") return abstention(state)
+  if (verdict !== "clean" && verdict !== "contradicted") {
+    return { ok: false, error: "the record's verdict is not clean or contradicted" }
+  }
   // QA echoes the state it was given; if it omits it, the round's own state is
   // the best binding the loop has.
   const reviewed = object["state"]
   return {
-    state: typeof reviewed === "string" && reviewed.length > 0 ? reviewed : state,
-    verdict,
-    probes: parseProbes(object["probes"]),
-    findings: parseFindings(object["findings"]),
+    ok: true,
+    record: {
+      state: typeof reviewed === "string" && reviewed.length > 0 ? reviewed : state,
+      verdict,
+      probes: parseProbes(object["probes"]),
+      findings: parseFindings(object["findings"]),
+    },
   }
 }
 
-/** A `clean` record with nothing executed. Silence is never a pass. */
-export function abstention(state: string): SessionGoal.Record {
-  return { state, verdict: "clean", probes: [], findings: [] }
+/**
+ * The follow-up sent to the same QA child when its record could not be read.
+ *
+ * It is a reserialization request, not a re-review: the child keeps the state,
+ * probes, and findings it already produced. The cap and the stop live at the
+ * call site.
+ */
+export function formatNudge(reason: string): string {
+  return [
+    "[The QA record could not be read]",
+    `Format error: ${reason}`,
+    "",
+    "Re-emit only the record. Do not run new probes. Do not change the findings, the state, or the evidence you already gathered.",
+    "Reply with a single valid JSON object on one line, with no prose and no code fence:",
+    RECORD_SHAPE,
+  ].join("\n")
+}
+
+/**
+ * A QA pass that produced no readable record after its reserialize attempts.
+ * This is a protocol failure, not an abstention and not a QA configuration
+ * failure: the loop stops the run rather than sending the dev another round
+ * (issue #38).
+ */
+export class QaFormatError extends Error {
+  override readonly name = "QaFormatError"
+  constructor(readonly detail: string) {
+    super(`QA produced an unreadable record: ${detail}`)
+  }
 }
 
 /**

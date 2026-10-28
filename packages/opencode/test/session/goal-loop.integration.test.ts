@@ -305,6 +305,10 @@ const cleanQa = JSON.stringify({
   findings: [],
 })
 
+/** The brace is missing on purpose: the parser must ask for a reserialize. */
+const malformedQa =
+  '{"state":"","verdict":"contradicted","probes":[{"criterion":"the widget renders","derived":true,"command":"test -f widget","output":"ok","result":"pass"}],"findings":[]'
+
 const contract = {
   outcome: "the widget renders",
   verification: "true",
@@ -323,126 +327,240 @@ const gate = {
 }
 
 describe("goal-loop end to end (mock model)", () => {
-  it.instance("a goal runs to done", () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig()
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const goal = yield* Goal.Service
-      const session = yield* sessions.create({
-        title: "Goal",
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-      })
+  it.instance(
+    "a goal runs to done",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
 
-      yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
-      yield* goal.authorize(session.id)
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+        yield* goal.authorize(session.id)
 
-      yield* prompt.prompt({
-        sessionID: session.id,
-        agent: "build",
-        noReply: true,
-        parts: [{ type: "text", text: "add the widget" }],
-      })
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
 
-      // The agent's work turn, then QA's pass, then the judge's verdict.
-      yield* llm.text("I added the widget and ran the tests.")
-      yield* llm.textMatch(isQa, cleanQa)
-      yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+        // The agent's work turn, then QA's pass, then the judge's verdict.
+        yield* llm.text("I added the widget and ran the tests.")
+        yield* llm.textMatch(isQa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
 
-      yield* prompt.loop({ sessionID: session.id })
+        yield* prompt.loop({ sessionID: session.id })
 
-      const stored = yield* goal.get(session.id)
-      expect(stored?.status).toBe("done")
-      expect(stored?.last_verdict).toBe("done")
-      expect(stored?.last_reason).toBe("the tests pass")
-      // The verdict is in the session, not just the goal row.
-      const messages = yield* sessions.messages({ sessionID: session.id })
-      const verdict = messages
-        .flatMap((message) => message.parts)
-        .find((part) => part.type === "text" && part.text.includes("The judge says the goal is met"))
-      expect(verdict).toBeDefined()
-      // QA ran before the judge, and the judge ran once.
-      expect((yield* llm.hits).filter(isQa)).toHaveLength(1)
-      expect((yield* llm.hits).filter(isJudge)).toHaveLength(1)
-      // QA's diet is the round's change, and never the author's scratchpad.
-      const qaBody = JSON.stringify((yield* llm.hits).find(isQa)?.body ?? {})
-      expect(qaBody).toContain("src/widget.ts")
-      expect(qaBody).not.toContain("scratchpads")
-      expect(qaBody).not.toContain("private plan")
-    }),
+        const stored = yield* goal.get(session.id)
+        expect(stored?.status).toBe("done")
+        expect(stored?.last_verdict).toBe("done")
+        expect(stored?.last_reason).toBe("the tests pass")
+        // The verdict is in the session, not just the goal row.
+        const messages = yield* sessions.messages({ sessionID: session.id })
+        const verdict = messages
+          .flatMap((message) => message.parts)
+          .find((part) => part.type === "text" && part.text.includes("The judge says the goal is met"))
+        expect(verdict).toBeDefined()
+        // QA ran before the judge, and the judge ran once.
+        expect((yield* llm.hits).filter(isQa)).toHaveLength(1)
+        expect((yield* llm.hits).filter(isJudge)).toHaveLength(1)
+        // QA's diet is the round's change, and never the author's scratchpad.
+        const qaBody = JSON.stringify((yield* llm.hits).find(isQa)?.body ?? {})
+        expect(qaBody).toContain("src/widget.ts")
+        expect(qaBody).not.toContain("scratchpads")
+        expect(qaBody).not.toContain("private plan")
+      }),
     { git: true },
     { timeout: 30_000 },
   )
 
-  it.instance("a continue verdict runs another turn, then done stops", () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig()
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const goal = yield* Goal.Service
-      const session = yield* sessions.create({
-        title: "Goal",
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-      })
+  it.instance(
+    "a malformed QA record is reserialized by the same child, not turned into an abstention",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
 
-      yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate], turnBudget: 10 })
-      yield* goal.authorize(session.id)
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+        yield* goal.authorize(session.id)
 
-      yield* prompt.prompt({
-        sessionID: session.id,
-        agent: "build",
-        noReply: true,
-        parts: [{ type: "text", text: "add the widget" }],
-      })
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
 
-      yield* llm.text("first attempt")
-      yield* llm.textMatch(isQa, cleanQa)
-      yield* llm.textMatch(isJudge, '{"verdict":"continue","reason":"the tests are not written"}')
-      yield* llm.text("second attempt, with tests")
-      yield* llm.textMatch(isQa, cleanQa)
-      yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+        yield* llm.text("I added the widget and ran the tests.")
+        // First QA reply is truncated; the nudge asks the same child to resend.
+        yield* llm.textMatch(isQa, malformedQa)
+        yield* llm.textMatch(isQa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
 
-      yield* prompt.loop({ sessionID: session.id })
+        yield* prompt.loop({ sessionID: session.id })
 
-      const stored = yield* goal.get(session.id)
-      expect(stored?.status).toBe("done")
-      expect(stored?.turns_used).toBe(2)
-    }),
+        const stored = yield* goal.get(session.id)
+        expect(stored?.status).toBe("done")
+
+        // One QA child, two QA calls (the pass and the reserialize).
+        const children = yield* sessions.children(session.id)
+        const qaChildren = children.filter((child) => child.agent === "goal-qa")
+        expect(qaChildren).toHaveLength(1)
+
+        const qaHits = (yield* llm.hits).filter(isQa)
+        expect(qaHits).toHaveLength(2)
+        expect(JSON.stringify(qaHits[1]?.body ?? {})).toContain("Do not run new probes")
+
+        // The record attached to the child is the reserialized one, with its
+        // probe — never the parser's empty fallback.
+        const qaMessages = yield* sessions.messages({ sessionID: qaChildren[0]!.id })
+        const records = qaMessages.flatMap((message) => message.parts).filter((part) => part.type === "goal.review")
+        expect(records).toHaveLength(1)
+        if (records[0]?.type === "goal.review") {
+          expect(records[0].record.verdict).toBe("clean")
+          expect(records[0].record.probes).toHaveLength(1)
+        }
+      }),
     { git: true },
     { timeout: 30_000 },
   )
 
-  it.instance("a blocked verdict stops the loop as blocked, not done", () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig()
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const goal = yield* Goal.Service
-      const session = yield* sessions.create({
-        title: "Goal",
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-      })
+  it.instance(
+    "a QA record that stays malformed stops after two reserializes",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
 
-      yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
-      yield* goal.authorize(session.id)
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+        yield* goal.authorize(session.id)
 
-      yield* prompt.prompt({
-        sessionID: session.id,
-        agent: "build",
-        noReply: true,
-        parts: [{ type: "text", text: "add the widget" }],
-      })
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
 
-      yield* llm.text("I cannot: the API key is missing.")
-      yield* llm.textMatch(isQa, cleanQa)
-      yield* llm.textMatch(isJudge, '{"verdict":"blocked","reason":"needs an API key"}')
+        yield* llm.text("I added the widget and ran the tests.")
+        // Initial reply plus two reserializes, all unreadable. No judge expected.
+        yield* llm.textMatch(isQa, malformedQa)
+        yield* llm.textMatch(isQa, malformedQa)
+        yield* llm.textMatch(isQa, malformedQa)
 
-      yield* prompt.loop({ sessionID: session.id })
+        yield* prompt.loop({ sessionID: session.id })
 
-      const stored = yield* goal.get(session.id)
-      expect(stored?.status).toBe("blocked")
-      expect(stored?.last_verdict).toBe("blocked")
-    }),
+        const stored = yield* goal.get(session.id)
+        expect(stored?.status).toBe("active")
+        // A format stop is not a development round.
+        expect(stored?.turns_used).toBe(0)
+        expect((yield* llm.hits).filter(isQa)).toHaveLength(3)
+        expect((yield* llm.hits).filter(isJudge)).toHaveLength(0)
+
+        const children = yield* sessions.children(session.id)
+        expect(children.filter((child) => child.agent === "goal-qa")).toHaveLength(1)
+
+        const messages = yield* sessions.messages({ sessionID: session.id })
+        const note = messages
+          .flatMap((message) => message.parts)
+          .find((part) => part.type === "text" && part.text.includes("format-error"))
+        expect(note).toBeDefined()
+      }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  it.instance(
+    "a continue verdict runs another turn, then done stops",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate], turnBudget: 10 })
+        yield* goal.authorize(session.id)
+
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
+
+        yield* llm.text("first attempt")
+        yield* llm.textMatch(isQa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"continue","reason":"the tests are not written"}')
+        yield* llm.text("second attempt, with tests")
+        yield* llm.textMatch(isQa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+
+        yield* prompt.loop({ sessionID: session.id })
+
+        const stored = yield* goal.get(session.id)
+        expect(stored?.status).toBe("done")
+        expect(stored?.turns_used).toBe(2)
+      }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  it.instance(
+    "a blocked verdict stops the loop as blocked, not done",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+        yield* goal.authorize(session.id)
+
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
+
+        yield* llm.text("I cannot: the API key is missing.")
+        yield* llm.textMatch(isQa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"blocked","reason":"needs an API key"}')
+
+        yield* prompt.loop({ sessionID: session.id })
+
+        const stored = yield* goal.get(session.id)
+        expect(stored?.status).toBe("blocked")
+        expect(stored?.last_verdict).toBe("blocked")
+      }),
     { git: true },
     { timeout: 30_000 },
   )
@@ -649,55 +767,57 @@ describe("goal-loop end to end (mock model)", () => {
   // carries it, not prose parsed out of a reply. The QA pass runs in a child
   // session, so the reviewer's transcript holds the record a surface renders as
   // fields — the same value handed to `submitRecord`.
-  it.instance("a QA pass leaves a goal.review part on the child session's message", () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig()
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const goal = yield* Goal.Service
-      const session = yield* sessions.create({
-        title: "Goal",
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-      })
+  it.instance(
+    "a QA pass leaves a goal.review part on the child session's message",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
 
-      yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
-      yield* goal.authorize(session.id)
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+        yield* goal.authorize(session.id)
 
-      yield* prompt.prompt({
-        sessionID: session.id,
-        agent: "build",
-        noReply: true,
-        parts: [{ type: "text", text: "add the widget" }],
-      })
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
 
-      yield* llm.text("I added the widget.")
-      yield* llm.textMatch(isQa, cleanQa)
-      yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+        yield* llm.text("I added the widget.")
+        yield* llm.textMatch(isQa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
 
-      yield* prompt.loop({ sessionID: session.id })
+        yield* prompt.loop({ sessionID: session.id })
 
-      // The pass ran in a child session; the record is a part on its message.
-      // Named by agent: the judge is a second child now (ADR-0008, step 3).
-      const reviewer = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-qa")
-      expect(reviewer).toBeDefined()
-      if (!reviewer) return
-      // The pass is labeled on its own session — role and round — so a client
-      // that arrives late reads the run's shape off `/session/:id/children`,
-      // from data, not from an event it never saw (ADR-0008, "the round").
-      expect(reviewer.metadata?.goal_role).toBe("qa")
-      expect(reviewer.metadata?.goal_round).toBe(1)
-      const messages = yield* sessions.messages({ sessionID: reviewer.id })
-      const review = messages.flatMap((message) => message.parts).find((part) => part.type === "goal.review")
-      expect(review).toBeDefined()
-      if (review?.type !== "goal.review") return
-      // The fields are the record, not a sentence about it.
-      expect(review.record.verdict).toBe("clean")
-      expect(review.record.probes).toHaveLength(1)
-      expect(review.record.probes[0]?.derived).toBe(true)
-      expect(review.record.probes[0]?.command).toBe("test -f widget")
-      expect(review.record.findings).toEqual([])
-      expect(review.record.state).not.toBe("")
-    }),
+        // The pass ran in a child session; the record is a part on its message.
+        // Named by agent: the judge is a second child now (ADR-0008, step 3).
+        const reviewer = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-qa")
+        expect(reviewer).toBeDefined()
+        if (!reviewer) return
+        // The pass is labeled on its own session — role and round — so a client
+        // that arrives late reads the run's shape off `/session/:id/children`,
+        // from data, not from an event it never saw (ADR-0008, "the round").
+        expect(reviewer.metadata?.goal_role).toBe("qa")
+        expect(reviewer.metadata?.goal_round).toBe(1)
+        const messages = yield* sessions.messages({ sessionID: reviewer.id })
+        const review = messages.flatMap((message) => message.parts).find((part) => part.type === "goal.review")
+        expect(review).toBeDefined()
+        if (review?.type !== "goal.review") return
+        // The fields are the record, not a sentence about it.
+        expect(review.record.verdict).toBe("clean")
+        expect(review.record.probes).toHaveLength(1)
+        expect(review.record.probes[0]?.derived).toBe(true)
+        expect(review.record.probes[0]?.command).toBe("test -f widget")
+        expect(review.record.findings).toEqual([])
+        expect(review.record.state).not.toBe("")
+      }),
     { git: true },
     { timeout: 30_000 },
   )
@@ -707,72 +827,74 @@ describe("goal-loop end to end (mock model)", () => {
   // agent; its transcript holds what it was given and what it returned, as a
   // typed `goal.verdict` part; and the spend the call reports lands on its own
   // row, so deusd can report per-role cost.
-  it.instance("a judgement runs as a child session, with its verdict and its spend on its own row", () =>
-    Effect.gen(function* () {
-      const { llm } = yield* useServerConfig()
-      const prompt = yield* SessionPrompt.Service
-      const sessions = yield* Session.Service
-      const goal = yield* Goal.Service
-      const session = yield* sessions.create({
-        title: "Goal",
-        permission: [{ permission: "*", pattern: "*", action: "allow" }],
-      })
+  it.instance(
+    "a judgement runs as a child session, with its verdict and its spend on its own row",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const session = yield* sessions.create({
+          title: "Goal",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
 
-      yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
-      yield* goal.authorize(session.id)
+        yield* goal.set({ sessionID: session.id, goal: "add the widget", contract, gates: [gate] })
+        yield* goal.authorize(session.id)
 
-      yield* prompt.prompt({
-        sessionID: session.id,
-        agent: "build",
-        noReply: true,
-        parts: [{ type: "text", text: "add the widget" }],
-      })
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget" }],
+        })
 
-      yield* llm.text("I added the widget.")
-      yield* llm.textMatch(isQa, cleanQa)
-      // The judge's own call reports usage: the spend must land on its row.
-      yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}', {
-        usage: { input: 100, output: 20 },
-      })
+        yield* llm.text("I added the widget.")
+        yield* llm.textMatch(isQa, cleanQa)
+        // The judge's own call reports usage: the spend must land on its row.
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}', {
+          usage: { input: 100, output: 20 },
+        })
 
-      yield* prompt.loop({ sessionID: session.id })
+        yield* prompt.loop({ sessionID: session.id })
 
-      // The judgement is a session of its own, parented to the session under
-      // test and running the hidden agent for its role.
-      const judge = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-judge")
-      expect(judge).toBeDefined()
-      if (!judge) return
-      expect(judge.parentID).toBe(session.id)
-      // The judgement carries its role and its round on its own row, the same
-      // metadata the pass does (ADR-0008, "the round").
-      expect(judge.metadata?.goal_role).toBe("judge")
-      expect(judge.metadata?.goal_round).toBe(1)
+        // The judgement is a session of its own, parented to the session under
+        // test and running the hidden agent for its role.
+        const judge = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-judge")
+        expect(judge).toBeDefined()
+        if (!judge) return
+        expect(judge.parentID).toBe(session.id)
+        // The judgement carries its role and its round on its own row, the same
+        // metadata the pass does (ADR-0008, "the round").
+        expect(judge.metadata?.goal_role).toBe("judge")
+        expect(judge.metadata?.goal_round).toBe(1)
 
-      const messages = yield* sessions.messages({ sessionID: judge.id })
-      const parts = messages.flatMap((message) => message.parts)
-      // What the judge was given: the prompt, with the contract and QA's record.
-      const given = parts.find((part) => part.type === "text" && part.text.includes("Completion contract"))
-      expect(given).toBeDefined()
-      expect(given?.type === "text" && given.text).toContain("QA's record")
-      // What it returned, as a typed part.
-      const verdict = parts.find((part) => part.type === "goal.verdict")
-      expect(verdict).toBeDefined()
-      if (verdict?.type !== "goal.verdict") return
-      expect(verdict.round).toBe(1)
-      expect(verdict.verdict).toBe("done")
-      expect(verdict.reason).toBe("the tests pass")
+        const messages = yield* sessions.messages({ sessionID: judge.id })
+        const parts = messages.flatMap((message) => message.parts)
+        // What the judge was given: the prompt, with the contract and QA's record.
+        const given = parts.find((part) => part.type === "text" && part.text.includes("Completion contract"))
+        expect(given).toBeDefined()
+        expect(given?.type === "text" && given.text).toContain("QA's record")
+        // What it returned, as a typed part.
+        const verdict = parts.find((part) => part.type === "goal.verdict")
+        expect(verdict).toBeDefined()
+        if (verdict?.type !== "goal.verdict") return
+        expect(verdict.round).toBe(1)
+        expect(verdict.verdict).toBe("done")
+        expect(verdict.reason).toBe("the tests pass")
 
-      // The judgement's spend lands on the judge's row, not the parent's.
-      const bench = yield* sessions.get(judge.id)
-      expect(bench.tokens?.input).toBe(100)
-      expect(bench.tokens?.output).toBe(20)
-      const parent = yield* sessions.get(session.id)
-      expect(parent.tokens?.input).toBe(0)
-      expect(parent.tokens?.output).toBe(0)
-      // And the projection carries the pointer back to the judge, for the
-      // client that arrives late (ADR-0008, "the seam").
-      expect((yield* goal.get(session.id))?.last_verdict_session).toBe(judge.id)
-    }),
+        // The judgement's spend lands on the judge's row, not the parent's.
+        const bench = yield* sessions.get(judge.id)
+        expect(bench.tokens?.input).toBe(100)
+        expect(bench.tokens?.output).toBe(20)
+        const parent = yield* sessions.get(session.id)
+        expect(parent.tokens?.input).toBe(0)
+        expect(parent.tokens?.output).toBe(0)
+        // And the projection carries the pointer back to the judge, for the
+        // client that arrives late (ADR-0008, "the seam").
+        expect((yield* goal.get(session.id))?.last_verdict_session).toBe(judge.id)
+      }),
     { git: true },
     { timeout: 30_000 },
   )

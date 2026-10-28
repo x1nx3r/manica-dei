@@ -92,10 +92,13 @@ export interface DecideInput {
   /**
    * The last QA pass errored or produced nothing readable. The loop fails open
    * to `dev` and counts the failure; after `MAX_CONSECUTIVE_FAILURES` it stops.
+   * A `format` failure is different: the pass produced a record the loop could
+   * not read after its reserialize attempts, so the loop stops instead of
+   * sending the developer another round on an unreviewed state (issue #38).
    * A reason, when the call site has one, rides both the continuation and the
    * stopping note so "no repo changed" never reads as "the QA model is broken".
    */
-  readonly qaFailure?: boolean | { readonly reason: string }
+  readonly qaFailure?: boolean | { readonly reason: string; readonly kind?: "format" | "failure" }
   /** Consecutive judge and QA failures before this call, by kind. */
   readonly failures: FailureCounts
 }
@@ -185,6 +188,18 @@ const layer = Layer.effect(
       if (input.qaFailure) {
         const failures: FailureCounts = { ...input.failures, qa: input.failures.qa + 1 }
         const reason = typeof input.qaFailure === "object" ? input.qaFailure.reason : undefined
+        const kind = typeof input.qaFailure === "object" ? input.qaFailure.kind : undefined
+        if (kind === "format") {
+          // The record existed but could not be read. It is not an abstention,
+          // and the pass already had its reserialize attempts: stop rather than
+          // send the developer another round on a state nobody reviewed.
+          yield* goals.clearRecord(input.sessionID)
+          const decision: Decision = {
+            _tag: "stop",
+            note: `The QA pass produced an unreadable record (format-error): ${reason ?? "no format detail"}. The goal stops rather than send the developer another round on an unreviewed state.`,
+          }
+          return { decision, failures: input.failures }
+        }
         // A partial pass (the record written, the handoff not) must not be
         // weighed later; the round goes back to `dev` clean. The round spent a
         // turn even though no judge closed it, like every other non-judge exit.
