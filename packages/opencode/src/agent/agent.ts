@@ -367,6 +367,16 @@ const layer = Layer.effect(
           item.permission = Permission.merge(item.permission, Permission.fromConfig(value.permission ?? {}))
         }
 
+        // ADR-0011: a goal belongs to the root session. No subagent may create
+        // its own goal, even when an operator config allows the tool. Re-assert
+        // after the config because `evaluate` is last-match-wins; the goal tool
+        // also checks `parentID` so an `all`-mode agent used as a subagent is
+        // covered.
+        for (const agent of Object.values(agents)) {
+          if (agent.mode !== "subagent") continue
+          agent.permission = Permission.merge(agent.permission, Permission.fromConfig({ goal: "deny" }))
+        }
+
         // Ensure Truncate.GLOB is allowed unless explicitly configured
         for (const name in agents) {
           const agent = agents[name]

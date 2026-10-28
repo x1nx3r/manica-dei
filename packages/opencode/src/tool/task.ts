@@ -4,6 +4,7 @@ import { ToolJsonSchema } from "./json-schema"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
 import { BackgroundJob } from "@/background/job"
 import { Session } from "@/session/session"
+import { Goal } from "../session/goal"
 import { SessionID, MessageID } from "../session/schema"
 import { Metadata } from "@/session/session"
 import { MessageV2 } from "../session/message-v2"
@@ -79,6 +80,52 @@ function renderOutput(input: {
   ].join("\n")
 }
 
+/**
+ * The context a subagent sees before its task (ADR-0011).
+ *
+ * A subagent executes under the root's goal; it must not create its own
+ * contract, ask for authorization, or run a separate loop. The parent's
+ * verification is included so a child does not have to ask what would prove
+ * the outcome. Hidden roles (QA, judge) do not call this path: their prompt is
+ * their diet.
+ */
+export function subagentContext(goal: Goal.Info | undefined): string {
+  if (!goal) {
+    return [
+      "[Subagent context]",
+      "This session is a subagent. The root session has no goal; do not set one.",
+      "Complete the delegated task and report what you changed and what you checked.",
+    ].join("\n")
+  }
+
+  const contract = goal.contract
+  const fields = contract
+    ? [
+        `- Outcome: ${contract.outcome}`,
+        `- Verification: ${contract.verification}`,
+        `- Constraints: ${contract.constraints}`,
+        `- Boundaries: ${contract.boundaries}`,
+        `- Stop when: ${contract.stop_when}`,
+      ]
+    : []
+
+  return [
+    "[Subagent context]",
+    "This session is a subagent. The root session owns the goal, the contract, and the authorization.",
+    "Do not call the goal tool, do not ask for authorization, and do not run a separate goal loop.",
+    "",
+    `Goal: ${goal.goal}`,
+    ...(fields.length ? ["Contract:", ...fields, ""] : [""]),
+    ...(goal.authorized
+      ? []
+      : [
+          "The root goal is set but not authorized. Do not start implementation; report what you find and let the parent ask the human.",
+          "",
+        ]),
+    "Complete the delegated task. Report what you changed and what you checked. The root gate runs the verification; run it yourself only if the task needs it.",
+  ].join("\n")
+}
+
 export const TaskTool = Tool.define(
   id,
   Effect.gen(function* () {
@@ -86,6 +133,7 @@ export const TaskTool = Tool.define(
     const background = yield* BackgroundJob.Service
     const config = yield* Config.Service
     const sessions = yield* Session.Service
+    const goals = yield* Goal.Service
     const scope = yield* Scope.Scope
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
@@ -116,6 +164,8 @@ export const TaskTool = Tool.define(
           ),
         )
       }
+      // `current` is the root session: the goal's owner (ADR-0011).
+      const rootGoal = yield* goals.get(current.id)
 
       if (!ctx.extra?.bypassAgentCheck) {
         yield* ctx.ask({
@@ -202,8 +252,14 @@ export const TaskTool = Tool.define(
       const ops = ctx.extra?.promptOps as TaskPromptOps
       if (!ops) return yield* Effect.fail(new Error("TaskTool requires promptOps in ctx.extra"))
 
+      // Hidden roles (goal-qa, goal-judge) are internal reviewers: their prompt
+      // is their diet, and the subagent context would be noise. Everything
+      // else works under the root's goal.
+      const preamble = next.hidden === true ? undefined : subagentContext(rootGoal)
+
       const runTask = Effect.fn("TaskTool.runTask")(function* () {
-        const parts = yield* ops.resolvePromptParts(params.prompt)
+        const resolved = yield* ops.resolvePromptParts(params.prompt)
+        const parts = preamble ? [{ type: "text" as const, text: preamble }, ...resolved] : resolved
         const result = yield* ops.prompt({
           messageID: MessageID.ascending(),
           sessionID: nextSession.id,

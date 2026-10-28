@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { Effect, Fiber, Layer, Queue } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, Queue } from "effect"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
@@ -100,6 +100,28 @@ const answerCommit = (question: Question.Interface, reply: string) =>
   })
 
 describe("tool.goal", () => {
+  it.instance("refuses a goal from a subagent session", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const parent = yield* session.create({})
+      const child = yield* session.create({ parentID: parent.id })
+      const tool = yield* (yield* GoalTool).init()
+
+      const exit = yield* tool.execute(params(), context(child.id)).pipe(Effect.exit)
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        expect(Cause.pretty(exit.cause)).toContain("Goals belong to the root session")
+      }
+      // The refusal happens before any write.
+      expect(yield* goal.get(child.id)).toBeUndefined()
+      expect(yield* goal.get(parent.id)).toBeUndefined()
+
+      yield* session.remove(child.id)
+      yield* session.remove(parent.id)
+    }),
+  )
+
   it.instance("writes the goal, the size, the contract, and the gate in one call", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service
