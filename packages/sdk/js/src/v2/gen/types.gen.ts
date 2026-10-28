@@ -158,6 +158,7 @@ export type SnapshotFileDiff = {
   additions: number
   deletions: number
   status?: "added" | "deleted" | "modified"
+  repo?: string
 }
 
 export type PermissionAction = "allow" | "deny" | "ask"
@@ -9913,9 +9914,12 @@ export type SessionGoalError = SessionGoalErrors[keyof SessionGoalErrors]
 
 export type SessionGoalResponses = {
   /**
-   * Goal projection
+   * Goal projection, or has_goal: false when the session has no goal
    */
-  200: SessionGoalInfo
+  200: {
+    has_goal: boolean
+    projection?: SessionGoalInfo
+  }
 }
 
 export type SessionGoalResponse = SessionGoalResponses[keyof SessionGoalResponses]

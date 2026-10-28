@@ -5728,11 +5728,22 @@
         ],
         "responses": {
           "200": {
-            "description": "Goal projection",
+            "description": "Goal projection, or has_goal: false when the session has no goal",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionGoalInfo"
+                  "type": "object",
+                  "properties": {
+                    "has_goal": {
+                      "type": "boolean"
+                    },
+                    "projection": {
+                      "$ref": "#/components/schemas/SessionGoalInfo"
+                    }
+                  },
+                  "required": ["has_goal"],
+                  "additionalProperties": false,
+                  "description": "Goal projection, or has_goal: false when the session has no goal"
                 }
               }
             }
@@ -15486,6 +15497,9 @@
           "status": {
             "type": "string",
             "enum": ["added", "deleted", "modified"]
+          },
+          "repo": {
+            "type": "string"
           }
         },
         "required": ["additions", "deletions"],

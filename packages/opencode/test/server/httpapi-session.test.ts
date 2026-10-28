@@ -402,31 +402,29 @@ describe("session HttpApi", () => {
   )
 
   it.instance(
-    "serves the goal projection, and 404s when the session has no goal",
+    "serves the goal projection, and has_goal:false when the session has no goal",
     () =>
       Effect.gen(function* () {
         const test = yield* TestInstance
         const headers = { "x-opencode-directory": test.directory }
         const session = yield* createSession({ title: "goal" })
 
-        // A session with no goal is a not-found for the projection.
+        // A session with no goal is a normal state, not a failed request.
         const absent = yield* request(pathFor(SessionPaths.goal, { sessionID: session.id }), { headers })
-        expect(absent.status).toBe(404)
-        expect(yield* responseJson(absent)).toEqual({
-          name: "NotFoundError",
-          data: { message: `Goal not found: ${session.id}` },
-        })
+        expect(absent.status).toBe(200)
+        expect(yield* responseJson(absent)).toEqual({ has_goal: false })
 
         const goal = yield* Goal.Service
         yield* goal.set({ sessionID: session.id, goal: "add the widget" })
 
         const projection = yield* requestJson<{
-          goal: string
-          phase: string
-          status: string
-          turns_used: number
+          has_goal: boolean
+          projection: { goal: string; phase: string; status: string; turns_used: number }
         }>(pathFor(SessionPaths.goal, { sessionID: session.id }), { headers })
-        expect(projection).toMatchObject({ goal: "add the widget", phase: "dev", status: "active", turns_used: 0 })
+        expect(projection).toMatchObject({
+          has_goal: true,
+          projection: { goal: "add the widget", phase: "dev", status: "active", turns_used: 0 },
+        })
       }),
     { git: true, config: { formatter: false, lsp: false } },
   )
