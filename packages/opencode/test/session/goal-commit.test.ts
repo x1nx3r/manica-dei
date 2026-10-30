@@ -19,11 +19,26 @@ import { RuntimeFlags } from "@/effect/runtime-flags"
 import { InstanceState } from "@/effect/instance-state"
 import { InstanceStore } from "@/project/instance-store"
 import { InstanceBootstrap } from "@/project/bootstrap"
+import { Snapshot } from "@/snapshot"
 import { testEffect } from "../lib/effect"
 
 // Fork ADR-0006, M5: the `goal` tool — the kickoff. It writes the goal, turns
 // the contract's verification into the gate, writes the scratchpad, and asks
 // for the commit authorization only when told to.
+
+const snapshot = Layer.succeed(
+  Snapshot.Service,
+  Snapshot.Service.of({
+    init: () => Effect.void,
+    cleanup: () => Effect.void,
+    track: () => Effect.succeed("start-state"),
+    patch: (hash) => Effect.succeed({ hash, files: [] }),
+    restore: () => Effect.void,
+    revert: () => Effect.void,
+    diff: () => Effect.succeed(""),
+    diffFull: () => Effect.succeed([]),
+  }),
+)
 
 const it = testEffect(
   AppNodeBuilder.build(
@@ -40,6 +55,7 @@ const it = testEffect(
       Truncate.node,
       Agent.node,
       RuntimeFlags.node,
+      Snapshot.node,
     ]),
     [
       [RuntimeFlags.node, RuntimeFlags.layer({ experimentalWorkspaces: false })],
@@ -47,6 +63,7 @@ const it = testEffect(
         InstanceBootstrap.node,
         Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void })),
       ],
+      [Snapshot.node, snapshot],
     ],
   ),
 )
@@ -146,6 +163,7 @@ describe("tool.goal", () => {
       expect(stored?.size_reason).toBe("a few reversible choices")
       expect(stored?.contract).toEqual(contract)
       expect(stored?.authorized).toBe(false)
+      expect(stored?.start_state).toBe("start-state")
       expect(stored?.gates).toEqual([
         {
           command: "bun test widget",

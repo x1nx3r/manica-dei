@@ -148,6 +148,12 @@ export const Info = Schema.Struct({
    */
   qa_record: Record.pipe(optional),
   /**
+   * ADR-0006 / issue #47: the workspace snapshot at the start of the run, so
+   * the first review can include work committed before the round's first step.
+   * Absent on a goal set before the field existed, or when snapshots are off.
+   */
+  start_state: Schema.String.pipe(optional),
+  /**
    * The reason the loop stopped without a judge verdict. Present on a
    * `budget_exhausted` goal; absent on a goal that is still running or that a
    * judge concluded. ADR-0012 makes this part of the run state, so a

@@ -88,6 +88,7 @@ describe("session.goal", () => {
         contract,
         gates: [gate],
         turnBudget: 12,
+        startState: "start-1",
       })
 
       expect(yield* goal.get(info.id)).toEqual({
@@ -101,6 +102,7 @@ describe("session.goal", () => {
         phase: "dev",
         turn_budget: 12,
         turns_used: 0,
+        start_state: "start-1",
         state_hash: null,
         status: "active",
       })
@@ -243,7 +245,14 @@ describe("session.goal", () => {
       const newGate = { ...gate, command: "bun test another-widget" }
       const newContract = { ...contract, outcome: "the other widget renders" }
 
-      yield* goal.set({ sessionID: info.id, goal: "add the widget", contract, gates: [oldGate], turnBudget: 12 })
+      yield* goal.set({
+        sessionID: info.id,
+        goal: "add the widget",
+        contract,
+        gates: [oldGate],
+        turnBudget: 12,
+        startState: "start-old",
+      })
       yield* goal.authorize(info.id)
       yield* goal.record({
         sessionID: info.id,
@@ -264,6 +273,7 @@ describe("session.goal", () => {
         goal: "add another widget",
         contract: newContract,
         gates: [newGate],
+        startState: "start-new",
       })
       expect(refused._tag).toBe("replace-required")
       expect((yield* goal.get(info.id))?.goal).toBe("add the widget")
@@ -274,6 +284,7 @@ describe("session.goal", () => {
         contract: newContract,
         gates: [newGate],
         turnBudget: 20,
+        startState: "start-new",
         replace: true,
       })
       expect(replaced._tag).toBe("written")
@@ -290,6 +301,7 @@ describe("session.goal", () => {
       expect(stored?.last_reason).toBeUndefined()
       expect(stored?.last_verdict_session).toBeUndefined()
       expect(stored?.state_hash).toBeNull()
+      expect(stored?.start_state).toBe("start-new")
       expect(stored?.stop_reason).toBeUndefined()
       expect(stored?.status).toBe("active")
       expect(stored?.gates).toEqual([{ ...newGate, attempts: 0, last_exit_code: null, last_output_tail: "" }])
