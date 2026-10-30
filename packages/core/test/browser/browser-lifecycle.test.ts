@@ -22,6 +22,15 @@ describe.skipIf(skip)(reason ? `${reason} (browser lifecycle)` : "browser lifecy
       const first = await runtime.runPromise((s) => s.ensure)
       expect(first.display).toBeGreaterThan(999)
 
+      // Chrome for Testing shows its "only for automated testing" banner as a
+      // browser chrome bar, not page content. The launch must suppress it so it
+      // cannot obscure the shared-browser surface or agent screenshots.
+      // `--test-type` also suppresses the unsupported-flag bar for --no-sandbox,
+      // which would otherwise replace the CfT banner.
+      const command = Bun.spawnSync(["ps", "-p", String(first.pid), "-o", "args="]).stdout.toString()
+      expect(command).toContain("--disable-infobars")
+      expect(command).toContain("--test-type")
+
       // ensure twice returns the same running browser, not a second one.
       const second = await runtime.runPromise((s) => s.ensure)
       expect(second.display).toBe(first.display)

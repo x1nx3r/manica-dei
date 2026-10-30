@@ -170,6 +170,16 @@ const layer = Layer.effect(
           "--disable-dev-shm-usage",
           "--no-first-run",
           "--disable-features=Translate",
+          // Chrome for Testing puts a non-interactive banner across the top of
+          // every window. It is not a page element, so it leaks into the
+          // shared-browser surface and into agent screenshots. CfT documents
+          // this switch for exactly that banner; regular Chrome ignores it.
+          "--disable-infobars",
+          // Hiding the CfT banner would otherwise reveal Chrome's interactive
+          // "unsupported command-line flag: --no-sandbox" infobar. This browser
+          // is deliberately a test browser, and the container warning page is
+          // the human-facing warning, so suppress that chrome too.
+          "--test-type",
           "--window-position=0,0",
           `--window-size=${GEOMETRY.width},${GEOMETRY.height}`,
           // Chromium picks the port and publishes it, with the browser path, in
