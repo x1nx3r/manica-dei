@@ -33,6 +33,11 @@ export type Decision =
       readonly state: string
       readonly evidence: ReadonlyArray<Judge.GateEvidence>
       /**
+       * ADR-0012: the run this pass belongs to. The call site writes it into
+       * the reviewer's metadata and hands it back with the record.
+       */
+      readonly generation: number
+      /**
        * The workspace state the last verdict bound to — where this round's
        * review starts. Absent before the first judged round; the diff then
        * spans the round's own step snapshots (including gate retries).
@@ -69,6 +74,11 @@ export const QA_FAILURE_NOTE =
 
 export interface DecideInput {
   readonly sessionID: SessionID
+  /**
+   * ADR-0012: the generation the round belongs to. A resolve decision passes
+   * the QA decision's generation, so a replace during QA stops the old round.
+   */
+  readonly generation?: number
   /** The session's workspace: where a gate runs. */
   readonly cwd: string
   readonly user: SessionV1.User
@@ -125,6 +135,8 @@ export interface Interface {
     sessionID: SessionID
     record: SessionGoal.Record
     roleSessionID?: SessionID
+    /** ADR-0012: the run the pass belongs to. Production always passes it. */
+    generation?: number
   }) => Effect.Effect<void>
 }
 
@@ -143,12 +155,13 @@ const layer = Layer.effect(
     // (`turns_used + 1`), so the phase is readable from the trail alone. The
     // publish goes through the bridge, which attaches the instance location the
     // `/event` handler filters on.
-    const publishPhase = (sessionID: SessionID) =>
+    const publishPhase = (sessionID: SessionID, generation: number) =>
       Effect.gen(function* () {
         const goal = yield* goals.get(sessionID)
-        if (!goal) return
+        if (!goal || (goal.generation ?? 1) !== generation) return
         yield* events.publish(SessionGoalEvent.Event.Phase, {
           sessionID,
+          generation,
           phase: goal.phase,
           status: goal.status,
           round: goal.turns_used + 1,
@@ -158,9 +171,10 @@ const layer = Layer.effect(
     const setPhase = Effect.fn("GoalLoop.setPhase")(function* (input: {
       sessionID: SessionID
       phase: SessionGoal.Phase
+      generation: number
     }) {
       yield* goals.setPhase(input)
-      yield* publishPhase(input.sessionID)
+      yield* publishPhase(input.sessionID, input.generation)
     })
 
     const decide = Effect.fn("GoalLoop.decide")(function* (input: DecideInput) {
@@ -168,6 +182,15 @@ const layer = Layer.effect(
       const goal = yield* goals.get(input.sessionID)
       if (!goal || !goal.authorized || goal.status !== "active") {
         return { decision: { _tag: "stop" }, failures: input.failures } satisfies DecideResult
+      }
+      // ADR-0012: every write and event below belongs to this run. A replace
+      // during the round must not let the old turn move the new goal.
+      const generation = goal.generation ?? 1
+      if (input.generation !== undefined && input.generation !== generation) {
+        return {
+          decision: { _tag: "stop", note: "The goal changed while this round was running; the round stops." },
+          failures: input.failures,
+        } satisfies DecideResult
       }
       // The phase the round entered with, before this decision moves it. Only a
       // round that came through `judge` may conclude — `submitRecord` moves the
@@ -193,7 +216,7 @@ const layer = Layer.effect(
           // The record existed but could not be read. It is not an abstention,
           // and the pass already had its reserialize attempts: stop rather than
           // send the developer another round on a state nobody reviewed.
-          yield* goals.clearRecord(input.sessionID)
+          yield* goals.clearRecord(input.sessionID, generation)
           const decision: Decision = {
             _tag: "stop",
             note: `The QA pass produced an unreadable record (format-error): ${reason ?? "no format detail"}. The goal stops rather than send the developer another round on an unreviewed state.`,
@@ -203,9 +226,9 @@ const layer = Layer.effect(
         // A partial pass (the record written, the handoff not) must not be
         // weighed later; the round goes back to `dev` clean. The round spent a
         // turn even though no judge closed it, like every other non-judge exit.
-        yield* goals.clearRecord(input.sessionID)
-        yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
-        yield* goals.burnTurn(input.sessionID)
+        yield* goals.clearRecord(input.sessionID, generation)
+        yield* setPhase({ sessionID: input.sessionID, phase: "dev", generation })
+        yield* goals.burnTurn(input.sessionID, generation)
         const decision: Decision =
           failures.qa >= MAX_CONSECUTIVE_FAILURES
             ? { _tag: "stop", note: reason ? `The QA pass could not run: ${reason}` : QA_FAILURE_NOTE }
@@ -239,10 +262,10 @@ const layer = Layer.effect(
         // last judged state is the *baseline* the review started from, not a
         // second binding to compare against.
         if (record.state !== round) {
-          yield* goals.clearRecord(input.sessionID)
-          yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
+          yield* goals.clearRecord(input.sessionID, generation)
+          yield* setPhase({ sessionID: input.sessionID, phase: "dev", generation })
           // The round is spent even though no judge closed it.
-          yield* goals.burnTurn(input.sessionID)
+          yield* goals.burnTurn(input.sessionID, generation)
           return delivered({ _tag: "continue", prompt: Qa.staleContinuation(goal.goal) })
         }
 
@@ -257,10 +280,10 @@ const layer = Layer.effect(
         // substance, and the judge decides whether they hold.
         const contradicted = record.verdict === "contradicted"
         if (!contradicted && !record.probes.some((probe) => probe.derived)) {
-          yield* goals.clearRecord(input.sessionID)
-          yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
+          yield* goals.clearRecord(input.sessionID, generation)
+          yield* setPhase({ sessionID: input.sessionID, phase: "dev", generation })
           // The round is spent even though no judge closed it.
-          yield* goals.burnTurn(input.sessionID)
+          yield* goals.burnTurn(input.sessionID, generation)
           return delivered({ _tag: "continue", prompt: Qa.abstentionContinuation(goal.goal) })
         }
 
@@ -268,10 +291,11 @@ const layer = Layer.effect(
         // round captured, and consuming the record keeps it from being weighed
         // twice.
         const evidence = input.evidence ?? []
-        yield* goals.clearRecord(input.sessionID)
+        yield* goals.clearRecord(input.sessionID, generation)
 
         const result = yield* judge.judge({
           sessionID: input.sessionID,
+          generation,
           user: input.user,
           providerID: input.providerID,
           modelID: input.modelID,
@@ -319,7 +343,7 @@ const layer = Layer.effect(
         // that never reached `judge` may not conclude either
         // (ADR-0006, GoalPhase.mayConclude).
         if (judgement.verdict === "done" && (contradicted || !GoalPhase.mayConclude(enteredPhase))) {
-          yield* setPhase({ sessionID: input.sessionID, phase: "dev" })
+          yield* setPhase({ sessionID: input.sessionID, phase: "dev", generation })
           return settled({
             _tag: "continue",
             prompt: contradicted
@@ -328,11 +352,22 @@ const layer = Layer.effect(
           })
         }
 
+        // The judge can finish after a replacement. Do not write its verdict
+        // into the new run, and do not publish it as the new run's event.
+        const current = yield* goals.get(input.sessionID)
+        if (!current || (current.generation ?? 1) !== generation) {
+          return settled({
+            _tag: "stop",
+            note: "The goal changed while the judge was ruling; the round stops.",
+          })
+        }
+
         yield* goals.record({
           sessionID: input.sessionID,
           verdict: judgement.verdict,
           reason: judgement.reason,
           state: input.state,
+          generation,
           // The judge's own session rides the row, so a late client can open
           // the ruling without the event bus (ADR-0008, "the seam").
           ...(result.roleSessionID ? { session: result.roleSessionID } : {}),
@@ -342,6 +377,7 @@ const layer = Layer.effect(
         // judge weighed — the pre-record `turns_used + 1`.
         yield* events.publish(SessionGoalEvent.Event.Verdict, {
           sessionID: input.sessionID,
+          generation,
           // The judge's own session, so a client can link the ruling to the
           // transcript it came from (ADR-0008, "the seam").
           ...(result.roleSessionID ? { roleSessionID: result.roleSessionID } : {}),
@@ -353,17 +389,17 @@ const layer = Layer.effect(
 
         switch (judgement.verdict) {
           case "done":
-            yield* goals.setStatus({ sessionID: input.sessionID, status: "done" })
+            yield* goals.setStatus({ sessionID: input.sessionID, status: "done", generation })
             return settled({ _tag: "stop", note: `The judge says the goal is met: ${judgement.reason}` })
           case "blocked":
-            yield* goals.setStatus({ sessionID: input.sessionID, status: "blocked" })
+            yield* goals.setStatus({ sessionID: input.sessionID, status: "blocked", generation })
             return settled({
               _tag: "blocked",
               reason: judgement.reason,
               note: `The judge says the run is blocked: ${judgement.reason}`,
             })
           case "wait":
-            yield* setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("wait") ?? "dev" })
+            yield* setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("wait") ?? "dev", generation })
             return settled({
               _tag: "wait",
               reason: judgement.reason,
@@ -371,7 +407,7 @@ const layer = Layer.effect(
               note: `The judge says to wait: ${judgement.reason}`,
             })
           case "continue":
-            yield* setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("continue") ?? "dev" })
+            yield* setPhase({ sessionID: input.sessionID, phase: GoalPhase.after("continue") ?? "dev", generation })
             return settled({ _tag: "continue", prompt: relay() })
         }
       }
@@ -394,7 +430,7 @@ const layer = Layer.effect(
           }
           const attempts = gate.attempts + 1
           next[index] = { ...gate, attempts, last_exit_code: outcome.exitCode, last_output_tail: outcome.output }
-          yield* goals.setGates({ sessionID: input.sessionID, gates: next })
+          yield* goals.setGates({ sessionID: input.sessionID, gates: next, generation })
           if (attempts > gate.max_retries) {
             return unchanged({
               _tag: "blocked",
@@ -414,7 +450,7 @@ const layer = Layer.effect(
             }),
           })
         }
-        yield* goals.setGates({ sessionID: input.sessionID, gates: next })
+        yield* goals.setGates({ sessionID: input.sessionID, gates: next, generation })
       }
 
       // The round is due and QA is called. The call site runs the pass, persists
@@ -424,12 +460,13 @@ const layer = Layer.effect(
       // where the last review ended, so a gate retry inside this round keeps
       // the work that preceded the failure (issue #26).
       const baseline = goal.state_hash ?? undefined
-      yield* setPhase({ sessionID: input.sessionID, phase: "qa" })
+      yield* setPhase({ sessionID: input.sessionID, phase: "qa", generation })
       return unchanged({
         _tag: "qa",
         contract: goal.contract,
         state: round,
         evidence,
+        generation,
         ...(baseline ? { baseline } : {}),
         round: goal.turns_used + 1,
       })
@@ -439,19 +476,22 @@ const layer = Layer.effect(
       sessionID: SessionID
       record: SessionGoal.Record
       roleSessionID?: SessionID
+      generation?: number
     }) {
+      const generation = input.generation
       // QA's pass hands the round to the judge: persist the record and move the
       // phase, so the round that concludes is the one that passed through
       // `judge` (ADR-0006, GoalPhase.mayConclude).
-      yield* goals.setRecord(input)
-      yield* goals.setPhase({ sessionID: input.sessionID, phase: "judge" })
+      yield* goals.setRecord({ sessionID: input.sessionID, record: input.record, generation })
+      yield* goals.setPhase({ sessionID: input.sessionID, phase: "judge", generation })
       const goal = yield* goals.get(input.sessionID)
-      if (!goal) return
+      if (!goal || (generation !== undefined && (goal.generation ?? 1) !== generation)) return
       // The record is the substance (ADR-0008): it is what a consumer of the
       // trail reads without a second call, and it is what the human reads at
       // handoff. Publish it, then the phase move it caused.
       yield* events.publish(SessionGoalEvent.Event.Review, {
         sessionID: input.sessionID,
+        ...(generation === undefined ? {} : { generation }),
         // The reviewer's own session, so the trail carries the pointer the
         // verdict event carries too (ADR-0008, "the seam").
         ...(input.roleSessionID ? { roleSessionID: input.roleSessionID } : {}),
@@ -460,6 +500,7 @@ const layer = Layer.effect(
       })
       yield* events.publish(SessionGoalEvent.Event.Phase, {
         sessionID: input.sessionID,
+        ...(generation === undefined ? {} : { generation }),
         phase: goal.phase,
         status: goal.status,
         round: goal.turns_used + 1,

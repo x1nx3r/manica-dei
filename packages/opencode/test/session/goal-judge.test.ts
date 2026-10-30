@@ -64,6 +64,7 @@ describe("session.goal-judge", () => {
 
       const result = yield* judge.judge({
         sessionID: SessionID.make("ses_" + "a".repeat(64)),
+        generation: 1,
         user: {} as never,
         providerID: ProviderV2.ID.make("test"),
         modelID: ModelV2.ID.make("judge"),

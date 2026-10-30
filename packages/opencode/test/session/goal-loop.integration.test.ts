@@ -806,6 +806,7 @@ describe("goal-loop end to end (mock model)", () => {
         // from data, not from an event it never saw (ADR-0008, "the round").
         expect(reviewer.metadata?.goal_role).toBe("qa")
         expect(reviewer.metadata?.goal_round).toBe(1)
+        expect(reviewer.metadata?.goal_generation).toBe(1)
         const messages = yield* sessions.messages({ sessionID: reviewer.id })
         const review = messages.flatMap((message) => message.parts).find((part) => part.type === "goal.review")
         expect(review).toBeDefined()
@@ -869,6 +870,7 @@ describe("goal-loop end to end (mock model)", () => {
         // metadata the pass does (ADR-0008, "the round").
         expect(judge.metadata?.goal_role).toBe("judge")
         expect(judge.metadata?.goal_round).toBe(1)
+        expect(judge.metadata?.goal_generation).toBe(1)
 
         const messages = yield* sessions.messages({ sessionID: judge.id })
         const parts = messages.flatMap((message) => message.parts)

@@ -18892,6 +18892,29 @@
                         "type": "string",
                         "pattern": "^ses"
                       },
+                      "generation": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["NaN"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["-Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity", "-Infinity", "NaN"]
+                          }
+                        ]
+                      },
                       "phase": {
                         "$ref": "#/components/schemas/SessionGoalPhase"
                       },
@@ -18946,6 +18969,29 @@
                       "sessionID": {
                         "type": "string",
                         "pattern": "^ses"
+                      },
+                      "generation": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["NaN"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["-Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity", "-Infinity", "NaN"]
+                          }
+                        ]
                       },
                       "roleSessionID": {
                         "type": "string",
@@ -19002,6 +19048,29 @@
                       "sessionID": {
                         "type": "string",
                         "pattern": "^ses"
+                      },
+                      "generation": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["NaN"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["-Infinity"]
+                          },
+                          {
+                            "type": "string",
+                            "enum": ["Infinity", "-Infinity", "NaN"]
+                          }
+                        ]
                       },
                       "roleSessionID": {
                         "type": "string",
@@ -23898,6 +23967,25 @@
                 "type": "string",
                 "pattern": "^ses"
               },
+              "generation": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
               "phase": {
                 "$ref": "#/components/schemas/SessionGoalPhase"
               },
@@ -23970,6 +24058,25 @@
               "sessionID": {
                 "type": "string",
                 "pattern": "^ses"
+              },
+              "generation": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
               },
               "roleSessionID": {
                 "type": "string",
@@ -27523,6 +27630,29 @@
       "SessionGoalInfo": {
         "type": "object",
         "properties": {
+          "generation": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "enum": ["NaN"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["-Infinity"]
+              },
+              {
+                "type": "string",
+                "enum": ["Infinity", "-Infinity", "NaN"]
+              }
+            ]
+          },
           "goal": {
             "type": "string",
             "description": "The goal as the agent restated it at commit"
@@ -32082,6 +32212,25 @@
                 "type": "string",
                 "pattern": "^ses"
               },
+              "generation": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
               "roleSessionID": {
                 "type": "string",
                 "pattern": "^ses"
@@ -36081,6 +36230,25 @@
                 "type": "string",
                 "pattern": "^ses"
               },
+              "generation": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
+              },
               "phase": {
                 "$ref": "#/components/schemas/SessionGoalPhase"
               },
@@ -36131,6 +36299,25 @@
               "sessionID": {
                 "type": "string",
                 "pattern": "^ses"
+              },
+              "generation": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
               },
               "roleSessionID": {
                 "type": "string",
@@ -36183,6 +36370,25 @@
               "sessionID": {
                 "type": "string",
                 "pattern": "^ses"
+              },
+              "generation": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["NaN"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["Infinity"]
+                  },
+                  {
+                    "type": "string",
+                    "enum": ["-Infinity"]
+                  }
+                ]
               },
               "roleSessionID": {
                 "type": "string",

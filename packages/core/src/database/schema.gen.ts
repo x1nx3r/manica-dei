@@ -127,6 +127,7 @@ export default {
       yield* tx.run(`
         CREATE TABLE \`session_goal\` (
           \`session_id\` text PRIMARY KEY,
+          \`generation\` integer DEFAULT 1 NOT NULL,
           \`goal\` text NOT NULL,
           \`size\` text,
           \`size_reason\` text,

@@ -23,6 +23,8 @@ import { SessionID, MessageID, PartID } from "./schema"
 
 export interface JudgeInput {
   readonly sessionID: SessionID
+  /** ADR-0012: the run this judgement belongs to. */
+  readonly generation: number
   readonly user: SessionV1.User
   readonly providerID: ProviderV2.ID
   readonly modelID: ModelV2.ID
@@ -90,7 +92,7 @@ const layer = Layer.effect(
           // The run's roles are labeled on their own sessions (ADR-0008, "the
           // round"), so a client that arrives late reads this off
           // `/session/:id/children`, from an event it never saw.
-          metadata: { goal_role: "judge", goal_round: input.round },
+          metadata: { goal_role: "judge", goal_round: input.round, goal_generation: input.generation },
         })
         const prompt = Judge.buildJudgePrompt(input)
         const user: SessionV1.User = {
@@ -187,11 +189,13 @@ const layer = Layer.effect(
 
         return { judgement, roleSessionID: bench.id }
       }).pipe(
-        Effect.map(({ judgement, roleSessionID }): JudgeResult => ({
-          judgement,
-          roleSessionID,
-          ...(judgement === Judge.FAIL_OPEN ? { failure: "parse" as const } : {}),
-        })),
+        Effect.map(
+          ({ judgement, roleSessionID }): JudgeResult => ({
+            judgement,
+            roleSessionID,
+            ...(judgement === Judge.FAIL_OPEN ? { failure: "parse" as const } : {}),
+          }),
+        ),
         // A call that did not answer is a transport failure; the loop counts
         // consecutive ones so a misconfigured judge cannot burn the budget.
         Effect.catchCause(() => Effect.succeed({ judgement: Judge.FAIL_OPEN, failure: "transport" as const })),
