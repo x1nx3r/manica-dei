@@ -174,6 +174,27 @@ describe("session.goal-loop", () => {
     }),
   )
 
+  it.instance("the first review starts at the run's start snapshot", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget", startState: "start-1" })
+      yield* goal.authorize(info.id)
+
+      const result = yield* loop.decide(decideInput(info.id as never, test.directory))
+      expect(result.decision._tag).toBe("qa")
+      if (result.decision._tag !== "qa") return
+      expect(result.decision.baseline).toBe("start-1")
+      expect(result.decision.state).toBe("snap-1")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
   it.instance("a goal that is not authorized never loops", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance

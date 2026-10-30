@@ -47,5 +47,6 @@ export const migrations = (
     import("./migration/20261015062210_add_goal_verdict_session_derived"),
     import("./migration/20261030090119_add_goal_generation"),
     import("./migration/20261030095345_add_goal_stop_reason"),
+    import("./migration/20261030114433_add_goal_start_state"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

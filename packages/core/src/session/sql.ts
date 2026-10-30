@@ -150,6 +150,10 @@ export const GoalTable = sqliteTable("session_goal", {
   // The workspace state of the last judged round: the baseline the next review
   // starts from (issue #26). Null before the first verdict.
   state_hash: text(),
+  // Issue #47: the workspace snapshot at the start of the run. The first review
+  // diffs from here, so a change committed before the round's first step is not
+  // lost. Null for goals set before this field existed, or with snapshots off.
+  start_state: text(),
   // ADR-0012: why the loop stopped without a judge verdict, for a terminal
   // `budget_exhausted` run. Null while the run is active or after a judge
   // concluded it.

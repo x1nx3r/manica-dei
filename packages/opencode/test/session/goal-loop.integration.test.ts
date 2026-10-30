@@ -224,6 +224,17 @@ const itEmptyDiff = testEffect(
   ]),
 )
 
+// The real diff service: the round is committed and clean, and QA must still
+// see the committed change (issue #47). The fixed summaries above cannot test
+// the window; this one uses the snapshot the goal start captured.
+const itRealSummary = testEffect(
+  LayerNode.compile(LayerNode.group([promptRoot, testLLMServerNode, SessionSummary.node]), [
+    [LSP.node, lsp],
+    [MCP.node, mcp],
+    [RuntimeFlags.node, runtimeFlags],
+  ]),
+)
+
 // A custom "test" provider whose baseURL is the test LLM server.
 const cfg = {
   provider: {
@@ -896,6 +907,145 @@ describe("goal-loop end to end (mock model)", () => {
         // And the projection carries the pointer back to the judge, for the
         // client that arrives late (ADR-0008, "the seam").
         expect((yield* goal.get(session.id))?.last_verdict_session).toBe(judge.id)
+      }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  itRealSummary.instance(
+    "a change committed before the round's first step still reaches QA",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const snapshot = yield* Snapshot.Service
+        const { directory } = yield* TestInstance
+        const session = yield* sessions.create({
+          title: "Committed before the round",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        const startState = yield* snapshot.track()
+        expect(startState).toBeDefined()
+        yield* goal.set({
+          sessionID: session.id,
+          goal: "add the widget",
+          contract,
+          gates: [gate],
+          startState,
+        })
+        yield* goal.authorize(session.id)
+
+        // The dev has already committed the change before the round's first
+        // step. The tree is clean; the round itself changes nothing.
+        const command = [
+          "mkdir -p src",
+          "printf 'the widget renders\\n' > src/widget.ts",
+          "git add src/widget.ts",
+          "git commit -m 'add the widget'",
+        ].join(" && ")
+        const committed = Bun.spawnSync(["bash", "-lc", command], { cwd: directory })
+        expect(committed.exitCode).toBe(0)
+
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "review the committed widget" }],
+        })
+        yield* llm.text("The widget is committed.")
+
+        let qaBody = ""
+        const qa = (hit: { body: Record<string, unknown> }) => {
+          if (!isQa(hit)) return false
+          qaBody = JSON.stringify(hit.body)
+          return true
+        }
+        yield* llm.textMatch(qa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+
+        yield* prompt.loop({ sessionID: session.id })
+
+        const reviewer = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-qa")
+        expect(reviewer).toBeDefined()
+        expect(qaBody).toContain("src/widget.ts")
+        expect(qaBody).toContain("the widget renders")
+
+        const stored = yield* goal.get(session.id)
+        expect(stored?.status).toBe("done")
+        expect(stored?.turns_used).toBe(1)
+        expect(stored?.start_state).toBe(startState)
+      }),
+    { git: true },
+    { timeout: 30_000 },
+  )
+
+  // Issue #47: an agent that commits its round and leaves a clean tree is still
+  // reviewable. The review window starts at the run snapshot, not the round's
+  // first step, so the committed change is in the QA prompt.
+  itRealSummary.instance(
+    "a committed round with a clean tree still reaches QA",
+    () =>
+      Effect.gen(function* () {
+        const { llm } = yield* useServerConfig()
+        const prompt = yield* SessionPrompt.Service
+        const sessions = yield* Session.Service
+        const goal = yield* Goal.Service
+        const snapshot = yield* Snapshot.Service
+        const session = yield* sessions.create({
+          title: "Committed round",
+          permission: [{ permission: "*", pattern: "*", action: "allow" }],
+        })
+
+        const startState = yield* snapshot.track()
+        expect(startState).toBeDefined()
+        yield* goal.set({
+          sessionID: session.id,
+          goal: "add the widget",
+          contract,
+          gates: [gate],
+          startState,
+        })
+        yield* goal.authorize(session.id)
+
+        yield* prompt.prompt({
+          sessionID: session.id,
+          agent: "build",
+          noReply: true,
+          parts: [{ type: "text", text: "add the widget and commit it" }],
+        })
+
+        const command = [
+          "mkdir -p src",
+          "printf 'the widget renders\\n' > src/widget.ts",
+          "git add src/widget.ts",
+          "git commit -m 'add the widget'",
+        ].join(" && ")
+        yield* llm.tool("bash", { command })
+        yield* llm.text("I committed the widget.")
+
+        let qaBody = ""
+        const qa = (hit: { body: Record<string, unknown> }) => {
+          if (!isQa(hit)) return false
+          qaBody = JSON.stringify(hit.body)
+          return true
+        }
+        yield* llm.textMatch(qa, cleanQa)
+        yield* llm.textMatch(isJudge, '{"verdict":"done","reason":"the tests pass"}')
+
+        yield* prompt.loop({ sessionID: session.id })
+
+        const reviewer = (yield* sessions.children(session.id)).find((child) => child.agent === "goal-qa")
+        expect(reviewer).toBeDefined()
+        expect(qaBody).toContain("src/widget.ts")
+        expect(qaBody).toContain("the widget renders")
+
+        const stored = yield* goal.get(session.id)
+        expect(stored?.status).toBe("done")
+        expect(stored?.turns_used).toBe(1)
+        expect(stored?.start_state).toBe(startState)
       }),
     { git: true },
     { timeout: 30_000 },

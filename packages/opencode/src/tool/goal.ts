@@ -6,6 +6,7 @@ import { Goal } from "../session/goal"
 import { Question } from "../question"
 import { Session } from "../session/session"
 import { Scratchpad } from "../session/scratchpad"
+import { Snapshot } from "@/snapshot"
 import { InstanceState } from "../effect/instance-state"
 import DESCRIPTION from "./goal.txt"
 
@@ -33,12 +34,17 @@ export const Parameters = Schema.Struct({
 const GATE_TIMEOUT_SECONDS = 300
 const GATE_MAX_RETRIES = 3
 
-export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Question.Service | Session.Service>(
+export const GoalTool = Tool.define<
+  typeof Parameters,
+  {},
+  Goal.Service | Question.Service | Session.Service | Snapshot.Service
+>(
   "goal",
   Effect.gen(function* () {
     const goal = yield* Goal.Service
     const question = yield* Question.Service
     const sessions = yield* Session.Service
+    const snapshot = yield* Snapshot.Service
 
     return {
       description: DESCRIPTION,
@@ -139,6 +145,7 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
             replace = true
           }
 
+          const startState = yield* snapshot.track()
           const result = yield* goal.set({
             sessionID: ctx.sessionID,
             goal: params.goal,
@@ -146,6 +153,7 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
             sizeReason: params.size_reason,
             contract: params.contract,
             gates,
+            startState,
             replace,
           })
           if (result._tag === "replace-required") {

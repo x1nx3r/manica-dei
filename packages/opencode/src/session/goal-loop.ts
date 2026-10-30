@@ -469,7 +469,10 @@ const layer = Layer.effect(
       // The baseline is the state the last verdict bound to: the review starts
       // where the last review ended, so a gate retry inside this round keeps
       // the work that preceded the failure (issue #26).
-      const baseline = goal.state_hash ?? undefined
+      // The first review starts at the run's start snapshot, not the round's
+      // first step. A change committed before that step is still in the first
+      // review (issue #47). Later rounds start at the last verdict's state.
+      const baseline = goal.state_hash ?? goal.start_state ?? undefined
       yield* setPhase({ sessionID: input.sessionID, phase: "qa", generation })
       return unchanged({
         _tag: "qa",

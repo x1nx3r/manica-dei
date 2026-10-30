@@ -25,6 +25,12 @@ export interface SetInput {
   readonly gates?: ReadonlyArray<SessionGoal.Gate>
   readonly turnBudget?: number
   /**
+   * ADR-0006 / issue #47: the workspace snapshot at the start of the run. The
+   * goal tool captures it before the agent works, so the first review can see a
+   * change that was committed before the round's first step.
+   */
+  readonly startState?: string
+  /**
    * ADR-0012: the human confirmed that this goal replaces an authorized run.
    * Without it, an authorized definition cannot be overwritten.
    */
@@ -153,6 +159,7 @@ function toInfo(row: typeof GoalTable.$inferSelect): Info {
       ? {}
       : { last_verdict_session: row.last_verdict_session }),
     ...(row.qa_record === null ? {} : { qa_record: row.qa_record }),
+    ...(row.start_state === null ? {} : { start_state: row.start_state }),
     ...(row.stop_reason === null ? {} : { stop_reason: row.stop_reason }),
     state_hash: row.state_hash,
     status: row.status,
@@ -191,6 +198,7 @@ const layer = Layer.effect(
         contract: input.contract,
         gates: [...(input.gates ?? [])],
         turn_budget: input.turnBudget ?? DEFAULT_TURN_BUDGET,
+        start_state: input.startState,
       }
 
       if (!existing) {
@@ -256,6 +264,7 @@ const layer = Layer.effect(
           last_reason: null,
           last_verdict_session: null,
           qa_record: null,
+          start_state: definition.start_state ?? null,
           stop_reason: null,
           state_hash: null,
           status: "active" as const,

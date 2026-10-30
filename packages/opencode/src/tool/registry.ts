@@ -44,6 +44,7 @@ import { EffectBridge } from "@/effect/bridge"
 import { Question } from "../question"
 import { Todo } from "../session/todo"
 import { Goal } from "../session/goal"
+import { Snapshot } from "@/snapshot"
 import { LSP } from "@/lsp/lsp"
 import { Instruction } from "../session/instruction"
 import { FSUtil } from "@opencode-ai/core/fs-util"
@@ -458,6 +459,7 @@ export const node = LayerNode.make({
     EventV2Bridge.node,
     httpClient,
     CrossSpawnSpawner.node,
+    Snapshot.node,
     Format.node,
     Truncate.node,
     RuntimeFlags.node,

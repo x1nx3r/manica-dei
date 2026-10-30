@@ -4079,6 +4079,7 @@ export type SessionGoalInfo = {
   last_reason?: string
   last_verdict_session?: string
   qa_record?: SessionGoalRecord
+  start_state?: string
   stop_reason?: string
   state_hash: string
   status: SessionGoalStatus

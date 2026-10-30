@@ -27738,6 +27738,9 @@
           "qa_record": {
             "$ref": "#/components/schemas/SessionGoalRecord"
           },
+          "start_state": {
+            "type": "string"
+          },
           "stop_reason": {
             "type": "string"
           },
