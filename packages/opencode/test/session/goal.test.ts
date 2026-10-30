@@ -253,6 +253,11 @@ describe("session.goal", () => {
         session: "ses_judge" as never,
       })
       yield* goal.setPhase({ sessionID: info.id, phase: "judge" })
+      yield* goal.setStatus({
+        sessionID: info.id,
+        status: "budget_exhausted",
+        stopReason: "the old run ran out of turns",
+      })
 
       const refused = yield* goal.set({
         sessionID: info.id,
@@ -285,6 +290,7 @@ describe("session.goal", () => {
       expect(stored?.last_reason).toBeUndefined()
       expect(stored?.last_verdict_session).toBeUndefined()
       expect(stored?.state_hash).toBeNull()
+      expect(stored?.stop_reason).toBeUndefined()
       expect(stored?.status).toBe("active")
       expect(stored?.gates).toEqual([{ ...newGate, attempts: 0, last_exit_code: null, last_output_tail: "" }])
 
@@ -298,6 +304,40 @@ describe("session.goal", () => {
       expect(after?.turns_used).toBe(0)
       expect(after?.last_verdict).toBeUndefined()
       expect(after?.status).toBe("active")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a budget stop survives a restart and a replacement clears it", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      yield* goal.setStatus({
+        sessionID: info.id,
+        status: "budget_exhausted",
+        stopReason: "the turn budget is spent",
+      })
+
+      const stopped = yield* goal.get(info.id)
+      expect(stopped?.status).toBe("budget_exhausted")
+      expect(stopped?.stop_reason).toBe("the turn budget is spent")
+
+      // A restart of the same definition keeps the terminal state.
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      const restarted = yield* goal.get(info.id)
+      expect(restarted?.status).toBe("budget_exhausted")
+      expect(restarted?.stop_reason).toBe("the turn budget is spent")
+
+      // The replacement starts a fresh run and clears the stop reason.
+      yield* goal.set({ sessionID: info.id, goal: "add another widget", replace: true })
+      const replaced = yield* goal.get(info.id)
+      expect(replaced?.status).toBe("active")
+      expect(replaced?.stop_reason).toBeUndefined()
 
       yield* session.remove(info.id)
     }),

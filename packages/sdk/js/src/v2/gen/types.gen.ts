@@ -3287,7 +3287,7 @@ export type RevertState = {
 
 export type SessionGoalPhase2 = "dev" | "qa" | "judge"
 
-export type SessionGoalStatus = "active" | "done" | "blocked"
+export type SessionGoalStatus = "active" | "done" | "blocked" | "budget_exhausted"
 
 export type PermissionV2Source = {
   type: "tool"
@@ -4079,6 +4079,7 @@ export type SessionGoalInfo = {
   last_reason?: string
   last_verdict_session?: string
   qa_record?: SessionGoalRecord
+  stop_reason?: string
   state_hash: string
   status: SessionGoalStatus
 }

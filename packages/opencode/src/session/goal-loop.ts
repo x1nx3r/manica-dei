@@ -200,9 +200,19 @@ const layer = Layer.effect(
       // A QA pass succeeded when it produced a record: the QA failure streak ends.
       const delivered = (decision: Decision): DecideResult => ({ decision, failures: { ...input.failures, qa: 0 } })
 
-      // The budget is the floor. When it is spent the loop stops and hands back.
+      // The budget is the floor. When it is spent the loop stops and hands
+      // back. The stop is terminal and visible: a spent budget must not leave
+      // the goal looking active with no turns left (ADR-0012).
       if (goal.turns_used >= goal.turn_budget) {
-        return unchanged({ _tag: "stop", note: "The turn budget is spent; the goal stops here." })
+        const note = "The turn budget is spent; the goal stops here."
+        yield* goals.setStatus({
+          sessionID: input.sessionID,
+          status: "budget_exhausted",
+          stopReason: note,
+          generation,
+        })
+        yield* publishPhase(input.sessionID, generation)
+        return unchanged({ _tag: "stop", note })
       }
 
       // QA failed to run. Fail open to `dev` so a broken QA does not end a run

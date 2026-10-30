@@ -64,10 +64,11 @@ export interface Interface {
     gates: ReadonlyArray<SessionGoal.Gate>
     generation?: number
   }) => Effect.Effect<void>
-  /** The loop's terminal state: `done` or `blocked`. */
+  /** The loop's terminal state: `done`, `blocked`, or `budget_exhausted`. */
   readonly setStatus: (input: {
     sessionID: SessionID
     status: SessionGoal.Status
+    stopReason?: string
     generation?: number
   }) => Effect.Effect<void>
   /**
@@ -152,6 +153,7 @@ function toInfo(row: typeof GoalTable.$inferSelect): Info {
       ? {}
       : { last_verdict_session: row.last_verdict_session }),
     ...(row.qa_record === null ? {} : { qa_record: row.qa_record }),
+    ...(row.stop_reason === null ? {} : { stop_reason: row.stop_reason }),
     state_hash: row.state_hash,
     status: row.status,
   }
@@ -254,6 +256,7 @@ const layer = Layer.effect(
           last_reason: null,
           last_verdict_session: null,
           qa_record: null,
+          stop_reason: null,
           state_hash: null,
           status: "active" as const,
         })
@@ -334,11 +337,12 @@ const layer = Layer.effect(
     const setStatus = Effect.fn("Goal.setStatus")(function* (input: {
       sessionID: SessionID
       status: SessionGoal.Status
+      stopReason?: string
       generation?: number
     }) {
       yield* db
         .update(GoalTable)
-        .set({ status: input.status })
+        .set({ status: input.status, stop_reason: input.stopReason ?? null })
         .where(progressWhere(input.sessionID, input.generation))
         .run()
         .pipe(Effect.orDie)

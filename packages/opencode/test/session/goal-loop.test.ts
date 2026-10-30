@@ -806,6 +806,12 @@ describe("session.goal-loop", () => {
       expect(result.decision).toMatchObject({ _tag: "stop" })
       expect(judgeCalls).toBe(0)
 
+      const stored = yield* goal.get(info.id)
+      expect(stored?.status).toBe("budget_exhausted")
+      expect(stored?.stop_reason).toBe("The turn budget is spent; the goal stops here.")
+      expect(stored?.phase).toBe("dev")
+      expect(stored?.turns_used).toBe(2)
+
       yield* session.remove(info.id)
     }),
   )
