@@ -124,6 +124,9 @@ export const GoalTable = sqliteTable("session_goal", {
     .$type<SessionSchema.ID>()
     .primaryKey()
     .references(() => SessionTable.id, { onDelete: "cascade" }),
+  // ADR-0012: the identity of one run. A replacement increments it, and the
+  // client, the goal events, and the role sessions use it to reject old state.
+  generation: integer().notNull().default(1),
   goal: text().notNull(),
   size: text().$type<SessionGoal.Size>(),
   size_reason: text(),

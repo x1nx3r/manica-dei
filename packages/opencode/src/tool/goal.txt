@@ -3,6 +3,12 @@ Set the session's goal, and — when the human agrees — authorize it to run un
 Only the root session sets a goal. A subagent works under the root's contract
 and reports back; it does not call this tool.
 
+A session can hold one run at a time. If the session already has an authorized
+goal and the human is asking for a different task, call this tool with the new
+goal. The tool asks the human to replace the current run. A yes resets the old
+run, starts the turn counter at zero, and asks for a new authorization for the
+new contract. A no keeps the current goal and its run unchanged.
+
 Call this once, at the end of scoping, when you and the human have agreed what
 the work is and how you will know it is done. Not before: the goal is the
 outcome of the conversation, not its start.

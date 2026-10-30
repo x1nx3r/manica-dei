@@ -91,6 +91,7 @@ describe("session.goal", () => {
       })
 
       expect(yield* goal.get(info.id)).toEqual({
+        generation: 1,
         goal: "add the widget",
         size: "medium",
         size_reason: "a few reversible choices",
@@ -124,7 +125,7 @@ describe("session.goal", () => {
     }),
   )
 
-  it.instance("authorize stamps once — a second call and a re-set leave it", () =>
+  it.instance("authorize stamps once, and an authorized definition cannot change without replace", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service
       const goal = yield* Goal.Service
@@ -139,9 +140,39 @@ describe("session.goal", () => {
       // differ rather than coincidentally match.
       yield* Effect.sleep("5 millis")
       yield* goal.authorize(info.id)
-      yield* goal.set({ sessionID: info.id, goal: "add the widget, revised" })
+      const refused = yield* goal.set({ sessionID: info.id, goal: "add the widget, revised" })
 
+      // A different definition on an authorized run is a replacement, and the
+      // service refuses it without the human's decision.
+      expect(refused._tag).toBe("replace-required")
+      expect((yield* goal.get(info.id))?.goal).toBe("add the widget")
       expect(yield* authorizedAt(info.id)).toBe(first)
+
+      // The same definition is a restart and is idempotent.
+      const unchanged = yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      expect(unchanged._tag).toBe("written")
+      expect(yield* authorizedAt(info.id)).toBe(first)
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("an unauthorized goal can be revised in place", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      const result = yield* goal.set({ sessionID: info.id, goal: "add the widget, revised" })
+      expect(result._tag).toBe("written")
+
+      const stored = yield* goal.get(info.id)
+      expect(stored?.generation).toBe(1)
+      expect(stored?.goal).toBe("add the widget, revised")
+      expect(stored?.authorized).toBe(false)
+      expect(stored?.phase).toBe("dev")
+      expect(stored?.turns_used).toBe(0)
 
       yield* session.remove(info.id)
     }),
@@ -165,22 +196,108 @@ describe("session.goal", () => {
     }),
   )
 
-  it.instance("the phase and the state handle persist, and a re-set keeps the phase", () =>
+  it.instance("the phase and state survive a restart, and a confirmed replace resets them", () =>
     Effect.gen(function* () {
       const session = yield* SessionNs.Service
       const goal = yield* Goal.Service
       const info = yield* session.create({})
 
       yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
       yield* goal.setPhase({ sessionID: info.id, phase: "qa" })
       yield* goal.record({ sessionID: info.id, verdict: "continue", state: "hash-1" })
 
       expect((yield* goal.get(info.id))?.phase).toBe("qa")
       expect((yield* goal.get(info.id))?.state_hash).toBe("hash-1")
 
-      // Re-setting the goal is not loop progress: the phase must survive it.
-      yield* goal.set({ sessionID: info.id, goal: "add the widget, revised" })
+      // The same definition is a restart: the phase and state must survive it.
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
       expect((yield* goal.get(info.id))?.phase).toBe("qa")
+      expect((yield* goal.get(info.id))?.state_hash).toBe("hash-1")
+
+      // A changed definition after authorization needs the human's replace.
+      const refused = yield* goal.set({ sessionID: info.id, goal: "add the widget, revised" })
+      expect(refused._tag).toBe("replace-required")
+      expect((yield* goal.get(info.id))?.phase).toBe("qa")
+
+      const replaced = yield* goal.set({ sessionID: info.id, goal: "add the widget, revised", replace: true })
+      expect(replaced._tag).toBe("written")
+      const stored = yield* goal.get(info.id)
+      expect(stored?.generation).toBe(2)
+      expect(stored?.authorized).toBe(false)
+      expect(stored?.phase).toBe("dev")
+      expect(stored?.turns_used).toBe(0)
+      expect(stored?.last_verdict).toBeUndefined()
+      expect(stored?.state_hash).toBeNull()
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a replacement resets the old run, its gates, and the verdict", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const info = yield* session.create({})
+      const oldGate = { ...gate, attempts: 2, last_exit_code: 1, last_output_tail: "failed" }
+      const newGate = { ...gate, command: "bun test another-widget" }
+      const newContract = { ...contract, outcome: "the other widget renders" }
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget", contract, gates: [oldGate], turnBudget: 12 })
+      yield* goal.authorize(info.id)
+      yield* goal.record({
+        sessionID: info.id,
+        verdict: "done",
+        reason: "the widget renders",
+        state: "hash-1",
+        session: "ses_judge" as never,
+      })
+      yield* goal.setPhase({ sessionID: info.id, phase: "judge" })
+
+      const refused = yield* goal.set({
+        sessionID: info.id,
+        goal: "add another widget",
+        contract: newContract,
+        gates: [newGate],
+      })
+      expect(refused._tag).toBe("replace-required")
+      expect((yield* goal.get(info.id))?.goal).toBe("add the widget")
+
+      const replaced = yield* goal.set({
+        sessionID: info.id,
+        goal: "add another widget",
+        contract: newContract,
+        gates: [newGate],
+        turnBudget: 20,
+        replace: true,
+      })
+      expect(replaced._tag).toBe("written")
+
+      const stored = yield* goal.get(info.id)
+      expect(stored?.generation).toBe(2)
+      expect(stored?.goal).toBe("add another widget")
+      expect(stored?.contract).toEqual(newContract)
+      expect(stored?.authorized).toBe(false)
+      expect(stored?.phase).toBe("dev")
+      expect(stored?.turns_used).toBe(0)
+      expect(stored?.turn_budget).toBe(20)
+      expect(stored?.last_verdict).toBeUndefined()
+      expect(stored?.last_reason).toBeUndefined()
+      expect(stored?.last_verdict_session).toBeUndefined()
+      expect(stored?.state_hash).toBeNull()
+      expect(stored?.status).toBe("active")
+      expect(stored?.gates).toEqual([{ ...newGate, attempts: 0, last_exit_code: null, last_output_tail: "" }])
+
+      // A late write from the old generation cannot move the new run.
+      yield* goal.setPhase({ sessionID: info.id, phase: "qa", generation: 1 })
+      yield* goal.record({ sessionID: info.id, verdict: "done", generation: 1 })
+      yield* goal.burnTurn(info.id, 1)
+      yield* goal.setStatus({ sessionID: info.id, status: "done", generation: 1 })
+      const after = yield* goal.get(info.id)
+      expect(after?.phase).toBe("dev")
+      expect(after?.turns_used).toBe(0)
+      expect(after?.last_verdict).toBeUndefined()
+      expect(after?.status).toBe("active")
 
       yield* session.remove(info.id)
     }),

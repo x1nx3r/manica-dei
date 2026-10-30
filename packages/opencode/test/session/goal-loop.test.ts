@@ -144,6 +144,36 @@ describe("session.goal-loop", () => {
     }),
   )
 
+  it.instance("a replace during the round stops the old generation", () =>
+    Effect.gen(function* () {
+      const test = yield* TestInstance
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const loop = yield* GoalLoop.Service
+      const info = yield* session.create({})
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      yield* goal.set({ sessionID: info.id, goal: "add another widget", replace: true })
+      yield* goal.authorize(info.id)
+
+      const result = yield* loop.decide({
+        ...decideInput(info.id as never, test.directory),
+        generation: 1,
+      })
+      expect(result.decision).toEqual({
+        _tag: "stop",
+        note: "The goal changed while this round was running; the round stops.",
+      })
+      const stored = yield* goal.get(info.id)
+      expect(stored?.goal).toBe("add another widget")
+      expect(stored?.phase).toBe("dev")
+      expect(stored?.turns_used).toBe(0)
+
+      yield* session.remove(info.id)
+    }),
+  )
+
   it.instance("a goal that is not authorized never loops", () =>
     Effect.gen(function* () {
       const test = yield* TestInstance
@@ -1107,7 +1137,12 @@ describe("session.goal-loop", () => {
       // own session rides the event, the way the judge's rides the verdict.
       const record = contradictedRecord(asked.decision.state)
       const qaSession = SessionID.make("ses_qa_1")
-      yield* loop.submitRecord({ sessionID: info.id, record, roleSessionID: qaSession })
+      yield* loop.submitRecord({
+        sessionID: info.id,
+        record,
+        roleSessionID: qaSession,
+        generation: asked.decision.generation,
+      })
 
       // Three: the judge weighs it and rules.
       const handoff = {
@@ -1130,16 +1165,17 @@ describe("session.goal-loop", () => {
 
       const data = (type: string) => published.filter((event) => event.type === type).map((event) => event.data)
       expect(data(SessionGoalEvent.Event.Phase.type)).toEqual([
-        { sessionID: info.id, phase: "qa", status: "active", round: 1 },
-        { sessionID: info.id, phase: "judge", status: "active", round: 1 },
-        { sessionID: info.id, phase: "dev", status: "active", round: 2 },
+        { sessionID: info.id, generation: 1, phase: "qa", status: "active", round: 1 },
+        { sessionID: info.id, generation: 1, phase: "judge", status: "active", round: 1 },
+        { sessionID: info.id, generation: 1, phase: "dev", status: "active", round: 2 },
       ])
       expect(data(SessionGoalEvent.Event.Review.type)).toEqual([
-        { sessionID: info.id, roleSessionID: qaSession, round: 1, record },
+        { sessionID: info.id, generation: 1, roleSessionID: qaSession, round: 1, record },
       ])
       expect(data(SessionGoalEvent.Event.Verdict.type)).toEqual([
         {
           sessionID: info.id,
+          generation: 1,
           roleSessionID: judgeSession,
           round: 1,
           verdict: "continue",

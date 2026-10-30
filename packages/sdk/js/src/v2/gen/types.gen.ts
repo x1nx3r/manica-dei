@@ -1220,6 +1220,7 @@ export type GlobalEvent = {
         type: "session.goal.phase"
         properties: {
           sessionID: string
+          generation?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
           phase: SessionGoalPhase2
           status: SessionGoalStatus
           round: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
@@ -1230,6 +1231,7 @@ export type GlobalEvent = {
         type: "session.goal.review"
         properties: {
           sessionID: string
+          generation?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
           roleSessionID?: string
           round: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
           record: SessionGoalRecord
@@ -1240,6 +1242,7 @@ export type GlobalEvent = {
         type: "session.goal.verdict"
         properties: {
           sessionID: string
+          generation?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
           roleSessionID?: string
           round: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
           verdict: SessionGoalVerdict2
@@ -2865,6 +2868,7 @@ export type SessionGoalPhase = {
   location?: LocationRef
   data: {
     sessionID: string
+    generation?: number | "NaN" | "Infinity" | "-Infinity"
     phase: SessionGoalPhase2
     status: SessionGoalStatus
     round: number | "NaN" | "Infinity" | "-Infinity"
@@ -2885,6 +2889,7 @@ export type SessionGoalVerdict = {
   location?: LocationRef
   data: {
     sessionID: string
+    generation?: number | "NaN" | "Infinity" | "-Infinity"
     roleSessionID?: string
     round: number | "NaN" | "Infinity" | "-Infinity"
     verdict: SessionGoalVerdict2
@@ -4054,6 +4059,7 @@ export type SessionGoalGate = {
 }
 
 export type SessionGoalInfo = {
+  generation?: number | "NaN" | "Infinity" | "-Infinity" | "Infinity" | "-Infinity" | "NaN"
   /**
    * The goal as the agent restated it at commit
    */
@@ -5558,6 +5564,7 @@ export type SessionGoalReview = {
   location?: LocationRef
   data: {
     sessionID: string
+    generation?: number | "NaN" | "Infinity" | "-Infinity"
     roleSessionID?: string
     round: number | "NaN" | "Infinity" | "-Infinity"
     record: SessionGoalRecord
@@ -6921,6 +6928,7 @@ export type EventSessionGoalPhase = {
   type: "session.goal.phase"
   properties: {
     sessionID: string
+    generation?: number | "NaN" | "Infinity" | "-Infinity"
     phase: SessionGoalPhase2
     status: SessionGoalStatus
     round: number | "NaN" | "Infinity" | "-Infinity"
@@ -6932,6 +6940,7 @@ export type EventSessionGoalReview = {
   type: "session.goal.review"
   properties: {
     sessionID: string
+    generation?: number | "NaN" | "Infinity" | "-Infinity"
     roleSessionID?: string
     round: number | "NaN" | "Infinity" | "-Infinity"
     record: SessionGoalRecord
@@ -6943,6 +6952,7 @@ export type EventSessionGoalVerdict = {
   type: "session.goal.verdict"
   properties: {
     sessionID: string
+    generation?: number | "NaN" | "Infinity" | "-Infinity"
     roleSessionID?: string
     round: number | "NaN" | "Infinity" | "-Infinity"
     verdict: SessionGoalVerdict2

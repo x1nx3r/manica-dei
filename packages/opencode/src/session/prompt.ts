@@ -540,7 +540,11 @@ const layer = Layer.effect(
               // flight — a `session.goal.review` event comes only after the pass
               // completes, and the loop's phases before that say nothing about
               // which pass the child belongs to.
-              metadata: { goal_role: "qa", goal_round: input.decision.round },
+              metadata: {
+                goal_role: "qa",
+                goal_round: input.decision.round,
+                goal_generation: input.decision.generation,
+              },
             },
             // The round's messages, not the session's: `task.ts` ignores this
             // today, and the diet forbids the transcript reaching QA, so the
@@ -589,6 +593,7 @@ const layer = Layer.effect(
           ...(qaInfo.metadata ?? {}),
           goal_role: "qa",
           goal_round: input.decision.round,
+          goal_generation: input.decision.generation,
         },
       })
       const qaMessages = yield* sessions.messages({ sessionID: qaSessionID }).pipe(Effect.orDie)
@@ -605,7 +610,12 @@ const layer = Layer.effect(
       // The reviewer's own session rides the event from here: this is the call
       // site that knows it, and the trail cannot ask for it later (ADR-0008,
       // "the seam").
-      yield* goalLoop.submitRecord({ sessionID: input.sessionID, record, roleSessionID: qaSessionID })
+      yield* goalLoop.submitRecord({
+        sessionID: input.sessionID,
+        record,
+        roleSessionID: qaSessionID,
+        generation: input.decision.generation,
+      })
     })
 
     const shellImpl = Effect.fn("SessionPrompt.shellImpl")(function* (input: ShellInput, ready?: Latch.Latch) {
@@ -1269,6 +1279,11 @@ const layer = Layer.effect(
         let step = 0
         // Consecutive judge and QA failures for the circuit breakers, this run.
         let failures: GoalLoop.FailureCounts = { parse: 0, transport: 0, qa: 0 }
+        // ADR-0012: the goal generation at the start of the current user turn.
+        // A replace in the middle of the turn changes the row; this value keeps
+        // the old turn from moving the new goal.
+        let turnUserID: string | undefined
+        let turnGeneration: number | undefined
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1286,6 +1301,14 @@ const layer = Layer.effect(
           const lastAssistantMsg = msgs.findLast(
             (msg) => msg.info.role === "assistant" && msg.info.id === lastAssistant?.id,
           )
+          // A synthetic user note is the loop's continuation of the same turn,
+          // not a fresh human turn. Do not move the generation for it.
+          const lastUserMsg = msgs.findLast((msg) => msg.info.id === lastUser.id)
+          const syntheticUser = lastUserMsg?.parts.some((part) => part.type === "text" && part.synthetic) ?? false
+          if (!syntheticUser && lastUser.id !== turnUserID) {
+            turnUserID = lastUser.id
+            turnGeneration = (yield* goals.get(sessionID))?.generation ?? 1
+          }
           // Some providers return "stop" even when the assistant message contains
           // tool calls. Keep the loop running so tool results can be sent back to
           // the model, but ignore cleanup-marked interrupted orphans.
@@ -1333,9 +1356,11 @@ const layer = Layer.effect(
             let decision: GoalLoop.Decision
             let evidence: Extract<GoalLoop.Decision, { _tag: "qa" }>["evidence"] | undefined
             let qaFailure: { reason: string; kind?: "format" | "failure" } | undefined
+            let roundGeneration = turnGeneration
             while (true) {
               const result = yield* goalLoop.decide({
                 sessionID,
+                ...(roundGeneration === undefined ? {} : { generation: roundGeneration }),
                 cwd: ctx.directory,
                 user: lastUser,
                 providerID: lastUser.model.providerID,
@@ -1348,6 +1373,7 @@ const layer = Layer.effect(
               failures = result.failures
               decision = result.decision
               if (decision._tag !== "qa") break
+              roundGeneration = decision.generation
               evidence = decision.evidence
               qaFailure = undefined
               const qa = yield* runQa({

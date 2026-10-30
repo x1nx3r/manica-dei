@@ -23,6 +23,8 @@ export type GoalVerdict = NonNullable<SessionGoalInfo["last_verdict"]>
  */
 export type SessionGoalRuling = {
   round?: number
+  /** ADR-0012: the run this ruling belongs to. Absent on old servers means 1. */
+  generation?: number
   verdict: GoalVerdict
   reason: string
   handoff?: SessionGoalHandoff
@@ -40,6 +42,8 @@ export type SessionGoalCheck = {
   role: "qa" | "judge"
   roleSessionID: string
   round?: number
+  /** ADR-0012: the run this check belongs to. Absent means 1. */
+  generation?: number
   /** The role's own words: QA's `clean`/`contradicted`, or the judge's verdict. */
   verdict: string
 }
@@ -57,7 +61,7 @@ export function goalConclusion(
   info: SessionGoalInfo,
   ruling: SessionGoalRuling | undefined,
 ): SessionGoalRuling | undefined {
-  if (ruling) return ruling
+  if (ruling && (ruling.generation ?? 1) === generationOf(info.generation)) return ruling
   if (!info.last_verdict) return undefined
   return {
     verdict: info.last_verdict,
@@ -75,6 +79,9 @@ export function goalConclusion(
  * its own schedule.
  */
 const roleSessionID = (properties: object) => (properties as { roleSessionID?: string }).roleSessionID
+
+/** ADR-0012: a wire number or the legacy generation 1. */
+const generationOf = (value: unknown) => (typeof value === "number" ? value : 1)
 
 /**
  * A goal projection, or nothing.
@@ -176,6 +183,8 @@ export type SessionGoalRole = {
   title: string
   role: "qa" | "judge"
   round: number | undefined
+  /** ADR-0012: the run this role belongs to. Absent means 1. */
+  generation?: number
 }
 
 /**
@@ -195,8 +204,17 @@ export function goalRoles(value: unknown): SessionGoalRole[] {
     const metadata = info.metadata && typeof info.metadata === "object" ? info.metadata : undefined
     const role = (metadata as { goal_role?: unknown } | undefined)?.goal_role
     const round = (metadata as { goal_round?: unknown } | undefined)?.goal_round
+    const generation = (metadata as { goal_generation?: unknown } | undefined)?.goal_generation
     if (role !== "qa" && role !== "judge") return []
-    return [{ id: info.id, title: info.title, role, round: typeof round === "number" ? round : undefined }]
+    return [
+      {
+        id: info.id,
+        title: info.title,
+        role,
+        round: typeof round === "number" ? round : undefined,
+        ...(typeof generation === "number" ? { generation } : {}),
+      },
+    ]
   })
 }
 
@@ -305,7 +323,8 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
   const roleList = createMemo(() => {
     const value = roles.latest
     if (!value || value.sessionID !== sessionID()) return noRoles
-    return value.roles
+    const generation = generationOf(info()?.generation)
+    return value.roles.filter((role) => (role.generation ?? 1) === generation)
   })
 
   // A page that outlives a container restart keeps its DOM and loses its
@@ -335,6 +354,8 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     onCleanup(clearRetry)
   }
 
+  let observedGeneration: number | undefined
+
   createEffect(() => {
     const events = sdk().event
     const id = sessionID()
@@ -342,9 +363,25 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     // schedule belongs to the old session's hole, not the new one's.
     setStore("ruling", undefined)
     setStore("checks", [])
+    observedGeneration = undefined
     clearRetry()
     retryAttempts = 0
     if (!id) return
+
+    // ADR-0012: a new generation is a new run. Clear the old ruling and checks
+    // when the projection changes identity, even if the session id is the same.
+    createEffect(() => {
+      const current = info()
+      const generation = generationOf(current?.generation)
+      if (observedGeneration === undefined) {
+        observedGeneration = generation
+        return
+      }
+      if (observedGeneration === generation) return
+      observedGeneration = generation
+      setStore("ruling", undefined)
+      setStore("checks", [])
+    })
 
     // A click that arrived after the fact: the projection carries the judge's
     // verdict and its session, so the run's judge row wears its outcome even
@@ -358,7 +395,12 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
       if (!verdictSession || !verdict) return
       setStore("checks", (list) => [
         ...list.filter((item) => item.roleSessionID !== verdictSession),
-        { role: "judge" as const, roleSessionID: verdictSession, verdict },
+        {
+          role: "judge" as const,
+          roleSessionID: verdictSession,
+          verdict,
+          generation: generationOf(latest.generation),
+        },
       ])
     })
 
@@ -377,6 +419,7 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
         sessionID?: string
         roleSessionID?: string
         round?: number | "NaN" | "Infinity" | "-Infinity"
+        generation?: number | "NaN" | "Infinity" | "-Infinity"
         verdict?: string
       }
       if (properties.sessionID !== id) return
@@ -389,6 +432,7 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
           role,
           roleSessionID,
           round: typeof properties.round === "number" ? properties.round : undefined,
+          generation: typeof properties.generation === "number" ? properties.generation : 1,
           verdict: announcedVerdict,
         },
       ])
@@ -407,6 +451,7 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
         const role = roleSessionID(properties)
         setStore("ruling", {
           round: Number(properties.round),
+          generation: typeof properties.generation === "number" ? properties.generation : 1,
           verdict: properties.verdict,
           reason: properties.reason,
           ...(properties.handoff ? { handoff: properties.handoff } : {}),
@@ -441,8 +486,15 @@ export function createSessionGoal(sessionID: Accessor<string | undefined>) {
     /** The run's labeled role sessions, from the children route (ADR-0008). */
     roles: roleList,
     /** Each role's outcome as the trail announced it, keyed by the role's session. */
-    checks: () => store.checks,
-    /** The last judgement, when the trail delivered one to this client. */
-    ruling: () => store.ruling,
+    checks: () => {
+      const generation = generationOf(info()?.generation)
+      return store.checks.filter((item) => (item.generation ?? 1) === generation)
+    },
+    /** The last judgement, when the trail delivered one for the current run. */
+    ruling: () => {
+      const generation = generationOf(info()?.generation)
+      const ruling = store.ruling
+      return ruling && (ruling.generation ?? 1) === generation ? ruling : undefined
+    },
   }
 }

@@ -59,6 +59,15 @@ const contract = {
   stop_when: "the spec is ambiguous",
 }
 
+const gate = {
+  command: contract.verification,
+  timeout_seconds: 300,
+  max_retries: 3,
+  attempts: 0,
+  last_exit_code: null,
+  last_output_tail: "",
+}
+
 const params = (overrides: Record<string, unknown> = {}) => ({
   goal: "add the widget",
   size: "medium" as const,
@@ -277,6 +286,134 @@ describe("tool.goal", () => {
       expect(asked).toContain("Done means: the widget renders")
       expect(asked).toContain("I will check it with: bun test widget")
       expect(asked).toContain("The full contract — must not change, in scope, stop when — is on the goal")
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a new goal on an authorized session asks before it resets the run", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const question = yield* Question.Service
+      const info = yield* session.create({})
+      const tool = yield* (yield* GoalTool).init()
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      yield* goal.setPhase({ sessionID: info.id, phase: "qa" })
+      yield* goal.record({ sessionID: info.id, verdict: "continue", state: "hash-1" })
+
+      const fiber = yield* tool
+        .execute(params({ goal: "add another widget", commit: true }), context(info.id))
+        .pipe(Effect.forkScoped)
+      const asked = yield* answerCommit(question, "No, keep the current goal")
+      const result = yield* Fiber.join(fiber)
+
+      expect(JSON.stringify(asked)).toContain("Replace the current goal?")
+      expect(JSON.stringify(asked)).toContain("This session already has an authorized goal.")
+      expect(result.title).toBe("Current goal kept")
+
+      const stored = yield* goal.get(info.id)
+      expect(stored?.goal).toBe("add the widget")
+      expect(stored?.authorized).toBe(true)
+      expect(stored?.phase).toBe("qa")
+      expect(stored?.turns_used).toBe(1)
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a confirmed replacement resets the old run and asks for a new authorization", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const question = yield* Question.Service
+      const info = yield* session.create({})
+      const tool = yield* (yield* GoalTool).init()
+
+      yield* goal.set({ sessionID: info.id, goal: "add the widget" })
+      yield* goal.authorize(info.id)
+      yield* goal.record({ sessionID: info.id, verdict: "done", reason: "the old widget", state: "hash-1" })
+
+      const fiber = yield* tool
+        .execute(params({ goal: "add another widget", commit: true }), context(info.id))
+        .pipe(Effect.forkScoped)
+      const asked = yield* answerCommit(question, "Yes, replace it")
+      expect(JSON.stringify(asked)).toContain("This session already has an authorized goal.")
+      yield* answerCommit(question, "Yes, that's what I want")
+      const result = yield* Fiber.join(fiber)
+
+      expect(result.title).toBe("Goal authorized")
+      const stored = yield* goal.get(info.id)
+      expect(stored?.generation).toBe(2)
+      expect(stored?.goal).toBe("add another widget")
+      expect(stored?.authorized).toBe(true)
+      expect(stored?.phase).toBe("dev")
+      expect(stored?.turns_used).toBe(0)
+      expect(stored?.last_verdict).toBeUndefined()
+      expect(stored?.state_hash).toBeNull()
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("an already authorized goal does not ask again", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const info = yield* session.create({})
+      const tool = yield* (yield* GoalTool).init()
+
+      yield* goal.set({
+        sessionID: info.id,
+        goal: "add the widget",
+        size: "medium",
+        sizeReason: "a few reversible choices",
+        contract,
+        gates: [gate],
+      })
+      yield* goal.authorize(info.id)
+
+      const result = yield* tool.execute(params({ commit: true }), context(info.id))
+
+      expect(result.title).toBe("Goal already authorized")
+      expect((yield* goal.get(info.id))?.authorized).toBe(true)
+
+      yield* session.remove(info.id)
+    }),
+  )
+
+  it.instance("a terminal goal can start a new run with the same definition", () =>
+    Effect.gen(function* () {
+      const session = yield* SessionNs.Service
+      const goal = yield* Goal.Service
+      const question = yield* Question.Service
+      const info = yield* session.create({})
+      const tool = yield* (yield* GoalTool).init()
+
+      yield* goal.set({
+        sessionID: info.id,
+        goal: "add the widget",
+        size: "medium",
+        sizeReason: "a few reversible choices",
+        contract,
+        gates: [gate],
+      })
+      yield* goal.authorize(info.id)
+      yield* goal.setStatus({ sessionID: info.id, status: "done" })
+
+      const fiber = yield* tool.execute(params(), context(info.id)).pipe(Effect.forkScoped)
+      yield* answerCommit(question, "Yes, replace it")
+      const result = yield* Fiber.join(fiber)
+
+      expect(result.title).toBe("Goal set")
+      const stored = yield* goal.get(info.id)
+      expect(stored?.generation).toBe(2)
+      expect(stored?.authorized).toBe(false)
+      expect(stored?.phase).toBe("dev")
+      expect(stored?.turns_used).toBe(0)
+      expect(stored?.status).toBe("active")
 
       yield* session.remove(info.id)
     }),

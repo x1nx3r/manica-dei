@@ -16,6 +16,8 @@ export const Phase = define({
   type: "session.goal.phase",
   schema: {
     sessionID: SessionID,
+    /** ADR-0012: the run this phase belongs to. Absent on old servers means 1. */
+    generation: Schema.Number.pipe(optional),
     phase: SessionGoal.Phase,
     status: SessionGoal.Status,
     round: Schema.Number,
@@ -34,6 +36,8 @@ export const Review = define({
   type: "session.goal.review",
   schema: {
     sessionID: SessionID,
+    /** ADR-0012: the run this review belongs to. Absent on old servers means 1. */
+    generation: Schema.Number.pipe(optional),
     roleSessionID: SessionID.pipe(optional),
     round: Schema.Number,
     record: SessionGoal.Record,
@@ -51,6 +55,8 @@ export const Verdict = define({
   type: "session.goal.verdict",
   schema: {
     sessionID: SessionID,
+    /** ADR-0012: the run this verdict belongs to. Absent on old servers means 1. */
+    generation: Schema.Number.pipe(optional),
     roleSessionID: SessionID.pipe(optional),
     round: Schema.Number,
     verdict: SessionGoal.Verdict,

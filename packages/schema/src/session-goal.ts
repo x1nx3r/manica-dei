@@ -116,6 +116,13 @@ export const Record = Schema.Struct({
 export interface Record extends Schema.Schema.Type<typeof Record> {}
 
 export const Info = Schema.Struct({
+  /**
+   * ADR-0012: the identity of one run. A new goal on the same session replaces
+   * the definition and increments this value. The client uses it to reject old
+   * rulings, checks, role sessions, and events. A row or event without it is
+   * generation 1.
+   */
+  generation: Schema.Number.pipe(optional),
   goal: Schema.String.annotate({ description: "The goal as the agent restated it at commit" }),
   size: Size.pipe(optional),
   size_reason: Schema.String.pipe(optional),

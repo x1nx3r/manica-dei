@@ -419,11 +419,11 @@ describe("session HttpApi", () => {
 
         const projection = yield* requestJson<{
           has_goal: boolean
-          projection: { goal: string; phase: string; status: string; turns_used: number }
+          projection: { generation?: number; goal: string; phase: string; status: string; turns_used: number }
         }>(pathFor(SessionPaths.goal, { sessionID: session.id }), { headers })
         expect(projection).toMatchObject({
           has_goal: true,
-          projection: { goal: "add the widget", phase: "dev", status: "active", turns_used: 0 },
+          projection: { generation: 1, goal: "add the widget", phase: "dev", status: "active", turns_used: 0 },
         })
       }),
     { git: true, config: { formatter: false, lsp: false } },

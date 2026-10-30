@@ -87,23 +87,76 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
             }
           }
 
-          yield* goal.set({
+          const gates = [
+            {
+              command: verification,
+              timeout_seconds: GATE_TIMEOUT_SECONDS,
+              max_retries: GATE_MAX_RETRIES,
+              attempts: 0,
+              last_exit_code: null,
+              last_output_tail: "",
+            },
+          ]
+
+          const existing = yield* goal.get(ctx.sessionID)
+          const definition = { goal: params.goal, contract: params.contract, gates }
+          const replaceNeeded =
+            existing?.authorized === true &&
+            (!Goal.sameGoalDefinition(existing, definition) || existing.status !== "active")
+
+          let replace = false
+          if (replaceNeeded) {
+            const answers = yield* question.ask({
+              sessionID: ctx.sessionID,
+              questions: [
+                {
+                  question: renderReplaceQuestion(existing, params.goal),
+                  header: "Replace the current goal?",
+                  custom: false,
+                  options: [
+                    {
+                      label: "Yes, replace it",
+                      description:
+                        "Reset the current run, set this goal, and ask for a fresh authorization before the loop runs",
+                    },
+                    {
+                      label: "No, keep the current goal",
+                      description: "Leave the current goal and its run state unchanged",
+                    },
+                  ],
+                },
+              ],
+              tool: ctx.callID ? { messageID: ctx.messageID, callID: ctx.callID } : undefined,
+            })
+            if (answers[0]?.[0] !== "Yes, replace it") {
+              return {
+                title: "Current goal kept",
+                output:
+                  "The human did not replace the current goal. Do not set this goal. Ask what to change, or continue the current goal.",
+                metadata: {},
+              }
+            }
+            replace = true
+          }
+
+          const result = yield* goal.set({
             sessionID: ctx.sessionID,
             goal: params.goal,
             size: params.size,
             sizeReason: params.size_reason,
             contract: params.contract,
-            gates: [
-              {
-                command: verification,
-                timeout_seconds: GATE_TIMEOUT_SECONDS,
-                max_retries: GATE_MAX_RETRIES,
-                attempts: 0,
-                last_exit_code: null,
-                last_output_tail: "",
-              },
-            ],
+            gates,
+            replace,
           })
+          if (result._tag === "replace-required") {
+            return {
+              title: "The goal changed",
+              output:
+                "The current goal changed while the replacement question was open. Ask the human again before you set this goal.",
+              metadata: {},
+            }
+          }
+          const current = result.info
 
           // The scratchpad is what the judge and the human read.
           const instance = yield* InstanceState.context
@@ -115,10 +168,19 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
           content = Scratchpad.upsertSection(content, "Contract", renderContract(params.contract))
           yield* Effect.promise(() => Scratchpad.write(file, content))
 
+          if (current.authorized) {
+            return {
+              title: "Goal already authorized",
+              output:
+                "This goal is already authorized, so its run state is unchanged. Continue the current run, or replace the goal to start a new one.",
+              metadata: {},
+            }
+          }
+
           if (!params.commit) {
             return {
               title: "Goal set",
-              output: `The goal is set but not authorized, so the loop will not run. Ask the human to confirm what done means — the outcome and the check that proves it — and to authorize an unattended run, then call this tool again with commit: true.\n\n${renderContract(params.contract)}`,
+              output: `${replace ? "The previous goal was replaced and its run state was reset. " : ""}The goal is set but not authorized, so the loop will not run. Ask the human to confirm what done means — the outcome and the check that proves it — and to authorize an unattended run, then call this tool again with commit: true.\n\n${renderContract(params.contract)}`,
               metadata: {},
             }
           }
@@ -156,7 +218,7 @@ export const GoalTool = Tool.define<typeof Parameters, {}, Goal.Service | Questi
             }
           }
 
-          yield* goal.authorize(ctx.sessionID)
+          yield* goal.authorize(ctx.sessionID, current.generation)
           return {
             title: "Goal authorized",
             output:
@@ -175,6 +237,20 @@ function renderContract(contract: SessionGoal.Contract): string {
     `Constraints: ${contract.constraints}`,
     `Boundaries: ${contract.boundaries}`,
     `Stop when: ${contract.stop_when}`,
+  ].join("\n")
+}
+
+function renderReplaceQuestion(info: Goal.Info, goal: string): string {
+  return [
+    "This session already has an authorized goal.",
+    "",
+    `Current goal: ${info.goal}`,
+    `Phase: ${info.phase}. Turn ${info.turns_used} of ${info.turn_budget}. Last verdict: ${info.last_verdict ?? "none"}.`,
+    "",
+    "The new goal is:",
+    goal,
+    "",
+    "If you replace it, the current run state resets. The turn counter starts at zero, the old verdict and role rounds leave the run, and the new contract needs a new authorization.",
   ].join("\n")
 }
 

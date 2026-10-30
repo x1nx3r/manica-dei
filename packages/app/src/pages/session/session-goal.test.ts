@@ -63,6 +63,18 @@ describe("goalConclusion", () => {
     expect(goalConclusion(goal({ phase: "dev" }), undefined)).toBeUndefined()
     expect(goalConclusion(goal({ last_verdict: undefined, last_reason: undefined }), undefined)).toBeUndefined()
   })
+
+  test("a ruling from another goal generation is not the conclusion", () => {
+    const ruling: SessionGoalRuling = {
+      round: 3,
+      generation: 1,
+      verdict: "done",
+      reason: "the old run is done",
+      handoff,
+      roleSessionID: "ses_old_judge",
+    }
+    expect(goalConclusion(goal({ generation: 2, last_verdict: undefined }), ruling)).toBeUndefined()
+  })
 })
 
 describe("goalProjection", () => {
@@ -192,6 +204,12 @@ describe("goalRoles", () => {
   test("a role from before the round was carried reads with none", () => {
     expect(goalRoles([child({ metadata: { goal_role: "qa" } })])).toEqual([
       { id: "ses_child", title: "QA the goal", role: "qa", round: undefined },
+    ])
+  })
+
+  test("a role carries its goal generation", () => {
+    expect(goalRoles([child({ metadata: { goal_role: "qa", goal_round: 1, goal_generation: 2 } })])).toEqual([
+      { id: "ses_child", title: "QA the goal", role: "qa", round: 1, generation: 2 },
     ])
   })
 })
