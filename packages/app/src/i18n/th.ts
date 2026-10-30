@@ -1256,6 +1256,7 @@ export const dict = {
   "session.goal.status.active": "Active",
   "session.goal.status.done": "Done",
   "session.goal.status.blocked": "Blocked",
+  "session.goal.status.budget_exhausted": "Budget exhausted",
   "session.goal.round": "Round {{round}}",
   "session.goal.turns": "Turn {{used}} of {{budget}}",
   "session.goal.unauthorized": "Not authorized — the loop stays idle until a human authorizes it.",
