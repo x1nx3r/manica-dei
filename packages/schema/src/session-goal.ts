@@ -41,7 +41,7 @@ export const Handoff = Schema.Struct({
 export interface Handoff extends Schema.Schema.Type<typeof Handoff> {}
 
 /** The loop's lifecycle for one goal. */
-export const Status = Schema.Literals(["active", "done", "blocked"]).annotate({
+export const Status = Schema.Literals(["active", "done", "blocked", "budget_exhausted"]).annotate({
   identifier: "SessionGoal.Status",
 })
 export type Status = typeof Status.Type
@@ -147,6 +147,13 @@ export const Info = Schema.Struct({
    * first pass and after it was weighed.
    */
   qa_record: Record.pipe(optional),
+  /**
+   * The reason the loop stopped without a judge verdict. Present on a
+   * `budget_exhausted` goal; absent on a goal that is still running or that a
+   * judge concluded. ADR-0012 makes this part of the run state, so a
+   * replacement clears it and a restart preserves it.
+   */
+  stop_reason: Schema.String.pipe(optional),
   /**
    * The workspace state of the last judged round — the state the last verdict
    * bound to, and the baseline the next review starts from (issue #26). Null

@@ -25144,7 +25144,7 @@
       },
       "SessionGoalStatus": {
         "type": "string",
-        "enum": ["active", "done", "blocked"]
+        "enum": ["active", "done", "blocked", "budget_exhausted"]
       },
       "PermissionV2Source": {
         "type": "object",
@@ -27737,6 +27737,9 @@
           },
           "qa_record": {
             "$ref": "#/components/schemas/SessionGoalRecord"
+          },
+          "stop_reason": {
+            "type": "string"
           },
           "state_hash": {
             "type": "string"

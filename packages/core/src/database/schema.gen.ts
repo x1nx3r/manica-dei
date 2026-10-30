@@ -142,6 +142,7 @@ export default {
           \`last_verdict_session\` text,
           \`qa_record\` text,
           \`state_hash\` text,
+          \`stop_reason\` text,
           \`status\` text NOT NULL,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,

@@ -61,6 +61,8 @@ export function SessionGoalStrip(props: {
         return language.t("session.goal.status.done")
       case "blocked":
         return language.t("session.goal.status.blocked")
+      case "budget_exhausted":
+        return language.t("session.goal.status.budget_exhausted")
       default:
         return language.t("session.goal.status.active")
     }
@@ -284,6 +286,14 @@ export function SessionGoalStrip(props: {
                 <div data-slot="session-goal-unauthorized" class={labelClass()}>
                   {language.t("session.goal.unauthorized")}
                 </div>
+              </Show>
+
+              <Show when={props.goal.stop_reason}>
+                {(reason) => (
+                  <div data-slot="session-goal-stop-reason" class={labelClass()}>
+                    {reason()}
+                  </div>
+                )}
               </Show>
 
               <Show when={props.goal.contract}>
